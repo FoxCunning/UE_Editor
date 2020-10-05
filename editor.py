@@ -2457,7 +2457,7 @@ if __name__ == "__main__":
             with app.frame("TE_Frame_Left", row=1, column=0, bg="#FFCFCF", sticky='NEW', stretch='COLUMN',
                            padding=[2, 2]):
                 app.label("TE_Label_Text", "Unpacked string:", row=0, column=0)
-                app.textArea("TE_Text", "", width=12, stretch='BOTH', sticky='NEWS', scroll=True,
+                app.textArea("TE_Text", "", width=22, stretch='BOTH', sticky='NEWS', scroll=True,
                              row=1, column=0).setFont(family="Consolas", size=9)
 
             # Address

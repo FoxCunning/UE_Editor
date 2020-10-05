@@ -564,6 +564,9 @@ class TextEditor:
         elif string_type == "Enemy Names":
             self.address = self.enemy_name_pointers[string_id]
             self.text = self.enemy_names[string_id]
+        elif string_type == "Menus / Intro":
+            self.address = self.menu_text_pointers[string_id]
+            self.text = self.menu_text[string_id]
         else:
             log(3, "TEXT EDITOR", f"Invalid string type '{string_type}'.")
             return
@@ -720,6 +723,7 @@ class TextEditor:
                     self.enemy_names[i] = new_text
 
         elif self.type == "Menus / Intro":
+            # self.menu_text_pointers[self.index] = new_address
             self.menu_text[self.index] = new_text
 
         else:
