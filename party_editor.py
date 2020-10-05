@@ -67,6 +67,9 @@ class PartyEditor:
         # Number of selectable professions (11 by default)
         self.selectable_professions: int = 11
 
+        # ID of races/professions used in the character creation menus
+        self.menu_string_id: int = 0
+
         # Currently selected race/profession/weapon/spell etc. (depending on current window)
         self.selected_index: int = -1
 
@@ -149,6 +152,12 @@ class PartyEditor:
         # Add 1 because that is the index of the last possible selection (0-based)
         self.selectable_races = self.rom.read_byte(0xC, 0x8EAD) + 1
 
+        # Read string ID from ROM, bank 0xC
+        # 8DB8    LDA #$0A
+        # 8DBA    STA $30
+        # 8DBC    JSR DrawTextForPreGameMenu
+        self.menu_string_id = self.rom.read_byte(0xC, 0x8DB9)
+
         with self.app.subWindow("Party_Editor"):
             self.app.setSize(320, 280)
 
@@ -208,12 +217,22 @@ class PartyEditor:
                     self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg="#000000", map=None, sticky="W",
                                     row=1, column=2)
 
+            # Right Column
             with self.app.frame("PE_Frame_Race_Names", row=1, column=1, padding=[4, 2]):
                 self.app.label("PE_Label_Race_Names", value="Race Names:", row=0, column=0)
                 self.app.textArea("PE_Race_Names", value=race_text, change=self._races_input, row=1, column=0,
-                                  width=12, height=9, fg="#000000")
+                                  width=12, height=7, fg="#000000")
                 self.app.button("PE_Update_Race_Names", name="Update", value=self._races_input,
                                 row=2, column=0)
+                # Race names list string index and edit button
+                with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
+                                    bg="#C0D0D0"):
+                    self.app.button("PE_Edit_Menu_String", value=self._races_input, name="Edit Text",
+                                    image="res/edit-dlg.gif", sticky="NW", width=24, height=24, row=0, column=0)
+                    self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1)
+                    self.app.entry("PE_Menu_String_Id", value=f"0x{self.menu_string_id:02X}",
+                                   change=self._races_input,
+                                   width=5, sticky="NES", row=0, column=2)
 
         # Disable gender character widgets if gender depends on profession
         if self.gender_by_profession:
@@ -310,6 +329,12 @@ class PartyEditor:
         # This value is the 0-based index of the last possible selection, so we add 1
         self.selectable_professions = self.rom.read_byte(0xC, 0x8ECB) + 1
 
+        # Read string ID from ROM, bank 0xC
+        # 8F41    LDA #$0D
+        # 8F43    STA $30
+        # 8F45    JSR DrawTextForPreGameMenu
+        self.menu_string_id = self.rom.read_byte(0xC, 0x8F42)
+
         with self.app.subWindow("Party_Editor"):
             self.app.setSize(440, 420)
 
@@ -399,6 +424,15 @@ class PartyEditor:
                                   sticky="NEW", fg="#000000", scroll=True, row=1, column=0)
                 self.app.button("PE_Update_Profession_Names", value=self._professions_input, name="Update",
                                 sticky="NEW", row=2, column=0)
+                # Professions list string index and edit button
+                with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
+                                    bg="#C0D0D0"):
+                    self.app.button("PE_Edit_Menu_String", value=self._professions_input, name="Edit Text",
+                                    image="res/edit-dlg.gif", sticky="NW", width=24, height=24, row=0, column=0)
+                    self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1)
+                    self.app.entry("PE_Menu_String_Id", value=f"0x{self.menu_string_id:02X}",
+                                   change=self._professions_input,
+                                   width=5, sticky="NES", row=0, column=2)
 
             # --- Primary Attributes ---
 
@@ -551,6 +585,19 @@ class PartyEditor:
             except ValueError:
                 return
 
+        elif widget == "PE_Menu_String_Id":
+            value = self.app.getEntry(widget)
+            try:
+                self.menu_string_id = int(value, 16)
+            except ValueError:
+                pass
+
+        elif widget == "PE_Edit_Menu_String":
+            # Update the displayed string ID, in case the box contained an invalid value
+            self._update_menu_string_entry()
+            # Now we can show the "advanced" text editor
+            self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
+
         else:
             log(3, f"{self}", f"Unimplemented widget callback from '{widget}'.")
 
@@ -699,6 +746,19 @@ class PartyEditor:
             if self.save_professions() is not False:
                 self.close_window()
 
+        elif widget == "PE_Menu_String_Id":
+            value = self.app.getEntry(widget)
+            try:
+                self.menu_string_id = int(value, 16)
+            except ValueError:
+                pass
+
+        elif widget == "PE_Edit_Menu_String":
+            # Update the displayed string ID, in case the box contained an invalid value
+            self._update_menu_string_entry()
+            # Now we can show the "advanced" text editor
+            self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
+
         else:
             log(3, f"{self}", f"Unimplemented widget callback: '{widget}'.")
 
@@ -758,6 +818,18 @@ class PartyEditor:
             ascii_string = exodus_to_ascii(data)
             self.profession_names.append(ascii_string)
             # profession_names = profession_names + '\n' + ascii_string
+
+    # --- PartyEditor._update_menu_string_entry() ---
+
+    def _update_menu_string_entry(self) -> None:
+        """
+        Re-writes the currently stored value for the menu string Id in its entry widget.
+        Since the internal variable is only updated when the entry is valid, the displayed value may not match what
+        is saved if the user inputs invalid values.
+        Calling this before storing a new value in ROM, or before showing the text editor may be useful.
+        """
+        self.app.clearEntry("PE_Menu_String_Id", callFunction=False)
+        self.app.setEntry("PE_Menu_String_Id", f"0x{self.menu_string_id:02X}", callFunction=False)
 
     # --- PartyEditor._read_attribute_names() ---
 
@@ -1270,6 +1342,14 @@ class PartyEditor:
             self.rom.write_byte(0xD, address + 1, self.max_attributes[r][3])
             address = address + 4
 
+        # Save string ID from ROM, bank 0xC
+        # 8DB8    LDA #$0A
+        # 8DBA    STA $30
+        # 8DBC    JSR DrawTextForPreGameMenu
+        self.rom.write_byte(0xC, 0x8DB9, self.menu_string_id)
+        # Update string ID widget, in case it contained invalid data
+        self._update_menu_string_entry()
+
     # --- PartyEditor._save_profession_data() ---
 
     def _save_profession_data(self) -> None:
@@ -1381,6 +1461,15 @@ class PartyEditor:
 
             # Number of professions in the right column
             self.rom.write_byte(0xC, 0x8DEE, self.selectable_professions - 6)
+
+        # Save menu string Id to ROM, bank 0xC
+        # 8F41    LDA #$0D    ; <- string ID
+        # 8F43    STA $30
+        # 8F45    JSR DrawTextForPreGameMenu
+        self.rom.write_byte(0xC, 0x8F42, self.menu_string_id)
+
+        # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
+        self._update_menu_string_entry()
 
     # --- PartyEditor.save_professions() ---
 
