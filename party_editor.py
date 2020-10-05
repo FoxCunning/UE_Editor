@@ -1309,8 +1309,8 @@ class PartyEditor:
             primary_0 = self.primary_attributes[i][0] + 7
             primary_1 = self.primary_attributes[i][1] + 7
 
-            self.rom.write_byte(0xC, address, primary_0)
-            self.rom.write_byte(0xC, address + 1, primary_1)
+            self.rom.write_byte(0xD, address, primary_0)
+            self.rom.write_byte(0xD, address + 1, primary_1)
 
             # Also there is a table with cursor position that indicates these attributes
             # during character creation
@@ -1363,7 +1363,7 @@ class PartyEditor:
             # Index of last profession on the left column
             self.rom.write_byte(0xC, 0x8EC7, self.selectable_professions - 1)
             # Index of last selectable profession
-            self.rom.write_byte(0xC, 0x8ECA, self.selectable_professions - 1)
+            self.rom.write_byte(0xC, 0x8ECB, self.selectable_professions - 1)
 
             # Number of professions in the right column
             self.rom.write_byte(0xC, 0x8DEE, 0)
@@ -1377,7 +1377,7 @@ class PartyEditor:
             # Index of last profession on the left column
             self.rom.write_byte(0xC, 0x8EC7, 5)
             # Index of last selectable profession
-            self.rom.write_byte(0xC, 0x8ECA, self.selectable_professions - 1)
+            self.rom.write_byte(0xC, 0x8ECB, self.selectable_professions - 1)
 
             # Number of professions in the right column
             self.rom.write_byte(0xC, 0x8DEE, self.selectable_professions - 6)
