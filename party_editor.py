@@ -1,5 +1,6 @@
 __author__ = "Fox Cunning"
 
+from dataclasses import dataclass, field
 from typing import List
 
 from PIL import Image, ImageTk
@@ -12,6 +13,18 @@ from text_editor import TextEditor, exodus_to_ascii, ascii_to_exodus
 
 
 class PartyEditor:
+
+    # --- PartyEditor.PreMade class ---
+    @dataclass(init=True, repr=False)
+    class PreMade:
+        """
+        A helper class used to store data used for pre-made characters
+        """
+        name: str = ""
+        race: int = 0
+        profession: int = 0
+        attributes: list = field(default_factory=list)
+
     def __init__(self, app: gui, rom: ROM, text_editor: TextEditor, palette_editor: PaletteEditor):
         self.app: gui = app
         self.rom: ROM = rom
@@ -69,6 +82,9 @@ class PartyEditor:
 
         # ID of races/professions used in the character creation menus
         self.menu_string_id: int = 0
+
+        # An array containing pre-made character data
+        self.pre_made: List[PartyEditor.PreMade] = []
 
         # Currently selected race/profession/weapon/spell etc. (depending on current window)
         self.selected_index: int = -1
@@ -511,8 +527,11 @@ class PartyEditor:
         # Read attribute names from ROM
         self._read_attribute_names()
 
+        # Read pre-made characters from ROM
+        self._read_pre_made()
+
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(320, 280)
+            self.app.setSize(320, 250)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 0], sticky='NEW', stretch='ROW'):
@@ -523,29 +542,32 @@ class PartyEditor:
 
             # Selector
             with self.app.frame("PE_Frame_Top", row=1, column=0, padding=[4, 2], stretch='ROW'):
-                self.app.label("PE_Label_Character", "Select a pre-made character slot:", row=0, column=0, sticky='NEW')
+                self.app.label("PE_Label_Character", "Pre-made character slot:", row=0, column=0, sticky='NEW')
                 self.app.optionbox("PE_Character_Index",
                                    value=["0", "1", "2", "-", "3", "4", "5", "-", "6", "7", "8", "-", "9", "10", "11"],
                                    row=0, column=1, sticky='NEW', change=self._pre_made_input)
 
             # Character data
-            with self.app.frame("PE_Frame_Data", row=2, column=0, padding=[2, 2], sticky='NEW', stretch='ROW'):
+            with self.app.frame("PE_Frame_Data", row=2, column=0, padding=[4, 2], sticky='NEW', stretch='ROW'):
                 # Row 0 - Name
-                self.app.label("PE_Label_Name", "Name:", row=0, column=0, sticky='NW')
-                self.app.entry("PE_Character_Name", "", width=7, row=0, column=1, sticky='NW',
+                self.app.label("PE_Label_Name", "Name:", row=0, column=0, sticky='NE')
+                self.app.entry("PE_Character_Name", "", width=10, row=0, column=1, sticky='NW',
                                change=self._pre_made_input)
                 # Row 1 - Race and profession
-                self.app.label("PE_Label_Race", "Race:", row=1, column=0, sticky='NW')
-                self.app.optionbox("PE_Race", race_names, row=1, column=1, sticky='NW',
+                self.app.optionbox("PE_Race", race_names, row=1, column=0, sticky='NW',
                                    change=self._pre_made_input)
-                self.app.label("PE_Label_Profession", "Profession:", row=1, column=2, sticky='NW')
-                self.app.optionbox("PE_Profession", professions_list, row=1, column=3, sticky='NW',
+                self.app.optionbox("PE_Profession", professions_list, row=1, column=1, sticky='NW',
                                    change=self._create_pre_made_window)
 
             # Character attributes
             with self.app.frame("PE_Frame_Attributes", row=3, column=0, padding=[2, 2], sticky='NEW', stretch='ROW'):
                 for r in range(4):
-                    self.app.label(f"PE_Label_Attribute_{r}", self.attribute_names[r], row=0, column=(r * 2))
+                    self.app.label(f"PE_Label_Attribute_{r}", self.attribute_names[r], row=0, column=(r * 2),
+                                   sticky='NW')
+                    self.app.entry(f"PE_Attribute_{r}", "", width=5, row=0, column=(r * 2) + 1, sticky='NW')
+
+        # Display the first pre-made character
+        self.app.setOptionBox("PE_Character_Index", 0, callFunction=True)
 
     # --- PartyEditor.close_window() ---
 
@@ -581,7 +603,7 @@ class PartyEditor:
             self.gender_by_profession = self.app.getCheckBox(widget)
 
         else:
-            log(3, f"{self}", f"Unimplemented widget callback from '{widget}'.")
+            log(3, f"{self.__class__.__name__}", f"Unimplemented widget callback from '{widget}'.")
 
     # --- PartyEditor._races_input() ---
 
@@ -674,7 +696,7 @@ class PartyEditor:
             self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
 
         else:
-            log(3, f"{self}", f"Unimplemented widget callback from '{widget}'.")
+            log(3, f"{self.__class__.__name__}", f"Unimplemented widget callback from '{widget}'.")
 
     # --- PartyEditor._professions_input() ---
 
@@ -704,7 +726,7 @@ class PartyEditor:
                 if value == '':
                     pass
                 else:
-                    log(3, f"{self}", f"Invalid value '{value}' for professions count.")
+                    log(3, f"{self.__class__.__name__}", f"Invalid value '{value}' for professions count.")
 
         elif widget == "PE_Profession_Names":
             # Make sure the total length including newlines and string terminator is not over 59
@@ -835,7 +857,7 @@ class PartyEditor:
             self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
 
         else:
-            log(3, f"{self}", f"Unimplemented widget callback: '{widget}'.")
+            log(3, f"{self.__class__.__name__}", f"Unimplemented widget callback: '{widget}'.")
 
     def _pre_made_input(self, widget: str) -> None:
         """
@@ -846,7 +868,18 @@ class PartyEditor:
         widget: str
             Name of the widget generating the input
         """
-        pass
+        if widget == "PE_Character_Index":
+            value = self.app.getOptionBox(widget)
+            try:
+                index = int(value, 10)
+                if 0 <= index <= 11:
+                    self.app.setEntry("PE_Character_Name", self.pre_made[index].name, callFunction=False)
+
+            except ValueError:
+                return
+
+        else:
+            log(3, f"{self.__class__.__name__}", f"Unimplemented input from widget: {widget}.")
 
     # --- PartyEditor._read_race_names() ---
 
@@ -984,6 +1017,44 @@ class PartyEditor:
 
             count = count + 1
 
+    # --- PartyEditor._read_pre_made() ---
+
+    def _read_pre_made(self) -> None:
+        """
+        Reads all pre-made character data from ROM into the pre_made array.
+        Overwrites any previous contents of the array.
+        """
+        self.pre_made = []
+
+        # From bank 0xC
+        address = 0xA941
+
+        for p in range(12):
+            pre_made = PartyEditor.PreMade()
+
+            # Read name (5 bytes)
+            name = self.rom.read_bytes(0xC, address, 5)
+            pre_made.name = exodus_to_ascii(name)
+            address = address + 5
+
+            # Read race
+            pre_made.race = self.rom.read_byte(0xC, address)
+            address = address + 1
+
+            # Read profession
+            pre_made.profession = self.rom.read_byte(0xC, address)
+            address = address + 1
+
+            # Read attributes
+            for a in range(4):
+                pre_made.attributes.append(self.rom.read_byte(0xC, address))
+                address = address + 1
+
+            # Skip 5 extra bytes that are always 00 01 00 00 00
+            address = address + 5
+
+            self.pre_made.append(pre_made)
+
     # --- PartyEditor.load_profession_graphics() ---
 
     def _load_profession_graphics(self) -> None:
@@ -1001,7 +1072,7 @@ class PartyEditor:
         colour_index = self.colour_indices[self.selected_index]
 
         if colour_index > 6:
-            log(2, f"{self}", f"Invalid colour index #{colour_index} for profession graphics!")
+            log(2, f"{self.__class__.__name__}", f"Invalid colour index #{colour_index} for profession graphics!")
             return
 
         # Show colour index in the corresponding widget
