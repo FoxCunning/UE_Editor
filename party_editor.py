@@ -84,7 +84,17 @@ class PartyEditor:
         elif window_name == "Professions":
             self._create_professions_window()
 
+        elif window_name == "Pre-Made":
+            if self.rom.has_feature("enhanced party") is False:
+                self.app.errorBox("Party Editor", "The pre-made character editor is only available on the Remastered " +
+                                  "version of the ROM.")
+                return
+
+            else:
+                self._create_pre_made_window()
+
         else:
+            log(3, f"{self.__class__.__name__}", f"Unimplemented: {window_name}.")
             return
 
         self.current_window = window_name
@@ -472,6 +482,71 @@ class PartyEditor:
         self.app.disableOptionBox("PE_Primary_1")
         self.app.disableEntry("PE_Gender_Character")
 
+    # --- PartyEditor._create_pre_made_window() ---
+
+    def _create_pre_made_window(self) -> None:
+        """
+        Creates a window and widgets for editing the pre-made characters.
+        This is only for the Remastered version of the ROM.
+        """
+        # We need to read some text from ROM: attribute names, professions and races.
+        # These will be displayed but not altered here.
+
+        professions_list: List[str] = ["- Profession -"]
+        race_names: List[str] = ["- Race -"]
+
+        # Read and decode attribute names
+        self._read_attribute_names()
+
+        # Read profession names from ROM
+        self._read_profession_names()
+        # List for option box
+        professions_list = professions_list + self.profession_names
+
+        # Read race names from ROM
+        self._read_race_names()
+        # List for option box
+        race_names = race_names + self.race_names
+
+        # Read attribute names from ROM
+        self._read_attribute_names()
+
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(320, 280)
+
+            # Buttons
+            with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 0], sticky='NEW', stretch='ROW'):
+                self.app.button("PE_Apply", name="Apply", value=self._pre_made_input, image="res/floppy.gif",
+                                tooltip="Apply Changes and Close Window", row=0, column=0)
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=1)
+
+            # Selector
+            with self.app.frame("PE_Frame_Top", row=1, column=0, padding=[4, 2], stretch='ROW'):
+                self.app.label("PE_Label_Character", "Select a pre-made character slot:", row=0, column=0, sticky='NEW')
+                self.app.optionbox("PE_Character_Index",
+                                   value=["0", "1", "2", "-", "3", "4", "5", "-", "6", "7", "8", "-", "9", "10", "11"],
+                                   row=0, column=1, sticky='NEW', change=self._pre_made_input)
+
+            # Character data
+            with self.app.frame("PE_Frame_Data", row=2, column=0, padding=[2, 2], sticky='NEW', stretch='ROW'):
+                # Row 0 - Name
+                self.app.label("PE_Label_Name", "Name:", row=0, column=0, sticky='NW')
+                self.app.entry("PE_Character_Name", "", width=7, row=0, column=1, sticky='NW',
+                               change=self._pre_made_input)
+                # Row 1 - Race and profession
+                self.app.label("PE_Label_Race", "Race:", row=1, column=0, sticky='NW')
+                self.app.optionbox("PE_Race", race_names, row=1, column=1, sticky='NW',
+                                   change=self._pre_made_input)
+                self.app.label("PE_Label_Profession", "Profession:", row=1, column=2, sticky='NW')
+                self.app.optionbox("PE_Profession", professions_list, row=1, column=3, sticky='NW',
+                                   change=self._create_pre_made_window)
+
+            # Character attributes
+            with self.app.frame("PE_Frame_Attributes", row=3, column=0, padding=[2, 2], sticky='NEW', stretch='ROW'):
+                for r in range(4):
+                    self.app.label(f"PE_Label_Attribute_{r}", self.attribute_names[r], row=0, column=(r * 2))
+
     # --- PartyEditor.close_window() ---
 
     def close_window(self) -> bool:
@@ -761,6 +836,17 @@ class PartyEditor:
 
         else:
             log(3, f"{self}", f"Unimplemented widget callback: '{widget}'.")
+
+    def _pre_made_input(self, widget: str) -> None:
+        """
+        Processes UI input from a widget part of the Professions Editor sub-window
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget generating the input
+        """
+        pass
 
     # --- PartyEditor._read_race_names() ---
 

@@ -1037,6 +1037,7 @@ def edit_text() -> None:
 
 # --- close_rom() ---
 
+# noinspection PyArgumentList
 def close_rom() -> None:
     """
     Closes the ROM file and releases all its resources
@@ -1083,6 +1084,7 @@ def save_rom(file_name: str) -> None:
 
 # --- open_rom() ---
 
+# noinspection PyArgumentList
 def open_rom(file_name: str) -> None:
     """
     Opens an Ultima: Exodus ROM file
@@ -1220,7 +1222,7 @@ def open_rom(file_name: str) -> None:
         app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", False)
 
         # Add file name to the window's title
-        app.setTitle(title=f"UE Editor - {os.path.basename(file_name)}")
+        app.setTitle(f"UE Editor - {os.path.basename(file_name)}")
 
 
 # --- update_map_table() ---
@@ -1732,8 +1734,13 @@ def select_portrait(sel: str) -> None:
 def party_editor_press(button: str) -> bool:
     if button == "PT_Button_Races":
         party_editor.show_window("Races")
+
     elif button == "PT_Button_Professions":
         party_editor.show_window("Professions")
+
+    elif button == "PT_Button_Pre-Made":
+        party_editor.show_window("Pre-Made")
+
     else:
         log(3, "PARTY_EDITOR", f"Unimplemented button '{button}'.")
 
@@ -1747,6 +1754,7 @@ def party_editor_stop() -> bool:
 
 # --- press() ---
 
+# noinspection PyArgumentList
 def press(widget: str) -> bool:
     """
     Generic button press callback for the main window
@@ -1799,7 +1807,7 @@ def press(widget: str) -> bool:
             rom.path = file_name
 
             # Add file name to the window's title
-            app.setTitle(title=f"UE Editor - {os.path.basename(file_name)}")
+            app.setTitle(f"UE Editor - {os.path.basename(file_name)}")
 
     elif widget == "Close ROM":
         close_rom()
@@ -1911,7 +1919,9 @@ if __name__ == "__main__":
 
     with gui("UE Editor", "400x280", bg='#FFFFF0', resizable=False) as app:
         print(app.SHOW_VERSION())
+        # noinspection PyArgumentList
         app.setIcon(image="res/app-icon.ico")
+        # noinspection PyArgumentList
         app.setStopFunction(editor_stop)
         app.setFont(family=settings.get("editor fonts"), size=9, underline=False)
 
@@ -2203,6 +2213,7 @@ if __name__ == "__main__":
         # Party Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Party_Editor", title="Party Editor", size=[360, 240], modal=False, resizable=False,
                            padding=0, inPadding=0, guiPadding=0, bg="#C0C0B0"):
+            # noinspection PyArgumentList
             app.setStopFunction(party_editor_stop)
 
             app.label("PE_Label_p0", "")
@@ -2211,6 +2222,7 @@ if __name__ == "__main__":
         with app.subWindow("Map_Editor", "Map Editor", size=[512, 480], modal=False, resizable=False, padding=0,
                            inPadding=0, guiPadding=0, bg="#A0A0A0"):
 
+            # noinspection PyArgumentList
             app.setStopFunction(map_editor_stop)
 
             # Buttons
@@ -2302,6 +2314,7 @@ if __name__ == "__main__":
             # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
             with app.subWindow("Map_Progress", title="Redraw Map", modal=True, size=[320, 100], padding=[4, 4],
                                bg="#F0E0C0"):
+                # noinspection PyArgumentList
                 app.setStopFunction(no_stop)
                 app.label("Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE')
                 app.meter("ME_Progress_Meter", value=0, row=1, column=0, stretch='ROW', sticky='WE', fill="#9090F0")
@@ -2309,6 +2322,7 @@ if __name__ == "__main__":
             # Entrance / Moongate Editor Sub-Sub-Window ----------------------------------------------------------------
             with app.subWindow("Entrance_Editor", "Entrances / Moongates", size=[256, 440], modal=False,
                                resizable=False, bg="#DFD7D0"):
+                # noinspection PyArgumentList
                 app.setStopFunction(map_editor_stop)
 
                 # Entrances frame
@@ -2390,6 +2404,7 @@ if __name__ == "__main__":
 
             # NPC Editor Sub-Sub-Window --------------------------------------------------------------------------------
             with app.subWindow("NPC_Editor", "NPC Editor", size=[360, 300], modal=False, resizable=False):
+                # noinspection PyArgumentList
                 app.setStopFunction(map_editor_stop)
 
                 # NPC Actions
@@ -2444,6 +2459,7 @@ if __name__ == "__main__":
 
         # Text Editor Sub-Window ---------------------------------------------------------------------------------------
         with app.subWindow("Text_Editor", "Text Editor", size=[360, 360], modal=False, resizable=False):
+            # noinspection PyArgumentList
             app.setStopFunction(text_editor_stop)
 
             # Buttons

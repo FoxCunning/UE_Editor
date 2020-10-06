@@ -2887,7 +2887,7 @@ class gui(object):
         self._doTitleBar()
 
     # function to set the window's title
-    def setTitle(self, title: str):
+    def setTitle(self, title: object) -> object:
         self._getTopLevel().title(title)
 
     # function to get the window title
