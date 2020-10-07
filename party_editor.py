@@ -93,6 +93,7 @@ class PartyEditor:
 
     def show_window(self, window_name: str):
         self.app.emptySubWindow("Party_Editor")
+        self.selected_index = -1
 
         if window_name == "Races":
             self._create_races_window()
@@ -114,7 +115,6 @@ class PartyEditor:
             return
 
         self.current_window = window_name
-        self.selected_index = -1
 
         self.app.showSubWindow("Party_Editor")
 
@@ -550,21 +550,28 @@ class PartyEditor:
             # Character data
             with self.app.frame("PE_Frame_Data", row=2, column=0, padding=[4, 2], sticky='NEW', stretch='ROW'):
                 # Row 0 - Name
-                self.app.label("PE_Label_Name", "Name:", row=0, column=0, sticky='NE')
+                self.app.label("PE_Label_Name", "Name:", row=0, column=0, sticky='NE',
+                               change=self._pre_made_input)
                 self.app.entry("PE_Character_Name", "", width=10, row=0, column=1, sticky='NW',
                                change=self._pre_made_input)
                 # Row 1 - Race and profession
                 self.app.optionbox("PE_Race", race_names, row=1, column=0, sticky='NW',
                                    change=self._pre_made_input)
                 self.app.optionbox("PE_Profession", professions_list, row=1, column=1, sticky='NW',
-                                   change=self._create_pre_made_window)
+                                   change=self._pre_made_input)
 
             # Character attributes
             with self.app.frame("PE_Frame_Attributes", row=3, column=0, padding=[2, 2], sticky='NEW', stretch='ROW'):
                 for r in range(4):
                     self.app.label(f"PE_Label_Attribute_{r}", self.attribute_names[r], row=0, column=(r * 2),
                                    sticky='NW')
-                    self.app.entry(f"PE_Attribute_{r}", "", width=5, row=0, column=(r * 2) + 1, sticky='NW')
+                    self.app.entry(f"PE_Attribute_{r}", "", width=5, row=0, column=(r * 2) + 1, sticky='NW',
+                                   change=self._pre_made_input)
+
+            # Total attribute points
+            with self.app.frame("PE_Frame_Total_Points", row=4, column=0, padding=[2, 2], sticky='NEWS', stretch='ROW'):
+                self.app.label("PE_Label_Total", "Total attribute points:", row=0, column=0, sticky='NE')
+                self.app.label("PE_Total_Points", "0", row=0, column=1, sticky='NW')
 
         # Display the first pre-made character
         self.app.setOptionBox("PE_Character_Index", 0, callFunction=True)
@@ -626,6 +633,7 @@ class PartyEditor:
 
         elif widget == "PE_Apply":
             if self.save_races() is not False:
+                self.app.setStatusbar("Race data saved.")
                 self.close_window()
 
         elif widget == "PE_Gender_By_Race":
@@ -841,6 +849,7 @@ class PartyEditor:
 
         elif widget == "PE_Apply":
             if self.save_professions() is not False:
+                self.app.setStatusbar("Profession data saved.")
                 self.close_window()
 
         elif widget == "PE_Menu_String_Id":
@@ -868,12 +877,64 @@ class PartyEditor:
         widget: str
             Name of the widget generating the input
         """
-        if widget == "PE_Character_Index":
+        if widget == "PE_Apply":
+            if self.save_pre_made() is not False:
+                self.app.setStatusbar("Pre-made character data saved.")
+                self.close_window()
+
+        elif widget == "PE_Character_Name":
+            name = self.app.getEntry(widget)
+            # Ignore empty names
+            if len(name) < 1:
+                return
+            # Truncate string if needed
+            self.pre_made[self.selected_index].name = name[:5].upper()
+
+        elif widget[:12] == "PE_Attribute":
+            # Get the index of the attribute we are editing
+            try:
+                index = int(widget[-1:], 10)
+                # Read the value from this widget
+                value = int(self.app.getEntry(widget), 10)
+                # Assign this value to the selected attribute
+                self.pre_made[self.selected_index].attributes[index] = value
+
+                # Calculate and show new total points
+                total = 0
+                for a in range(4):
+                    total = total + self.pre_made[self.selected_index].attributes[a]
+                self.app.label("PE_Total_Points", f"{total}")
+
+            except ValueError:
+                return
+
+            except IndexError:
+                return
+
+        elif widget == "PE_Character_Index":
             value = self.app.getOptionBox(widget)
             try:
                 index = int(value, 10)
                 if 0 <= index <= 11:
+                    # Show name
+                    self.selected_index = index
                     self.app.setEntry("PE_Character_Name", self.pre_made[index].name, callFunction=False)
+
+                    # Show race, profession (+1 because option 0 is not part of the selectable items)
+                    # TODO Check that index is within selectable options, set to default if not
+                    self.app.setOptionBox("PE_Race", self.pre_made[index].race + 1, callFunction=False)
+                    self.app.setOptionBox("PE_Profession", self.pre_made[index].profession + 1, callFunction=False)
+
+                    # Show attributes, also calculate total
+                    total = 0
+                    for a in range(4):
+                        self.app.clearEntry(f"PE_Attribute_{a}", callFunction=False)
+                        self.app.setEntry(f"PE_Attribute_{a}", f"{self.pre_made[index].attributes[a]}",
+                                          callFunction=False)
+                        total = total + self.pre_made[index].attributes[a]
+
+                    # Show total attribute points
+                    self.app.label("PE_Total_Points", f"{total}")
 
             except ValueError:
                 return
@@ -1019,10 +1080,16 @@ class PartyEditor:
 
     # --- PartyEditor._read_pre_made() ---
 
-    def _read_pre_made(self) -> None:
+    def _read_pre_made(self) -> bool:
         """
         Reads all pre-made character data from ROM into the pre_made array.
         Overwrites any previous contents of the array.
+
+        Returns
+        -------
+        bool:
+            True if data was written to the ROM buffer successfully.
+            At the moment this can never fail, but this value could be useful in future implementations.
         """
         self.pre_made = []
 
@@ -1054,6 +1121,8 @@ class PartyEditor:
             address = address + 5
 
             self.pre_made.append(pre_made)
+
+        return True
 
     # --- PartyEditor.load_profession_graphics() ---
 
@@ -1627,6 +1696,48 @@ class PartyEditor:
 
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()
+
+    # --- PartyEditor.save_pre_made() ---
+
+    def save_pre_made(self) -> None:
+        # Bank 0xC
+        address = 0xA941
+
+        for p in range(12):
+            pre_made = self.pre_made[p]
+
+            # Write name (5 bytes)
+
+            # Truncate the name if too long first
+            if len(pre_made.name) > 5:
+                pre_made.name = pre_made.name[:5]
+
+            name = ascii_to_exodus(pre_made.name)
+
+            # Add zeroes if shorter than 5 bytes
+            if len(name) < 5:
+                for _ in range(5 - len(name)):
+                    name.append(0)
+
+            self.rom.write_bytes(0xC, address, name)
+            address = address + 5
+
+            # Write race ID
+            self.rom.write_byte(0xC, address, pre_made.race)
+            address = address + 1
+
+            # Write profession ID
+            self.rom.write_byte(0xC, address, pre_made.profession)
+            address = address + 1
+
+            # Write attributes
+            for a in range(4):
+                self.rom.write_byte(0xC, address, pre_made.attributes[a])
+                address = address + 1
+
+            # Last 5 bytes that are always 00 01 00 00 00
+            self.rom.write_bytes(0xC, address, bytearray([0, 1, 0, 0, 0]))
+            address = address + 5
 
     # --- PartyEditor.save_professions() ---
 
