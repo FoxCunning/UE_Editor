@@ -1917,13 +1917,13 @@ if __name__ == "__main__":
 
     # --- GUI Elements ---
 
-    with gui("UE Editor", "400x280", bg='#FFFFF0', resizable=False) as app:
+    with gui("UE Editor", "480x328", bg='#FFFFF0', resizable=False) as app:
         print(app.SHOW_VERSION())
         # noinspection PyArgumentList
         app.setIcon(image="res/app-icon.ico")
         # noinspection PyArgumentList
         app.setStopFunction(editor_stop)
-        app.setFont(family=settings.get("editor fonts"), size=9, underline=False)
+        app.setFont(family=settings.get("editor fonts"), underline=False, size=12)
 
         #       ##### Toolbar #####
 
@@ -1965,7 +1965,7 @@ if __name__ == "__main__":
             with app.frame("Map_TopFrame", row=0, column=0, sticky='NEW', stretch='BOTH', bg="#DFCFCF"):
                 app.label("MapInfo_SelectLabel", value="Map:", row=0, column=0, sticky='E')
                 app.optionBox("MapInfo_Select", maps_list, change=select_map, sticky='WE', width=20,
-                              stretch='ROW', row=0, column=1)
+                              stretch='ROW', row=0, column=1, font=11)
                 app.radioButton("MapInfo_Advanced_Option", "Basic", change=press, row=0, column=2, sticky="E")
                 app.radioButton("MapInfo_Advanced_Option", "Advanced", change=press, row=0, column=3, sticky="W")
 
@@ -1977,7 +1977,7 @@ if __name__ == "__main__":
                     app.optionBox("MapInfo_Basic_Type", ["6: Continent (No Guards)", "2: Continent (w/Guards)",
                                                          "4: Town / Castle (No Guards)", "0: Town / Castle (w/Guards)",
                                                          "8: Dungeon"], width=26, sticky='W', row=0, column=2,
-                                  colspan=2, change=press)
+                                  colspan=2, change=press, font=11)
 
                     app.label("MapInfo_Basic_h1", "Bank: ", sticky='E', row=1, column=0)
                     banks_list = []
@@ -2133,9 +2133,9 @@ if __name__ == "__main__":
         with app.tab("Text", padding=[0, 0]):
             with app.frame("TextEditor_Left", row=0, column=0, padding=[2, 2], inPadding=[0, 0],
                            sticky='NW', bg="#AFBFAF"):
-                app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky='NW', stretch='NONE')
+                app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky='NW', stretch='NONE', font=10)
                 app.textArea("Text_Preview", row=1, column=0, colspan=2, sticky='NEW', stretch='ROW', scroll=True,
-                             end=False, height=10, rowspan=2).setFont(family="Consolas", size=9)
+                             end=False, height=10, rowspan=2).setFont(family="Consolas", size=11)
                 app.button("Text_Apply", name="Apply Changes", value=text_editor_press, row=3, column=0,
                            sticky='NW', stretch='NONE')
                 app.button("Text_More", name="More Actions", value=edit_text, row=3, column=1, sticky='NW',
@@ -2157,7 +2157,7 @@ if __name__ == "__main__":
                 app.optionBox("PE_List_Palettes", ["Intro / Credits", "Title", "Status Screen", "Flashing",
                                                    "End Sequence", "Map Default", "Ambrosia", "Dungeon",
                                                    "Continent View"],
-                              change=select_palette, row=0, column=1, font=9)
+                              change=select_palette, row=0, column=1)
 
             with app.frame("PE_Frame_Palettes", row=1, column=0, padding=[0, 2], stretch='BOTH', sticky='NEWS',
                            bg="#DFEFDF"):
@@ -2193,6 +2193,11 @@ if __name__ == "__main__":
                            sticky='EW').bind("<Button-1>", pick_colour, add="+")
                 app.setCanvasCursor("PE_Canvas_Full", "hand1")
 
+        # SFX / MUSIC Tab ----------------------------------------------------------------------------------------------
+        with app.tab("SFX/Music", padding=[4, 2]):
+            app.button("SFX", row=0, column=0)
+            app.button("Music", row=1, column=0)
+
         #       ##### End of tab definitions #####
         app.stopTabbedFrame()
 
@@ -2202,6 +2207,7 @@ if __name__ == "__main__":
         app.setTabbedFrameDisabledTab("TabbedFrame", "Enemies", True)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Text", True)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", True)
+        app.setTabbedFrameDisabledTab("TabbedFrame", "SFX/Music", True)
 
         # Status bar
         app.statusFont = 9
@@ -2283,8 +2289,8 @@ if __name__ == "__main__":
                            map=None, bg="#000000")
 
             # Map Canvas
-            with app.scrollPane("ME_Scroll_Pane", row=4, column=0, stretch='BOTH', padding=0, sticky='SEWN'):
-                # coordinates = {"Map_Grid": [0, 0, 1024, 1024]}
+            with app.scrollPane("ME_Scroll_Pane", row=4, column=0, stretch='BOTH', padding=[0, 0], sticky='NEWS'):
+                # Map Canvas
                 app.canvas("ME_Canvas_Map", row=0, column=0, width=1024, height=1024, map=None,
                            bg="black").bind("<Button-1>", map_editor_edit_tile, add="+")
 
@@ -2297,27 +2303,30 @@ if __name__ == "__main__":
                     app.optionBox("ME_Option_Dungeon_Level", [" 1 ", " 2 ", " 3 ", " 4 ", " 5 ", " 6 ", " 7 ", " 8 "],
                                   change=select_dungeon_level, row=1, column=0, stretch='NONE', sticky='NEW')
                     # Dungeon tools Row #2
-                    app.label("ME_Label_Dungeon_Message", "Message Sign:", row=2, column=0)
+                    app.label("ME_Label_Dungeon_Message", "Message Sign:", row=2, column=0, font=9)
                     # Dungeon tools Row #3
                     app.textArea("ME_Text_Dungeon_Message", "", row=3, column=0, sticky='WE', height=5, scroll=True,
-                                 width=12, change=change_dungeon_message).setFont(family="Consolas", size=9)
+                                 width=12, change=change_dungeon_message).setFont(size=9)
                     # Dungeon tools Row #4
                     app.label("ME_Label_Marks_Count", "Marks: 0", row=4, column=0, width=10,
-                              stretch='NONE', sticky='NEW')
+                              stretch='NONE', sticky='NEW', font=9)
                     # Dungeon tools Row #5
                     app.label("ME_Label_Fountains_Count", "Fountains: 0", row=5, column=0, width=10,
-                              stretch='NONE', sticky='NEW')
+                              stretch='NONE', sticky='NEW', font=9)
                     # Dungeon tools Row #6
                     app.checkBox("ME_Auto_Ladders", text="Auto-Ladder", value=True, row=6, column=0,
-                                 tooltip="Automatically create corresponding ladder on the connecting floor")
+                                 tooltip="Automatically create corresponding ladder on the connecting floor",
+                                 font=9)
 
             # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
-            with app.subWindow("Map_Progress", title="Redraw Map", modal=True, size=[320, 100], padding=[4, 4],
+            with app.subWindow("Map_Progress", title="Redraw Map", modal=True, size=[300, 100], padding=[4, 4],
                                bg="#F0E0C0"):
                 # noinspection PyArgumentList
                 app.setStopFunction(no_stop)
-                app.label("Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE')
-                app.meter("ME_Progress_Meter", value=0, row=1, column=0, stretch='ROW', sticky='WE', fill="#9090F0")
+
+                app.label("Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE',
+                          font=16)
+                app.meter("ME_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE', fill="#9090F0")
 
             # Entrance / Moongate Editor Sub-Sub-Window ----------------------------------------------------------------
             with app.subWindow("Entrance_Editor", "Entrances / Moongates", size=[256, 440], modal=False,
@@ -2329,7 +2338,8 @@ if __name__ == "__main__":
                 with app.labelFrame("EE_Frame_Entrances", name="Entrances", row=0, column=0, stretch='ROW',
                                     sticky='NEW'):
                     # Column 0
-                    app.listBox("EE_List_Entrances", list(range(22)), change=entrance_editor_press, row=0, column=0)
+                    app.listBox("EE_List_Entrances", list(range(22)), change=entrance_editor_press, row=0, column=0,
+                                width=16, font=10)
 
                     # Column 1
                     with app.frame("EE_Frame_Entrance_Tools", padding=[1, 1], row=0, column=1):
@@ -2339,14 +2349,16 @@ if __name__ == "__main__":
                         app.button("EE_Button_Entrance_Remove", name="Delete", image="res/eraser.gif", row=0, column=1,
                                    value=entrance_editor_press, tooltip="Clear this entrance (moves it off map)")
                         # Row 1
-                        app.label("EE_Label_h2", "X:", row=1, column=0)
-                        app.label("EE_Label_h3", "Y:", row=1, column=1)
+                        app.label("EE_Label_h2", "X:", row=1, column=0, font=9)
+                        app.label("EE_Label_h3", "Y:", row=1, column=1, font=9)
                         # Row 2
-                        app.entry("EE_Entrance_X", value=255, width=4, row=2, column=0, change=entrance_editor_press)
-                        app.entry("EE_Entrance_Y", value=255, width=4, row=2, column=1, change=entrance_editor_press)
+                        app.entry("EE_Entrance_X", value=255, width=4, row=2, column=0, change=entrance_editor_press,
+                                  font=9)
+                        app.entry("EE_Entrance_Y", value=255, width=4, row=2, column=1, change=entrance_editor_press,
+                                  font=9)
                         # Row 3
-                        app.label("EE_Label_h4", "Map:", row=3, column=0)
-                        app.label("EE_Entrance_Map", "0x00", width=4, row=3, column=1)
+                        app.label("EE_Label_h4", "Map:", row=3, column=0, font=9)
+                        app.label("EE_Entrance_Map", "0x00", width=4, row=3, column=1, font=9)
 
                 # Moongates frame
                 with app.labelFrame("EE_Frame_Moongates", name="Moongates", row=1, column=0, stretch='BOTH',
@@ -2355,23 +2367,23 @@ if __name__ == "__main__":
                     with app.frame("EE_Frame_Moongate_List", row=0, column=0):
                         # Row 0
                         app.listBox("EE_List_Moongates", list(range(9)), change=entrance_editor_press, row=0, column=0,
-                                    colspan=2, height=6)
+                                    colspan=2, width=10, height=6, font=10)
                         # Row 1
-                        app.label("EE_Label_h10", "Dawn tile:", stretch='BOTH', sticky='NEWS', row=1, column=0)
+                        app.label("EE_Label_h10", "Dawn tile:", stretch='BOTH', sticky='NEWS', row=1, column=0, font=9)
                         app.canvas("EE_Canvas_Dawn_Tile", width=16, height=16, bg="#000000", map=None,
                                    stretch='BOTH', sticky='W', row=1, column=1)
                         # Row 2
                         app.optionBox("EE_Option_Dawn_Tile", tiles_list, change=entrance_editor_press, row=2, column=0,
-                                      colspan=2, sticky='EW')
+                                      colspan=2, sticky='EW', font=9)
                         # Row 3
-                        app.label("EE_Label_h9", "Active on:", row=3, column=0, colspan=2)
+                        app.label("EE_Label_h9", "Active on:", row=3, column=0, colspan=2, font=9)
                         # Row 4
                         app.optionBox("EE_List_Moongates_Options", ["Continent maps", "A specific map"],
                                       change=entrance_editor_press,
-                                      row=4, column=0, colspan=2, sticky='EW')
+                                      row=4, column=0, colspan=2, sticky='EW', font=9)
                         # Row 5
                         app.optionBox("EE_Option_Moongates_Map", maps_list, row=5, column=0, colspan=2,
-                                      sticky='EW', change=entrance_editor_press)
+                                      sticky='EW', change=entrance_editor_press, font=9)
 
                     # Column 1
                     with app.frame("EE_Frame_Moongate_Tools", padding=[1, 1], row=0, column=1):
@@ -2381,26 +2393,26 @@ if __name__ == "__main__":
                         app.button("EE_Button_Moongate_Remove", name="Delete", image="res/eraser.gif", row=0, column=1,
                                    value=entrance_editor_press, tooltip="Clear this Moongate (moves it off map)")
                         # Row 1
-                        app.label("EE_Label_Moongate_X", "X:", row=1, column=0)
-                        app.label("EE_Label_Moongate_Y", "Y:", row=1, column=1)
+                        app.label("EE_Label_Moongate_X", "X:", row=1, column=0, font=9)
+                        app.label("EE_Label_Moongate_Y", "Y:", row=1, column=1, font=9)
                         # Row 2
                         app.entry("EE_Moongate_X", value=255, width=4, row=2, column=0,
-                                  change=entrance_editor_press)
+                                  change=entrance_editor_press, font=9)
                         app.entry("EE_Moongate_Y", value=255, width=4, row=2, column=1,
-                                  change=entrance_editor_press)
+                                  change=entrance_editor_press, font=9)
                         # Row 3
-                        app.label("EE_Label_h7", "Moon Phase:", sticky='EW', row=3, column=0, colspan=2)
+                        app.label("EE_Label_h7", "Moon Phase:", sticky='EW', row=3, column=0, colspan=2, font=9)
                         # Row 4
                         app.canvas("EE_Canvas_Moon_Phase", width=16, height=16, bg="#000000", map=None,
                                    stretch='BOTH', sticky='N', row=4, column=0, colspan=2)
                         # Row 5
-                        app.label("EE_Label_h8", "'Ground':", sticky='EW', row=5, column=0, colspan=2)
+                        app.label("EE_Label_h8", "'Ground':", sticky='EW', row=5, column=0, colspan=2, font=9)
                         # Row 6
                         app.canvas("EE_Canvas_Moongate_Tile", width=16, height=16, bg="#000000", map=None,
                                    stretch='BOTH', sticky='N', row=6, column=0, colspan=2)
                         # Row 7
                         app.optionBox("EE_Option_Moongate_Tile", tiles_list, row=7, column=0, colspan=2,
-                                      height=1, change=entrance_editor_press, sticky='N')
+                                      height=1, change=entrance_editor_press, sticky='N', font=9)
 
             # NPC Editor Sub-Sub-Window --------------------------------------------------------------------------------
             with app.subWindow("NPC_Editor", "NPC Editor", size=[360, 300], modal=False, resizable=False):
@@ -2409,56 +2421,57 @@ if __name__ == "__main__":
 
                 # NPC Actions
                 with app.frame("NPCE_Frame_Top", row=0, column=0, stretch='COLUMN', sticky='NEW', padding=[4, 0]):
-                    app.button("NPCE_Create", map_editor_input, name=" Create a New NPC ", row=0, column=0)
-                    app.label("NPCE_Label", "Or select an existing one from the list below", row=1, column=0)
+                    app.button("NPCE_Create", map_editor_input, name=" Create a New NPC ", row=0, column=0, font=9)
+                    app.label("NPCE_Label", "Or select an existing one from the list below", row=1, column=0, font=9)
 
                 # NPC Selection
                 with app.frame("NPCE_Frame_Middle", row=1, column=0, stretch='COLUMN', sticky='NEW',
                                padding=[4, 4]):
                     app.optionBox("NPCE_Option_NPC_List", ["No NPCs on this map"], change=map_editor_input,
-                                  row=0, column=0, width=28)
-                    # app.button("NPCE_Edit", map_editor_input, name="Edit", image="res/edit-npc.gif",
-                    #           tooltip="Edit NPC", row=0, column=1)
+                                  row=0, column=0, width=28, font=9)
                     app.button("NPCE_Delete", map_editor_input, name="Delete", image="res/eraser.gif",
-                               tooltip="Delete NPC", row=0, column=1)
+                               tooltip="Delete NPC", row=0, column=1, font=9)
 
                 # NPC Info
                 with app.labelFrame("NPCE_Frame_Info", name="NPC Info", row=2, column=0, stretch='BOTH',
                                     sticky='NEWS', padding=[4, 4]):
                     with app.frame("NPCE_Frame_Info_Top", row=0, column=0, padding=[4, 0]):
                         # NPC Graphics
-                        app.label("NPCE_Sprite_ID", "GFX Index: ", row=0, column=0)
+                        app.label("NPCE_Sprite_ID", "GFX Index: ", row=0, column=0, font=10)
                         options = []
                         for i in range(0x1F):
                             options.append(f"0x{i:02X}")
-                        app.optionBox("NPCE_Option_Graphics", options, change=npc_select_graphics, row=0, column=1)
+                        app.optionBox("NPCE_Option_Graphics", options, change=npc_select_graphics, row=0, column=1,
+                                      font=9)
                         app.canvas("NPCE_Canvas_New_Sprite", row=0, column=2, width=16, height=16, stretch='NONE',
                                    map=None, bg='#C0C0C0')
-                        app.checkBox("NPCE_Check_Static", text="Static", change=npc_select_graphics, row=0, column=3)
+                        app.checkBox("NPCE_Check_Static", text="Static", change=npc_select_graphics, row=0, column=3,
+                                     font=9)
 
                     with app.frame("NPCE_Frame_Info_Palettes", row=1, column=0, padding=[4, 0]):
                         # 1
-                        app.label("NPCE_Label_Palette_1", "Palette 1:", row=0, column=0)
+                        app.label("NPCE_Label_Palette_1", "Palette 1:", row=0, column=0, font=9)
                         app.optionBox("NPCE_Palette_1", ["0", "1", "2", "3"], change=npc_select_graphics,
-                                      row=0, column=1)
+                                      row=0, column=1, font=9)
                         # 2
-                        app.label("NPCE_Label_Palette_2", "Palette 2:", row=0, column=2)
+                        app.label("NPCE_Label_Palette_2", "Palette 2:", row=0, column=2, font=9)
                         app.optionBox("NPCE_Palette_2", ["0", "1", "2", "3"], change=npc_select_graphics,
-                                      row=0, column=3)
+                                      row=0, column=3, font=9)
 
                     with app.frame("NPCE_Frame_Info_Bottom", row=2, column=0, padding=[4, 0]):
                         # NPC Properties Row 0
-                        app.label("NPCE_Dialogue_ID", "Dialogue/Function:", row=0, column=0, colspan=2)
-                        app.label("NPCE_Starting_Position", "Starting Pos: 0, 0", row=0, column=2)
+                        app.label("NPCE_Dialogue_ID", "Dialogue/Function:", row=0, column=0, colspan=2, font=9)
+                        app.label("NPCE_Starting_Position", "Starting Pos: 0, 0", row=0, column=2, font=9)
                         # NPC Properties Row 1
                         app.entry("NPCE_Entry_Dialogue_ID", "0x00", change=map_editor_input, case="upper",
-                                  row=1, column=0)
+                                  row=1, column=0, font=9)
                         app.button("NPCE_Button_Edit_Dialogue", value=map_editor_input, image="res/edit-dlg.gif",
-                                   tooltip="Edit Dialogue Text", row=1, column=1)
-                        app.button("NPCE_Button_Position", map_editor_input, name="Set Position", row=1, column=2)
+                                   tooltip="Edit Dialogue Text", row=1, column=1, font=9)
+                        app.button("NPCE_Button_Position", map_editor_input, name="Set Position", row=1, column=2,
+                                   font=9)
 
         # Text Editor Sub-Window ---------------------------------------------------------------------------------------
-        with app.subWindow("Text_Editor", "Text Editor", size=[360, 360], modal=False, resizable=False):
+        with app.subWindow("Text_Editor", "Text Editor", size=[400, 360], modal=False, resizable=False):
             # noinspection PyArgumentList
             app.setStopFunction(text_editor_stop)
 
@@ -2474,7 +2487,7 @@ if __name__ == "__main__":
                            padding=[2, 2]):
                 app.label("TE_Label_Text", "Unpacked string:", row=0, column=0)
                 app.textArea("TE_Text", "", width=22, stretch='BOTH', sticky='NEWS', scroll=True,
-                             row=1, column=0).setFont(family="Consolas", size=9)
+                             row=1, column=0).setFont(family="Consolas", size=12)
 
             # Address
             with app.frame("TE_Frame_Right", row=1, column=1, bg="#CFCFFF",

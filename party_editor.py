@@ -185,7 +185,7 @@ class PartyEditor:
         self.menu_string_id = self.rom.read_byte(0xC, 0x8DB9)
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(320, 280)
+            self.app.setSize(340, 288)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 0], colspan=2,
@@ -198,17 +198,17 @@ class PartyEditor:
             with self.app.frame("PE_Frame_Races", row=1, column=0, stretch="BOTH", sticky="NEWS", padding=[4, 2],
                                 bg="#F0F0D0"):
                 # Row 0
-                self.app.label("PE_Label_r0", "Selectable Races:", row=0, column=0)
+                self.app.label("PE_Label_r0", "Selectable Races:", row=0, column=0, font=10)
                 self.app.spinBox("PE_Spin_Races", list(range(5, 0, -1)), width=3, row=0, column=1,
-                                 change=self._races_input)
+                                 change=self._races_input, font=10)
                 self.app.setSpinBox("PE_Spin_Races", self.selectable_races)
 
                 # Row 1
-                self.app.label("PE_Label_r1", "Edit Race:", row=1, column=0)
-                self.app.optionBox("PE_Option_Race", race_names, row=1, column=1, change=self._races_input)
+                self.app.label("PE_Label_r1", "Edit Race:", row=1, column=0, font=10)
+                self.app.optionBox("PE_Option_Race", race_names, row=1, column=1, change=self._races_input, font=10)
 
                 # Row 2
-                self.app.label("PE_Label_r2", "Max Attribute Values:", row=2, column=0, colspan=2)
+                self.app.label("PE_Label_r2", "Max Attribute Values:", row=2, column=0, colspan=2, font=10)
 
                 # Row 3
                 with self.app.frame("PE_Frame_Max_Attributes", row=3, column=0, colspan=2, padding=[8, 2]):
@@ -233,11 +233,11 @@ class PartyEditor:
                     # Row 0, Col 0-2
                     self.app.checkBox("PE_Gender_By_Race", text="Gender based on Race",
                                       value=not self.gender_by_profession, change=self._races_input,
-                                      row=0, column=0, colspan=3)
+                                      row=0, column=0, colspan=3, font=10)
                     # Row 1, Col 0
-                    self.app.label("PE_Label_Race_Gender", "Gender Chr.:", row=1, column=0)
+                    self.app.label("PE_Label_Race_Gender", "Gender Chr.:", row=1, column=0, font=10)
                     # Row 1, Col 1
-                    self.app.entry("PE_Gender_Character", "0x00", width=4, fg="#000000", font=9,
+                    self.app.entry("PE_Gender_Character", "0x00", width=4, fg="#000000", font=10,
                                    change=self._races_input, row=1, column=1)
                     # Row 1, Col 2
                     self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg="#000000", map=None, sticky="W",
@@ -245,20 +245,20 @@ class PartyEditor:
 
             # Right Column
             with self.app.frame("PE_Frame_Race_Names", row=1, column=1, padding=[4, 2]):
-                self.app.label("PE_Label_Race_Names", value="Race Names:", row=0, column=0)
+                self.app.label("PE_Label_Race_Names", value="Race Names:", row=0, column=0, font=10)
                 self.app.textArea("PE_Race_Names", value=race_text, change=self._races_input, row=1, column=0,
-                                  width=12, height=7, fg="#000000")
+                                  width=12, height=7, fg="#000000", font=10)
                 self.app.button("PE_Update_Race_Names", name="Update", value=self._races_input,
-                                row=2, column=0)
+                                row=2, column=0, font=10)
                 # Race names list string index and edit button
                 with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
                                     bg="#C0D0D0"):
                     self.app.button("PE_Edit_Menu_String", value=self._races_input, name="Edit Text",
                                     image="res/edit-dlg.gif", sticky="NW", width=24, height=24, row=0, column=0)
-                    self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1)
+                    self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1, font=10)
                     self.app.entry("PE_Menu_String_Id", value=f"0x{self.menu_string_id:02X}",
                                    change=self._races_input,
-                                   width=5, sticky="NES", row=0, column=2)
+                                   width=5, sticky="NES", row=0, column=2, font=10)
 
         # Disable gender character widgets if gender depends on profession
         if self.gender_by_profession:
@@ -362,7 +362,7 @@ class PartyEditor:
         self.menu_string_id = self.rom.read_byte(0xC, 0x8F42)
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(440, 420)
+            self.app.setSize(400, 420)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 2], sticky="NEW", stretch="BOTH"):
@@ -378,14 +378,14 @@ class PartyEditor:
                     # --- Profession selection ---
 
                     # Row 0 Col 0
-                    self.app.label("PE_Label_Professions", "Selectable Prof.:", row=0, column=0)
+                    self.app.label("PE_Label_Professions", "Selectable Prof.:", row=0, column=0, font=10)
                     # Row 0 Col 1
                     self.app.spinBox("PE_Spin_Professions", list(range(11, 0, -1)),
-                                     change=self._professions_input, width=3, row=0, column=1)
+                                     change=self._professions_input, width=3, row=0, column=1, font=10)
                     self.app.setSpinBox("PE_Spin_Professions", self.selectable_professions)
                     # Row 1 Col 0, 1
                     self.app.optionBox("PE_Option_Profession", professions_list, change=self._professions_input,
-                                       row=1, column=0, colspan=2)
+                                       row=1, column=0, colspan=2, font=10)
 
                     # --- Status / Character creation graphics and map / battle sprite ---
 
@@ -398,31 +398,31 @@ class PartyEditor:
                         self.app.canvas("PE_Canvas_Sprite", Map=None, width=32, height=32, bg="#C0C0C0",
                                         sticky="W", row=0, column=1)
                         # Row 1 Col 0
-                        self.app.label("PE_Label_Colours", "Colours:", row=1, column=0)
+                        self.app.label("PE_Label_Colours", "Colours:", row=1, column=0, font=10)
                         # Row 1 Col 1
-                        self.app.label("PE_Label_Palettes", "Palettes:", row=1, column=1)
+                        self.app.label("PE_Label_Palettes", "Palettes:", row=1, column=1, font=10)
                         # Row 2 Col 0
                         self.app.optionBox("PE_Profession_Colours", colours_list, change=self._professions_input,
-                                           sticky="NW", row=2, column=0)
+                                           sticky="NW", row=2, column=0, font=10)
                         # Row 2 Col 1
                         self.app.optionBox("PE_Sprite_Palette_Top", list(range(0, 4)), change=self._professions_input,
-                                           sticky="NW", row=2, column=1)
+                                           sticky="NW", row=2, column=1, font=10)
                         # Row 3 Col 1
                         self.app.optionBox("PE_Sprite_Palette_Bottom", list(range(0, 4)),
-                                           change=self._professions_input, sticky="NW", row=3, column=1)
+                                           change=self._professions_input, sticky="NW", row=3, column=1, font=10)
 
                     # --- Equipment ---
 
                     # Row 3 Col 0, 1
                     with self.app.frame("PE_Frame_Gear", padding=[4, 2], row=3, column=0, colspan=2):
                         # Row 0
-                        self.app.label("PE_Label_Best_Weapon", "Best Weapon:", row=0, column=0)
+                        self.app.label("PE_Label_Best_Weapon", "Best Weapon:", row=0, column=0, font=10)
                         self.app.optionBox("PE_Option_Weapon", self.weapon_names, change=self._professions_input,
-                                           width=10, row=0, column=1)
+                                           width=10, row=0, column=1, font=10)
                         # Row 1
-                        self.app.label("PE_Label_Best_Armour", "Best Armour:", row=1, column=0)
+                        self.app.label("PE_Label_Best_Armour", "Best Armour:", row=1, column=0, font=10)
                         self.app.optionBox("PE_Option_Armour", self.armour_names, change=self._professions_input,
-                                           width=10, row=1, column=1)
+                                           width=10, row=1, column=1, font=10)
 
                     # --- Gender ---
 
@@ -431,9 +431,9 @@ class PartyEditor:
                         # Row 0, Col 0, 1, 2
                         self.app.checkBox("PE_Check_Gender", text="Gender based on Profession",
                                           value=self.gender_by_profession, change=self._professions_input,
-                                          row=0, column=0, colspan=3)
+                                          row=0, column=0, colspan=3, font=10)
                         # Row 1, Col 0
-                        self.app.label("PE_Label_Gender", "Gender Chr.:", row=1, column=0)
+                        self.app.label("PE_Label_Gender", "Gender Chr.:", row=1, column=0, font=10)
                         # Row 1, Col 1
                         self.app.entry("PE_Gender_Character", "0x00", width=4, fg="#000000", font=9,
                                        change=self._professions_input, row=1, column=1)
@@ -444,21 +444,21 @@ class PartyEditor:
             # Right Column
             with self.app.frame("PE_Frame_Right", row=0, column=1, stretch="BOTH", sticky="NEW", padding=[4, 2],
                                 bg="#C0F0D0"):
-                self.app.label("PE_Label_Names", "Profession Names:", sticky="NEW", row=0, column=0)
-                self.app.textArea("PE_Profession_Names", value=profession_names, width=10, height=11, font=9,
+                self.app.label("PE_Label_Names", "Profession Names:", sticky="NEW", row=0, column=0, font=10)
+                self.app.textArea("PE_Profession_Names", value=profession_names, width=10, height=11, font=10,
                                   change=self._professions_input,
                                   sticky="NEW", fg="#000000", scroll=True, row=1, column=0)
                 self.app.button("PE_Update_Profession_Names", value=self._professions_input, name="Update",
-                                sticky="NEW", row=2, column=0)
+                                sticky="NEW", row=2, column=0, font=10)
                 # Professions list string index and edit button
                 with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
                                     bg="#C0D0D0"):
-                    self.app.button("PE_Edit_Menu_String", value=self._professions_input, name="Edit Text",
+                    self.app.button("PE_Edit_Menu_String", value=self._professions_input, name="Edit Text", font=10,
                                     image="res/edit-dlg.gif", sticky="NW", width=24, height=24, row=0, column=0)
-                    self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1)
+                    self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1, font=10)
                     self.app.entry("PE_Menu_String_Id", value=f"0x{self.menu_string_id:02X}",
                                    change=self._professions_input,
-                                   width=5, sticky="NES", row=0, column=2)
+                                   width=5, sticky="NES", row=0, column=2, font=10)
 
             # --- Primary Attributes ---
 
@@ -467,25 +467,25 @@ class PartyEditor:
                                 stretch="ROW", sticky="NEW", bg="#C0D0F0"):
                 # Row 0, Col 0, 1
                 self.app.label("PE_Label_Primary_Attributes", "Primary Attributes:", sticky="EW",
-                               row=0, column=0, colspan=2)
+                               row=0, column=0, colspan=2, font=10)
                 # Row 1, Col 0
                 self.app.optionBox("PE_Primary_0", self.attribute_names, change=self._professions_input,
-                                   row=1, column=0)
+                                   row=1, column=0, font=10)
                 # Row 1, Col 1
                 self.app.optionBox("PE_Primary_1", self.attribute_names, change=self._professions_input,
-                                   row=1, column=1)
+                                   row=1, column=1, font=10)
 
             with self.app.frame("PE_Frame_HP", row=1, column=1, stretch="ROW", sticky="NEW", padding=[4, 4],
                                 expand="BOTH", bg="#C0D0F0"):
                 # Row 0
-                self.app.label("PE_Label_HP", "HP gain:", row=0, column=0, colspan=4)
+                self.app.label("PE_Label_HP", "HP gain:", row=0, column=0, colspan=4, font=10)
                 # Row 1
-                self.app.entry("PE_HP_Base", 0, width=3, fg="#000000", font=9, change=self._professions_input,
+                self.app.entry("PE_HP_Base", 0, width=3, fg="#000000", font=10, change=self._professions_input,
                                row=1, column=0)
                 self.app.label("PE_Label_Plus", "+ (", row=1, column=1)
-                self.app.entry("PE_HP_Bonus", 0, width=3, fg="#000000", font=9, change=self._professions_input,
+                self.app.entry("PE_HP_Bonus", 0, width=3, fg="#000000", font=10, change=self._professions_input,
                                row=1, column=2)
-                self.app.label("PE_Label_Per_Level", "x level)", row=1, column=3)
+                self.app.label("PE_Label_Per_Level", "x level)", row=1, column=3, font=10)
 
         # Disable inputs until a selection is made
         self.selected_index = -1
@@ -531,7 +531,7 @@ class PartyEditor:
         self._read_pre_made()
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(320, 250)
+            self.app.setSize(400, 250)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 0], sticky='NEW', stretch='ROW'):

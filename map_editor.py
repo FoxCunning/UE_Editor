@@ -18,7 +18,8 @@ from rom import ROM
 
 @dataclass(init=True, repr=False)
 class NPCData:
-    """Data from a map's NPC table
+    """
+    Data from a map's NPC table
     """
     sprite_id: int = 0xFF
     dialogue_id: int = 0xFF
@@ -30,9 +31,10 @@ class NPCData:
 
 @dataclass(init=True, repr=False)
 class MapTableEntry:
-    """Map Table
-       Found at 0F:FEA0
-       8 bytes per entry
+    """
+    Map Table
+    Found at 0F:FEA0
+    8 bytes per entry
     """
     bank: int = 0  # 1 byte ROM bank number
     data_pointer: int = 0  # 2 bytes address of map data
@@ -74,7 +76,8 @@ class Point2D:
 # --- MapEditor ---
 
 class MapEditor:
-    """Map Editor
+    """
+    Map Editor
 
     Attributes
     ----------
