@@ -257,7 +257,7 @@ class MapEditor:
             # Select this colour from the option box
             colours_list: List[str] = []
             for i in range(13):
-                colours_list.append(f"0x{i+0x20:02X}")
+                colours_list.append(f"0x{i + 0x20:02X}")
             self.app.changeOptionBox("ME_Option_Map_Colours", options=colours_list, index=(self.map_colour - 0x20),
                                      callFunction=False)
 
@@ -401,7 +401,7 @@ class MapEditor:
             colours_list.append(f"0x{i:02X}")
         self.app.changeOptionBox("ME_Option_Map_Colours", options=colours_list, index=self.map_colour,
                                  callFunction=False)
-        
+
         # Cache the 16 tiles used in this map
         for tile_index in range(16):
             # Load map palettes
@@ -652,8 +652,9 @@ class MapEditor:
 
         # Sanity check: if the pointer seems to be outside the bank, use the default one
         if 0x8000 > base_message_pointer > 0xBFFF:
-            log(3, f"{self.__class__.__name__}", f"Base Dungeon Message pointer 0x{base_message_pointer:04X} out of scope."
-                              f"Using default value.")
+            log(3, f"{self.__class__.__name__}",
+                f"Base Dungeon Message pointer 0x{base_message_pointer:04X} out of scope."
+                f"Using default value.")
             base_message_pointer = 0xAAF6
 
         # Get base address of mark/fountain pointers table from ROM, by reading the instruction that is by default:
@@ -663,7 +664,7 @@ class MapEditor:
         # Same sanity check for this
         if 0x8000 > base_mark_pointer > 0xBFFF:
             log(3, f"{self.__class__.__name__}", f"Base Mark/Fountain pointer 0x{base_mark_pointer:04X} out of scope."
-                              f"Using default value.")
+                                                 f"Using default value.")
             base_mark_pointer = 0xB95D
 
         # Loop through all the maps, loading data for those who have the dungeon flag set
@@ -676,7 +677,8 @@ class MapEditor:
                 dungeon_id = entry.flags & 0x1F
 
                 if dungeon_id > 11:
-                    log(3, f"{self.__class__.__name__}", f"Invalid dungeon ID: {dungeon_id}. Value must be between 0 and 11.")
+                    log(3, f"{self.__class__.__name__}",
+                        f"Invalid dungeon ID: {dungeon_id}. Value must be between 0 and 11.")
                     continue
 
                 # Get data address
@@ -1274,7 +1276,8 @@ class MapEditor:
 
         else:
 
-            log(3, f"{self.__class__.__name__}", f"Unsupported compression type: '{compression}' for map @{bank:X}:{address:04X}!")
+            log(3, f"{self.__class__.__name__}",
+                f"Unsupported compression type: '{compression}' for map @{bank:X}:{address:04X}!")
 
             for _ in range(2048):
                 self.map.append(0xD)
@@ -1357,7 +1360,8 @@ class MapEditor:
 
         else:
 
-            log(3, f"{self.__class__.__name__}", f"Unimplemented compression method '{compression}' for non-dungeon map.")
+            log(3, f"{self.__class__.__name__}",
+                f"Unimplemented compression method '{compression}' for non-dungeon map.")
 
     # --- MapEditor.import_map() ---
 
@@ -1868,7 +1872,7 @@ class MapEditor:
                                                                    f"Fountain.\nCoordinates: {x}, {y}.")
                             elif 3 <= old_tile <= 5:
                                 log(4, f"{self.__class__.__name__}", f"Auto-Ladder: ladder already present in level "
-                                                  f"{self.dungeon_level - 1} ({x}, {y}).")
+                                                                     f"{self.dungeon_level - 1} ({x}, {y}).")
 
                             else:
                                 self.map[map_index - 256] = 4
@@ -1894,7 +1898,7 @@ class MapEditor:
                                                                    f"Fountain.\nCoordinates: {x}, {y}.")
                             elif 3 <= old_tile <= 5:
                                 log(4, f"{self.__class__.__name__}", f"Auto-Ladder: ladder already present in level "
-                                                  f"{self.dungeon_level + 1} ({x}, {y}).")
+                                                                     f"{self.dungeon_level + 1} ({x}, {y}).")
                             else:
                                 self.map[map_index + 256] = 3
 
@@ -3117,7 +3121,8 @@ class MapEditor:
                         # Ignore values out of bound
                         if 0 <= entry.bank <= 0xE:
                             # Load raw bytes
-                            log(4, f"{self.__class__.__name__}", f"Re-allocating map from {entry.bank:X}:{entry.data_pointer:04X}...")
+                            log(4, f"{self.__class__.__name__}",
+                                f"Re-allocating map from {entry.bank:X}:{entry.data_pointer:04X}...")
                             map_data = self.rom.read_bytes(entry.bank, entry.data_pointer, 2048)
 
                             # Decompress if needed
@@ -3224,8 +3229,9 @@ class MapEditor:
 
             # Sanity check: if the pointer seems to be outside the bank, use the default one
             if 0x8000 > base_message_pointer > 0xBFFF:
-                log(3, f"{self.__class__.__name__}", f"Base Dungeon Message pointer 0x{base_message_pointer:04X} out of scope."
-                                  f"Using default value.")
+                log(3, f"{self.__class__.__name__}",
+                    f"Base Dungeon Message pointer 0x{base_message_pointer:04X} out of scope."
+                    f"Using default value.")
                 base_message_pointer = 0xAAF6
 
             # Get base address of mark/fountain pointers table from ROM, by reading the instruction that is by default:
@@ -3234,8 +3240,9 @@ class MapEditor:
 
             # Same sanity check for this
             if 0x8000 > base_mark_pointer > 0xBFFF:
-                log(3, f"{self.__class__.__name__}", f"Base Mark/Fountain pointer 0x{base_mark_pointer:04X} out of scope."
-                                  f"Using default value.")
+                log(3, f"{self.__class__.__name__}",
+                    f"Base Mark/Fountain pointer 0x{base_mark_pointer:04X} out of scope."
+                    f"Using default value.")
                 base_mark_pointer = 0xB95D
 
             # First available address for each type of data
