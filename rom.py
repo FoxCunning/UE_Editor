@@ -9,6 +9,18 @@ from PIL import Image
 from debug import log
 
 
+feature_names = ["custom map colours",
+                 "extra map flags",
+                 "map compression",
+                 "portraits",
+                 "2-colour sprites",
+                 "special encounter",
+                 "extra menu strings",
+                 "enhanced party",
+                 "new profession gfx",
+                 "weapon gfx"]
+
+
 class ROM:
     """
     ROM handler class
@@ -30,6 +42,7 @@ class ROM:
         self._buf = []
         self.size: int = 0
         self.trainer_size: int = 0
+
         self._features = {"custom map colours": False,  # True if the ROM has a table with custom map colours
                           "extra map flags": False,     # True if the ROM supports Continent and Guards flags per map
                           "map compression": False,     # True if LZSS/RLE map compression is supported

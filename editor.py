@@ -26,7 +26,7 @@ from enemy_editor import EnemyEditor
 from map_editor import MapEditor, MapTableEntry
 from palette_editor import PaletteEditor
 from party_editor import PartyEditor
-from rom import ROM
+from rom import ROM, feature_names
 from text_editor import TextEditor
 
 
@@ -1046,8 +1046,12 @@ def close_rom() -> None:
     rom.close()
     # Clear ROM Info labels
     app.setLabel("RomInfo_0", "Open a ROM file to begin...")
+    app.showLabel("RomInfo_0")
     for idx in range(1, 9):
         app.setLabel(f"RomInfo_{idx}", "")
+    # Hide features list
+    for feature in range(9):
+        app.hideCheckBox(f"Feature_{feature}")
     # Close all sub-windows
     app.hideAllSubWindows(False)
     # Deactivate all tabs
@@ -1119,7 +1123,8 @@ def open_rom(file_name: str) -> None:
             app.errorBox("ERROR", "Wrong header. This does not look like a valid ROM file!")
             close_rom()
             return
-        app.setLabel("RomInfo_0", "ROM Info:")
+        # app.setLabel("RomInfo_0", "ROM Info:")
+        app.hideLabel("RomInfo_0")
         n = h[4] * 16
         app.setLabel("RomInfo_1", f" PRG ROM: {n}KB")
         n = h[5] * 8
@@ -1151,6 +1156,11 @@ def open_rom(file_name: str) -> None:
         for c in h[11:16]:
             s += chr(c)
         app.setLabel("RomInfo_8", f" Extra Data: {s}")
+
+        # Show ROM features
+        for feature in range(9):
+            app.setCheckBox(f"Feature_{feature}", ticked=rom.has_feature(feature_names[feature]), callFunction=False)
+            app.showCheckBox(f"Feature_{feature}")
 
         # Create Editor instances
         palette_editor = PaletteEditor(rom, app)
@@ -1917,7 +1927,7 @@ if __name__ == "__main__":
 
     # --- GUI Elements ---
 
-    with gui("UE Editor", "480x328", bg='#FFFFF0', resizable=False) as app:
+    with gui("UE Editor", "492x344", bg='#FFFFF0', resizable=False) as app:
         print(app.SHOW_VERSION())
         # noinspection PyArgumentList
         app.setIcon(image="res/app-icon.ico")
@@ -1945,15 +1955,22 @@ if __name__ == "__main__":
 
         # ROM Tab ------------------------------------------------------------------------------------------------------
         with app.tab("ROM"):
-            app.label("RomInfo_0", value="Open a ROM file to begin...", row=0)
-            app.label("RomInfo_1", value="", row=1, sticky='W')  # PRG ROM Size
-            app.label("RomInfo_2", value="", row=2, sticky='W')  # CHR ROM Size
-            app.label("RomInfo_3", value="", row=3, sticky='W')  # Mapper
-            app.label("RomInfo_4", value="", row=4, sticky='W')  # Mirroring
-            app.label("RomInfo_5", value="", row=5, sticky='W')  # Battery
-            app.label("RomInfo_6", value="", row=6, sticky='W')  # Trainer
-            app.label("RomInfo_7", value="", row=7, sticky='W')  # TV System
-            app.label("RomInfo_8", value="", row=8, sticky='W')  # Extra Data
+            with app.labelFrame("ROM Info", padding=[2, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
+                app.label("RomInfo_0", value="Open a ROM file to begin...", row=0)
+                app.label("RomInfo_1", value="", row=1, sticky='W')  # PRG ROM Size
+                app.label("RomInfo_2", value="", row=2, sticky='W')  # CHR ROM Size
+                app.label("RomInfo_3", value="", row=3, sticky='W')  # Mapper
+                app.label("RomInfo_4", value="", row=4, sticky='W')  # Mirroring
+                app.label("RomInfo_5", value="", row=5, sticky='W')  # Battery
+                app.label("RomInfo_6", value="", row=6, sticky='W')  # Trainer
+                app.label("RomInfo_7", value="", row=7, sticky='W')  # TV System
+                app.label("RomInfo_8", value="", row=8, sticky='W')  # Extra Data
+
+            with app.labelFrame("Features", row=0, column=1, stretch='BOTH', sticky='NEWS'):
+                for f in range(9):
+                    app.checkBox(f"Feature_{f}", name=feature_names[f], value=False, row=f, column=0, font=9)
+                    app.disableCheckBox(f"Feature_{f}")
+                    app.hideCheckBox(f"Feature_{f}")
 
         # MAP Tab ------------------------------------------------------------------------------------------------------
         with app.tab("Map", padding=[4, 0]):
