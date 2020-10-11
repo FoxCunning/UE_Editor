@@ -1751,6 +1751,9 @@ def party_editor_press(button: str) -> bool:
     elif button == "PT_Button_Pre-Made":
         party_editor.show_window("Pre-Made")
 
+    elif button == "PT_Button_Special":
+        party_editor.show_window("Special Abilities")
+
     else:
         log(3, "PARTY_EDITOR", f"Unimplemented button '{button}'.")
 

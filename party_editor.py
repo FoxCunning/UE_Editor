@@ -13,7 +13,6 @@ from text_editor import TextEditor, exodus_to_ascii, ascii_to_exodus
 
 
 class PartyEditor:
-
     # --- PartyEditor.PreMade class ---
     @dataclass(init=True, repr=False)
     class PreMade:
@@ -109,6 +108,9 @@ class PartyEditor:
 
             else:
                 self._create_pre_made_window()
+
+        elif window_name == "Special Abilities":
+            self._create_special_window()
 
         else:
             log(3, f"{self.__class__.__name__}", f"Unimplemented: {window_name}.")
@@ -576,6 +578,150 @@ class PartyEditor:
         # Display the first pre-made character
         self.app.setOptionBox("PE_Character_Index", 0, callFunction=True)
 
+    # --- PartyEditor._create_special_window() ---
+
+    def _create_special_window(self) -> None:
+        """
+        Creates a window and widgets for managing special abilities such as critical hit and extra MP regeneration.
+        """
+        # Read attribute names from ROM
+        self._read_attribute_names()
+
+        # Read profession names from ROM
+        self._read_profession_names()
+        # List for option box
+        professions_list = self.profession_names + ["None"]
+
+        supported = self.rom.has_feature("enhanced party")
+
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(400, 400)
+
+            # Buttons
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
+                self.app.button("PE_Apply", name="Apply", value=self._special_input, image="res/floppy.gif",
+                                tooltip="Apply Changes and Close Window", row=0, column=0)
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=1)
+
+            # Special 0
+            with self.app.labelFrame("MP Regeneration", row=1, column=0, stretch='BOTH', sticky='NEWS',
+                                     padding=[4, 0], bg="#D0D0B0"):
+                # Make sure the code we want to modify is actually there, to avoid issues with customised ROMs
+                # Bank 0xD
+                # 8713    LDA $2A
+                # 8715    CMP #$08
+                if supported and self.rom.read_bytes(0xD, 0x8713, 3) == b'\xA5\x2A\xC9':
+
+                    self.app.label("PE_Label_Profession_0", "Available to:", row=0, column=0, sticky='SEW', font=11)
+                    self.app.optionBox("PE_Profession_0", professions_list, change=self._special_input,
+                                       width=12, row=0, column=1, sticky='SEW', font=10)
+                    # Description
+                    self.app.label("PE_Description_0", "The selected profession will regenerate double the MP",
+                                   fg="#303070",
+                                   row=1, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                    self.app.label("PE_Description_1", "when moving on the map, compared to other professions.",
+                                   fg="#303070",
+                                   row=2, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                    # Initial value, read from ROM
+                    value = self.rom.read_byte(0xD, 0x8716)
+                    self.app.setOptionBox("PE_Profession_0", value)
+
+                else:
+                    self.app.label("PE_Label_Unsupported_0", "The loaded ROM does not support this feature.",
+                                   row=0, column=0, sticky='NEWS', stretch='ROW', font=11)
+
+            # Special 1
+            with self.app.labelFrame("Critical Hit", row=2, column=0, stretch='BOTH', sticky='NEWS',
+                                     padding=[4, 0], bg="#D0D0B0"):
+                # Code to check (bank 0):
+                # B0C4    LDA ($99),Y
+                # B0C6    CMP #$03
+                # and:
+                # B0E0    LDA ($99),Y
+                # B0E2    CLC
+                if supported and self.rom.read_bytes(0x0, 0xB0C4, 3) == b'\xB1\x99\xC9'\
+                        and self.rom.read_bytes(0x0, 0xB0E0, 3) == b'\xB1\x99\x18':
+
+                    self.app.label("PE_Label_Profession_1", "Available to:", row=0, column=0, sticky='SEW', font=11)
+                    self.app.optionBox("PE_Profession_1", professions_list, change=self._special_input,
+                                       width=12, row=0, column=1, sticky='SEW', font=10)
+                    self.app.label("PE_Label_Damage_1", "Damage based on:", row=1, column=0, sticky='SEW', font=11)
+                    self.app.optionBox("PE_Damage_1", self.attribute_names + ["Level"], change=self._special_input,
+                                       width=12, row=1, column=1, sticky='SEW', font=10)
+                    # Description
+                    self.app.label("PE_Description_2", "This profession will have a chance of scoring",
+                                   fg="#303070",
+                                   row=2, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                    self.app.label("PE_Description_3", "critical hits (chance is based on character level).",
+                                   fg="#303070",
+                                   row=3, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                    # Initial values, read from ROM
+                    value = self.rom.read_byte(0x0, 0xB0C7)
+                    self.app.setOptionBox("PE_Profession_1", value, callFunction=False)
+                    value = self.rom.read_byte(0x0, 0xB0DF)
+                    if 7 <= value <= 10:
+                        # Attribute-based (first attribute index = 7)
+                        value = value - 7
+                    elif value == 0x33:
+                        # Level-based
+                        value = 4
+                    else:
+                        # TODO Allow custom entry
+                        value = 1
+                    self.app.setOptionBox("PE_Damage_1", value, callFunction=False)
+
+                else:
+                    self.app.label("PE_Label_Unsupported_1", "The loaded ROM does not support this feature.",
+                                   row=0, column=0, sticky='NEWS', stretch='ROW', font=11)
+
+            # Special 2
+            with self.app.labelFrame("Extra Damage", row=3, column=0, stretch='BOTH', sticky='NEWS',
+                                     padding=[4, 0], bg="#D0D0B0"):
+                # Code to check (bank 0):
+                # B0E8    CMP #$05  ; #$05 = Barbarian
+                # B0EA    BNE $B0F9
+                # and:
+                # B0EC    LDY #$33  ; #$33 = Level
+                # B0EE    LDA ($99),Y
+                if supported and self.rom.read_byte(0x0, 0xB0E8) == 0xC9 and self.rom.read_byte(0x0, 0xB0EC) == 0xA0\
+                        and self.rom.read_word(0x0, 0xB0EA) == 0x0DD0 and self.rom.read_word(0x0, 0xB0EE) == 0x99B1:
+                    self.app.label("PE_Label_Profession_2", "Available to:", row=0, column=0, sticky='SEW', font=11)
+                    self.app.optionBox("PE_Profession_2", professions_list, change=self._special_input,
+                                       width=12, row=0, column=1, sticky='SEW', font=10)
+                    self.app.label("PE_Label_Damage_2", "Damage based on:", row=1, column=0, sticky='SEW', font=11)
+                    self.app.optionBox("PE_Damage_2", self.attribute_names + ["Level", "Weapon"],
+                                       change=self._special_input,
+                                       width=12, row=1, column=1, sticky='SEW', font=10)
+                    # Description
+                    self.app.label("PE_Description_4", "This profession will always deal additional",
+                                   fg="#303070",
+                                   row=2, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                    self.app.label("PE_Description_5", "damage when hitting an enemy in combat.",
+                                   fg="#303070",
+                                   row=3, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                    # Initial values, read from ROM
+                    value = self.rom.read_byte(0x0, 0xB0E9)
+                    self.app.setOptionBox("PE_Profession_2", value, callFunction=False)
+                    value = self.rom.read_byte(0x0, 0xB0EC)
+                    if 7 <= value <= 10:
+                        # Attribute-based (first attribute index = 7)
+                        value = value - 7
+                    elif value == 0x33:
+                        # Level-based
+                        value = 4
+                    elif value == 0x34:
+                        # Weapon-based
+                        value = 5
+                    else:
+                        # TODO Allow custom entry
+                        value = 4
+                    self.app.setOptionBox("PE_Damage_2", value, callFunction=False)
+
+                else:
+                    self.app.label("PE_Label_Unsupported_2", "The loaded ROM does not support this feature.",
+                                   row=0, column=0, sticky='NEWS', stretch='ROW', font=11)
+
     # --- PartyEditor.close_window() ---
 
     def close_window(self) -> bool:
@@ -941,6 +1087,19 @@ class PartyEditor:
 
         else:
             log(3, f"{self.__class__.__name__}", f"Unimplemented input from widget: {widget}.")
+
+    # --- PartyEditor._special_input() ---
+
+    def _special_input(self, widget: str) -> None:
+        """
+        Handles input events from widgets in the Special Abilities window
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget that is generating the event
+        """
+        log(3, f"{self.__class__.__name__}", f"Unimplemented input for widget: {widget}.")
 
     # --- PartyEditor._read_race_names() ---
 
