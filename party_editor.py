@@ -595,7 +595,7 @@ class PartyEditor:
         supported = self.rom.has_feature("enhanced party")
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(400, 400)
+            self.app.setSize(400, 480)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
@@ -625,7 +625,7 @@ class PartyEditor:
                                    row=2, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
                     # Initial value, read from ROM
                     value = self.rom.read_byte(0xD, 0x8716)
-                    self.app.setOptionBox("PE_Profession_0", value)
+                    self.app.setOptionBox("PE_Profession_0", value, callFunction=False)
 
                 else:
                     self.app.label("PE_Label_Unsupported_0", "The loaded ROM does not support this feature.",
@@ -647,19 +647,26 @@ class PartyEditor:
                     self.app.optionBox("PE_Profession_1", professions_list, change=self._special_input,
                                        width=12, row=0, column=1, sticky='SEW', font=10)
                     self.app.label("PE_Label_Damage_1", "Damage based on:", row=1, column=0, sticky='SEW', font=11)
-                    self.app.optionBox("PE_Damage_1", self.attribute_names + ["Level"], change=self._special_input,
-                                       width=12, row=1, column=1, sticky='SEW', font=10)
+                    self.app.optionBox("PE_Damage_1", self.attribute_names + ["Level", "Custom"],
+                                       change=self._special_input, width=12,
+                                       row=1, column=1, sticky='SEW', font=10)
+                    # Custom index for damage
+                    self.app.label("PE_Label_Custom_1", "Custom index:", row=2, column=0, sticky='SEW', font=11)
+                    self.app.entry("PE_Custom_1", "", change=self._special_input, width=5,
+                                   row=2, column=1, sticky='SEW', font=10)
                     # Description
                     self.app.label("PE_Description_2", "This profession will have a chance of scoring",
                                    fg="#303070",
-                                   row=2, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=3, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
                     self.app.label("PE_Description_3", "critical hits (chance is based on character level).",
                                    fg="#303070",
-                                   row=3, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=4, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
                     # Initial values, read from ROM
                     value = self.rom.read_byte(0x0, 0xB0C7)
                     self.app.setOptionBox("PE_Profession_1", value, callFunction=False)
                     value = self.rom.read_byte(0x0, 0xB0DF)
+                    self.app.setEntry("PE_Custom_1", f"0x{value:02X}", callFunction=False)
+                    self.app.disableEntry("PE_Custom_1")
                     if 7 <= value <= 10:
                         # Attribute-based (first attribute index = 7)
                         value = value - 7
@@ -667,8 +674,9 @@ class PartyEditor:
                         # Level-based
                         value = 4
                     else:
-                        # TODO Allow custom entry
-                        value = 1
+                        # Allow custom entry
+                        value = 5
+                        self.app.enableEntry("PE_Custom_1")
                     self.app.setOptionBox("PE_Damage_1", value, callFunction=False)
 
                 else:
@@ -690,20 +698,35 @@ class PartyEditor:
                     self.app.optionBox("PE_Profession_2", professions_list, change=self._special_input,
                                        width=12, row=0, column=1, sticky='SEW', font=10)
                     self.app.label("PE_Label_Damage_2", "Damage based on:", row=1, column=0, sticky='SEW', font=11)
-                    self.app.optionBox("PE_Damage_2", self.attribute_names + ["Level", "Weapon"],
+                    self.app.optionBox("PE_Damage_2", self.attribute_names + ["Level", "Weapon", "Custom"],
                                        change=self._special_input,
                                        width=12, row=1, column=1, sticky='SEW', font=10)
+                    # Custom index for damage
+                    self.app.label("PE_Label_Custom_2", "Custom index:", row=2, column=0, sticky='SEW', font=11)
+                    self.app.entry("PE_Custom_2", "", change=self._special_input, width=5,
+                                   row=2, column=1, sticky='SEW', font=10)
+                    # Damage Adjustment
+                    self.app.label("PE_Label_Adjustment_2", "Extra Damage adjustment:",
+                                   row=3, column=0, colspan=2, sticky='SEW', font=11)
+                    self.app.optionBox("PE_Adjustment_2", ["None", "Subtract", "Add", "x2", "x4", "/2", "/4"],
+                                       change=self._special_input,
+                                       row=4, column=0, sticky='SEW', font=10)
+                    self.app.entry("PE_Adjustment_3", "", change=self._special_input, width=5,
+                                   row=4, column=1, sticky='SEW', font=11)
                     # Description
                     self.app.label("PE_Description_4", "This profession will always deal additional",
                                    fg="#303070",
-                                   row=2, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=5, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
                     self.app.label("PE_Description_5", "damage when hitting an enemy in combat.",
                                    fg="#303070",
-                                   row=3, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=6, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+
                     # Initial values, read from ROM
                     value = self.rom.read_byte(0x0, 0xB0E9)
                     self.app.setOptionBox("PE_Profession_2", value, callFunction=False)
-                    value = self.rom.read_byte(0x0, 0xB0EC)
+                    value = self.rom.read_byte(0x0, 0xB0ED)
+                    self.app.setEntry("PE_Custom_2", f"0x{value:02X}", callFunction=False)
+                    self.app.disableEntry("PE_Custom_2")
                     if 7 <= value <= 10:
                         # Attribute-based (first attribute index = 7)
                         value = value - 7
@@ -714,9 +737,54 @@ class PartyEditor:
                         # Weapon-based
                         value = 5
                     else:
-                        # TODO Allow custom entry
-                        value = 4
+                        # Allow custom entry
+                        value = 6
+                        self.app.enableEntry("PE_Custom_2")
                     self.app.setOptionBox("PE_Damage_2", value, callFunction=False)
+
+                    # Read damage adjustment
+                    # Default: -1 => $38, $E9, $01
+                    # B0F0    SEC
+                    # B0F1    SBC #$01
+                    value = self.rom.read_bytes(0x0, 0xB0F0, 3)
+                    if value[1] == 0xE9:
+                        # SBC = Subtract
+                        self.app.setOptionBox("PE_Adjustment_2", 1, callFunction=False)
+                        self.app.enableEntry("PE_Adjustment_3")
+                        self.app.setEntry("PE_Adjustment_3", f"{value[2]}", callFunction=False)
+
+                    elif value[1] == 0x65:
+                        # ADC = Add
+                        self.app.setOptionBox("PE_Adjustment_2", 1, callFunction=False)
+                        self.app.enableEntry("PE_Adjustment_3")
+                        self.app.setEntry("PE_Adjustment_3", f"{value[2]}", callFunction=False)
+
+                    elif value[0] == 0x0A:
+                        # ASL = Multiply
+                        self.app.disableEntry("PE_Adjustment_3")
+
+                        if value[1] == 0x0A:
+                            # x4
+                            self.app.setOptionBox("PE_Adjustment_2", 4, callFunction=False)
+                        else:
+                            # x2
+                            self.app.setOptionBox("PE_Adjustment_2", 3, callFunction=False)
+
+                    elif value[0] == 0x4A:
+                        # LSR = Divide
+                        self.app.disableEntry("PE_Adjustment_3")
+
+                        if value[1] == 0x4A:
+                            # /4
+                            self.app.setOptionBox("PE_Adjustment_2", 6, callFunction=False)
+                        else:
+                            # /2
+                            self.app.setOptionBox("PE_Adjustment_2", 5, callFunction=False)
+
+                    else:
+                        # Possibly NOP
+                        self.app.disableEntry("PE_Adjustment_3")
+                        self.app.setOptionBox("PE_Adjustment_2", 0, callFunction=False)
 
                 else:
                     self.app.label("PE_Label_Unsupported_2", "The loaded ROM does not support this feature.",
