@@ -799,7 +799,7 @@ class PartyEditor:
         bool
             True if the window was closed, False otherwise (e.g. user cancelled)
         """
-        # TODO Ask to confirm
+        # TODO Ask to confirm if changes were made
         self.current_window = ""
         self.app.hideSubWindow("Party_Editor", False)
         return True
@@ -2126,7 +2126,7 @@ class PartyEditor:
             value = custom_2
         self.rom.write_byte(0x0, 0xB0ED, value)
 
-        # TODO Extra damage adjustment
+        # Extra damage adjustment
         # Bank 0
         # B0F0    SEC       ; Default / base code
         # B0F1    SBC #$01  ; = subtract 1
