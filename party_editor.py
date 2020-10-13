@@ -592,8 +592,6 @@ class PartyEditor:
         # List for option box
         professions_list = self.profession_names + ["None"]
 
-        supported = self.rom.has_feature("enhanced party")
-
         with self.app.subWindow("Party_Editor"):
             self.app.setSize(400, 492)
 
@@ -611,7 +609,7 @@ class PartyEditor:
                 # Bank 0xD
                 # 8713    LDA $2A
                 # 8715    CMP #$08
-                if supported and self.rom.read_bytes(0xD, 0x8713, 3) == b'\xA5\x2A\xC9':
+                if self.rom.read_bytes(0xD, 0x8713, 3) == b'\xA5\x2A\xC9':
 
                     self.app.label("PE_Label_Profession_0", "Available to:", row=0, column=0, sticky='SEW', font=11)
                     self.app.optionBox("PE_Profession_0", professions_list, change=self._special_input,
@@ -640,7 +638,7 @@ class PartyEditor:
                 # and:
                 # B0E0    LDA ($99),Y
                 # B0E2    CLC
-                if supported and self.rom.read_bytes(0x0, 0xB0C4, 3) == b'\xB1\x99\xC9' \
+                if self.rom.read_bytes(0x0, 0xB0C4, 3) == b'\xB1\x99\xC9' \
                         and self.rom.read_bytes(0x0, 0xB0E0, 3) == b'\xB1\x99\x18':
 
                     self.app.label("PE_Label_Profession_1", "Available to:", row=0, column=0, sticky='SEW', font=11)
@@ -692,7 +690,7 @@ class PartyEditor:
                 # and:
                 # B0EC    LDY #$33  ; #$33 = Level
                 # B0EE    LDA ($99),Y
-                if supported and self.rom.read_byte(0x0, 0xB0E8) == 0xC9 and self.rom.read_byte(0x0, 0xB0EC) == 0xA0 \
+                if self.rom.read_byte(0x0, 0xB0E8) == 0xC9 and self.rom.read_byte(0x0, 0xB0EC) == 0xA0 \
                         and self.rom.read_word(0x0, 0xB0EA) == 0x0DD0 and self.rom.read_word(0x0, 0xB0EE) == 0x99B1:
                     self.app.label("PE_Label_Profession_2", "Available to:", row=0, column=0, sticky='SEW', font=11)
                     self.app.optionBox("PE_Profession_2", professions_list, change=self._special_input,
@@ -2057,14 +2055,129 @@ class PartyEditor:
         if custom_2 > 255:
             custom_2 = 255
             self.app.clearEntry("PE_Custom_2", callFunction=False)
-            self.app.setEntry("PE_Custom_2", f"0x{custom_1:02X}", callFunction=False)
+            self.app.setEntry("PE_Custom_2", f"0x{custom_2:02X}", callFunction=False)
 
         if adjustment_3 > 255:
             adjustment_3 = 255
             self.app.clearEntry("PE_Adjustment_3", callFunction=False)
-            self.app.setEntry("PE_Adjustment_3", f"0x{custom_1:02X}", callFunction=False)
+            self.app.setEntry("PE_Adjustment_3", f"0x{adjustment_3:02X}", callFunction=False)
 
-        # TODO Save code and values to ROM buffer
+        # Save code and values to ROM buffer
+
+        # Ability 0: Double MP regeneration
+        box = self.app.getOptionBoxWidget("PE_Profession_0")
+        value = box.options.index(self.app.getOptionBox("PE_Profession_0"))
+        # Bank 0xD
+        # 8713    LDA $2A
+        # 8715    CMP #$08  ; <-- Profession
+        self.rom.write_byte(0xD, 0x8716, value)
+
+        # Ability 1: Critical hit
+
+        box = self.app.getOptionBoxWidget("PE_Profession_1")
+        value = box.options.index(self.app.getOptionBox("PE_Profession_1"))
+        # Bank 0
+        # B0C4    LDA ($99),Y
+        # B0C6    CMP #$03  ; <-- Profession
+        self.rom.write_byte(0x0, 0xB0C7, value)
+
+        # Critical hit damage value
+        # Bank 0
+        # B0DE    LDY #$08  ; <-- #$08 = Dexterity
+        # B0E0    LDA ($99),Y
+        # B0E2    CLC
+        # B0E3    ADC $51
+        box = self.app.getOptionBoxWidget("PE_Damage_1")
+        value = box.options.index(self.app.getOptionBox("PE_Damage_1"))
+        if 0 <= value <= 3:
+            # First ability index = 7
+            value = value + 7
+        else:
+            value = custom_1
+
+        self.rom.write_byte(0x0, 0xB0DF, value)
+
+        # Ability 2: Extra damage
+
+        box = self.app.getOptionBoxWidget("PE_Profession_2")
+        value = box.options.index(self.app.getOptionBox("PE_Profession_2"))
+        # Bank 0
+        # B0E8    CMP #$05  ; <-- Profession
+        # B0EA    BNE $B0F9
+        self.rom.write_byte(0x0, 0xB0E9, value)
+
+        # Extra damage base value
+        # Bank 0
+        # B0EC    LDY #$33  ; #$33 = Level
+        # B0EE    LDA ($99),Y
+        box = self.app.getOptionBoxWidget("PE_Damage_2")
+        value = box.options.index(self.app.getOptionBox("PE_Damage_2"))
+        if 0 <= value <= 3:
+            # First ability index = 7
+            value = value + 7
+        elif value == 4:
+            # Level index
+            value = 0x33
+        elif value == 5:
+            # Weapon index
+            value = 0x34
+        else:
+            # Custom index
+            value = custom_2
+        self.rom.write_byte(0x0, 0xB0ED, value)
+
+        # TODO Extra damage adjustment
+        # Bank 0
+        # B0F0    SEC       ; Default / base code
+        # B0F1    SBC #$01  ; = subtract 1
+        # Default bytecode: $38 $E9 $01
+        byte_code = bytearray([0x38, 0xE9, 0x01])
+        box = self.app.getOptionBoxWidget("PE_Adjustment_2")
+        value = box.options.index(self.app.getOptionBox("PE_Adjustment_2"))
+        if value == 0:
+            # No adjustment
+            # JMP B0F3
+            byte_code = bytearray([0x4C, 0xF3, 0xB0])
+
+        elif value == 1:
+            # Subtract
+            # SEC
+            # SBC #_adjustment
+            byte_code = bytearray([0x38, 0xE9, adjustment_3])
+
+        elif value == 2:
+            # Add
+            # CLC
+            # ADC #_adjustment
+            byte_code = bytearray([0x18, 0x69, adjustment_3])
+
+        elif value == 3:
+            # x 2
+            # ASL
+            # SKB #_adjustment  ; Value is ignored, but at least we save it in case we want to change the condition only
+            byte_code = bytearray([0x0A, 0x80, adjustment_3])
+
+        elif value == 4:
+            # x 4
+            # ASL
+            # ASL
+            # NOP
+            byte_code = bytearray([0x0A, 0x0A, 0xEA])
+
+        elif value == 5:
+            # / 2
+            # LSR
+            # SKB #_adjustment
+            byte_code = bytearray([0x4A, 0x80, adjustment_3])
+
+        elif value == 6:
+            # / 4
+            # LSR
+            # LSR
+            # NOP
+            byte_code = bytearray([0x4A, 0x4A, 0xEA])
+
+        self.rom.write_bytes(0x0, 0xB0F0, byte_code)
 
         return True
 
