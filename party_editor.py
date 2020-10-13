@@ -595,7 +595,7 @@ class PartyEditor:
         supported = self.rom.has_feature("enhanced party")
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(400, 480)
+            self.app.setSize(400, 492)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
@@ -640,7 +640,7 @@ class PartyEditor:
                 # and:
                 # B0E0    LDA ($99),Y
                 # B0E2    CLC
-                if supported and self.rom.read_bytes(0x0, 0xB0C4, 3) == b'\xB1\x99\xC9'\
+                if supported and self.rom.read_bytes(0x0, 0xB0C4, 3) == b'\xB1\x99\xC9' \
                         and self.rom.read_bytes(0x0, 0xB0E0, 3) == b'\xB1\x99\x18':
 
                     self.app.label("PE_Label_Profession_1", "Available to:", row=0, column=0, sticky='SEW', font=11)
@@ -692,7 +692,7 @@ class PartyEditor:
                 # and:
                 # B0EC    LDY #$33  ; #$33 = Level
                 # B0EE    LDA ($99),Y
-                if supported and self.rom.read_byte(0x0, 0xB0E8) == 0xC9 and self.rom.read_byte(0x0, 0xB0EC) == 0xA0\
+                if supported and self.rom.read_byte(0x0, 0xB0E8) == 0xC9 and self.rom.read_byte(0x0, 0xB0EC) == 0xA0 \
                         and self.rom.read_word(0x0, 0xB0EA) == 0x0DD0 and self.rom.read_word(0x0, 0xB0EE) == 0x99B1:
                     self.app.label("PE_Label_Profession_2", "Available to:", row=0, column=0, sticky='SEW', font=11)
                     self.app.optionBox("PE_Profession_2", professions_list, change=self._special_input,
@@ -1167,7 +1167,86 @@ class PartyEditor:
         widget: str
             Name of the widget that is generating the event
         """
-        log(3, f"{self.__class__.__name__}", f"Unimplemented input for widget: {widget}.")
+        if widget == "PE_Apply":
+            if self.save_special_abilities() is not False:
+                self.app.setStatusbar("Special Abilities saved.")
+                self.close_window()
+
+        elif widget == "PE_Profession_0":
+            # Maybe perform sanity checks, not needed in the current implementation
+            pass
+
+        elif widget == "PE_Profession_1":
+            pass
+
+        elif widget == "PE_Profession_2":
+            pass
+
+        elif widget == "PE_Damage_1":
+            # Get the index of the new selection
+            box = self.app.getOptionBoxWidget(widget)
+            value = box.options.index(self.app.getOptionBox(widget))
+
+            # Set the custom value to the correct index for this selection
+            self.app.disableEntry("PE_Custom_1")
+            if 0 <= value <= 3:
+                # Attribute-based
+                value = value + 0x7
+            elif value == 4:
+                # Level-based
+                value = 0x33
+            else:
+                # Allow custom entry
+                try:
+                    value = int(self.app.getEntry("PE_Custom_1"), 16)
+                except ValueError:
+                    value = 0x7
+                self.app.enableEntry("PE_Custom_1")
+
+            self.app.setEntry("PE_Custom_1", f"0x{value:02X}", callFunction=False)
+
+        elif widget == "PE_Damage_2":
+            # Get the index of the new selection
+            box = self.app.getOptionBoxWidget(widget)
+            value = box.options.index(self.app.getOptionBox(widget))
+
+            # Set the custom value to the correct index for this selection
+            self.app.disableEntry("PE_Custom_2")
+            if 0 <= value <= 3:
+                # Attribute-based
+                value = value + 0x7
+            elif value == 4:
+                # Level-based
+                value = 0x33
+            elif value == 5:
+                # Weapon-based
+                value = 0x34
+            else:
+                # Allow custom entry
+                try:
+                    value = int(self.app.getEntry("PE_Custom_2"), 16)
+                except ValueError:
+                    value = 0x7
+                self.app.enableEntry("PE_Custom_2")
+
+            self.app.setEntry("PE_Custom_2", f"0x{value:02X}", callFunction=False)
+
+        elif widget == "PE_Custom_1" or widget == "PE_Custom_2" or widget == "PE_Adjustment_3":
+            # Sanity checks on value could be performed here. For now they are done when trying to apply changes.
+            pass
+
+        elif widget == "PE_Adjustment_2":
+            # Get selection index
+            box = self.app.getOptionBoxWidget(widget)
+            value = box.options.index(self.app.getOptionBox(widget))
+            # Only enable input from adjustment value if needed
+            if value == 1 or value == 2:
+                self.app.enableEntry("PE_Adjustment_3")
+            else:
+                self.app.disableEntry("PE_Adjustment_3")
+
+        else:
+            log(3, f"{self.__class__.__name__}", f"Unimplemented input for widget: {widget}.")
 
     # --- PartyEditor._read_race_names() ---
 
@@ -1923,6 +2002,71 @@ class PartyEditor:
 
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()
+
+    # --- PartyEditor.save_special_abilities() ---
+
+    def save_special_abilities(self) -> bool:
+        """
+        Applies changes to ROM buffer.
+
+        Returns
+        -------
+        bool
+            True if changes successfully applied. False if any of the data was not valid.
+        """
+        # Sanity checks on entry field values
+        try:
+            custom_1 = int(self.app.getEntry("PE_Custom_1"), 16)
+        except ValueError:
+            self.app.errorBox("Error applying changes",
+                              f"Value for custom index on Special Ability 1 is not valid.\n"
+                              f"Please enter a hexadecimal value in the format '0x1A'.",
+                              "Party_Editor")
+            return False
+
+        try:
+            custom_2 = int(self.app.getEntry("PE_Custom_2"), 16)
+        except ValueError:
+            self.app.errorBox("Error applying changes",
+                              f"Value for custom index on Special Ability 2 is not valid.\n"
+                              f"Please enter a hexadecimal value in the format '0x1A'.",
+                              "Party_Editor")
+            return False
+
+        adjustment_3 = 0
+        box = self.app.getOptionBoxWidget("PE_Adjustment_2")
+        value = box.options.index(self.app.getOptionBox("PE_Adjustment_2"))
+        # Only enable input from adjustment value if needed
+        if value == 1 or value == 2:
+            self.app.enableEntry("PE_Adjustment_3")
+            try:
+                # Only check this value if needed
+                adjustment_3 = int(self.app.getEntry("PE_Adjustment_3"), 10)
+            except ValueError:
+                self.app.errorBox("Error applying changes",
+                                  f"Damage Adjustment value for Special Ability 2 is not valid.\n"
+                                  f"Please enter a decimal numeric value between 0 and 255.",
+                                  "Party_Editor")
+                return False
+
+        if custom_1 > 255:
+            custom_1 = 255
+            self.app.clearEntry("PE_Custom_1", callFunction=False)
+            self.app.setEntry("PE_Custom_1", f"0x{custom_1:02X}", callFunction=False)
+
+        if custom_2 > 255:
+            custom_2 = 255
+            self.app.clearEntry("PE_Custom_2", callFunction=False)
+            self.app.setEntry("PE_Custom_2", f"0x{custom_1:02X}", callFunction=False)
+
+        if adjustment_3 > 255:
+            adjustment_3 = 255
+            self.app.clearEntry("PE_Adjustment_3", callFunction=False)
+            self.app.setEntry("PE_Adjustment_3", f"0x{custom_1:02X}", callFunction=False)
+
+        # TODO Save code and values to ROM buffer
+
+        return True
 
     # --- PartyEditor.save_pre_made() ---
 
