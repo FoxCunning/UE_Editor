@@ -60,7 +60,7 @@ class PartyEditor:
                                    [0, 0],
                                    [0, 0],
                                    [0, 0]]
-        # MAx starting attribute values for each race
+        # Max starting attribute values for each race
         self.start_attributes = [[25, 25, 25, 25],
                                  [25, 25, 25, 25],
                                  [25, 25, 25, 25],
@@ -72,6 +72,13 @@ class PartyEditor:
                                [75, 75, 75, 75],
                                [75, 75, 75, 75],
                                [75, 75, 75, 75]]
+        # Max MP assignment for each profession
+        # Default: 0 = WIS, 1 = INT, 2 = WIS/2, 3 = INT/2, 4 = MAX(INT/2, WIS/2), 5 = MIN(INT/2, WIS/2), 6 = Zero
+        # Remastered:   0 = WIS, 1 = INT, 2 = WIS/2, 3 = INT/2, 4 = WIS*3/4, 5 = (INT+WIS)/2, 6 = INT*3/4,
+        #               7 = (INT+WIS)/4, 8 = (Fixed Value)
+        self.max_mp: bytearray = bytearray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        # Two bit flags per profession, determining which spells they can cast (none/clr/wiz/both)
+        self.caster_flags: bytearray = bytearray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
         # Colours for Status Screen / Character Creation Menu
         self.colour_indices: List[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         # Colours for map/battle sprites
@@ -111,6 +118,9 @@ class PartyEditor:
 
         elif window_name == "Special Abilities":
             self._create_special_window()
+
+        elif window_name == "Magic":
+            self._create_magic_window()
 
         else:
             log(3, f"{self.__class__.__name__}", f"Unimplemented: {window_name}.")
@@ -298,6 +308,9 @@ class PartyEditor:
 
         self._read_weapon_armour_names()
 
+        # Read caster flags from ROM:
+        self.caster_flags = self.rom.read_bytes(0xF, 0xD455, 11)
+
         # Check whether gender depends on race or profession, default code in bank 0xD:
         # A637    LDY #$06                 ;Read character's Profession
         # A639    LDA ($99),Y
@@ -352,6 +365,16 @@ class PartyEditor:
             for i in range(11):
                 self.hp_bonus[i] = bonus
 
+        # MP options
+        _int = self.attribute_names[2]
+        _wis = self.attribute_names[3]
+        if self.rom.has_feature("enhanced party"):
+            mp_options = ["Zero", _wis, _int, f"{_wis} / 2", f"{_int} / 2", f"{_wis} x 3 / 4", f"{_int} x 3 / 4",
+                          f"{_wis} + {_int} / 2", f"{_wis} + {_int} / 4"]
+        else:
+            mp_options = ["Zero", _wis, _int, f"{_wis} / 2", f"{_int} / 2",
+                          f"MAX({_wis} / 2, {_int} / 2)", f"MIN({_wis} / 2, {_int} / 2)"]
+
         # Read number of selectable professions
         # We use the routine at 0C:8D76 which creates the race/profession menu for character creation
         # This value is the 0-based index of the last possible selection, so we add 1
@@ -364,7 +387,7 @@ class PartyEditor:
         self.menu_string_id = self.rom.read_byte(0xC, 0x8F42)
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(400, 420)
+            self.app.setSize(580, 380)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 2], sticky="NEW", stretch="BOTH"):
@@ -380,7 +403,7 @@ class PartyEditor:
                     # --- Profession selection ---
 
                     # Row 0 Col 0
-                    self.app.label("PE_Label_Professions", "Selectable Prof.:", row=0, column=0, font=10)
+                    self.app.label("PE_Label_Professions", "Selectable Professions:", row=0, column=0, font=10)
                     # Row 0 Col 1
                     self.app.spinBox("PE_Spin_Professions", list(range(11, 0, -1)),
                                      change=self._professions_input, width=3, row=0, column=1, font=10)
@@ -389,65 +412,115 @@ class PartyEditor:
                     self.app.optionBox("PE_Option_Profession", professions_list, change=self._professions_input,
                                        row=1, column=0, colspan=2, font=10)
 
-                    # --- Status / Character creation graphics and map / battle sprite ---
+                    with self.app.frame("PE_Sub_Left", row=2, column=0):
+                        # --- Status / Character creation graphics and map / battle sprite ---
 
-                    # Row 2 Col 0, 1
-                    with self.app.frame("PE_Frame_Graphics", row=2, column=0, colspan=2):
-                        # Row 0 Col 0
-                        self.app.canvas("PE_Canvas_Profession", Map=None, width=48, height=48, bg="#000000",
-                                        sticky="W", row=0, column=0)
-                        # Row 0 Col 1
-                        self.app.canvas("PE_Canvas_Sprite", Map=None, width=32, height=32, bg="#C0C0C0",
-                                        sticky="W", row=0, column=1)
-                        # Row 1 Col 0
-                        self.app.label("PE_Label_Colours", "Colours:", row=1, column=0, font=10)
-                        # Row 1 Col 1
-                        self.app.label("PE_Label_Palettes", "Palettes:", row=1, column=1, font=10)
-                        # Row 2 Col 0
-                        self.app.optionBox("PE_Profession_Colours", colours_list, change=self._professions_input,
-                                           sticky="NW", row=2, column=0, font=10)
-                        # Row 2 Col 1
-                        self.app.optionBox("PE_Sprite_Palette_Top", list(range(0, 4)), change=self._professions_input,
-                                           sticky="NW", row=2, column=1, font=10)
-                        # Row 3 Col 1
-                        self.app.optionBox("PE_Sprite_Palette_Bottom", list(range(0, 4)),
-                                           change=self._professions_input, sticky="NW", row=3, column=1, font=10)
+                        # Row 2 Col 0, 1
+                        with self.app.frame("PE_Frame_Graphics", row=2, column=0, colspan=2):
+                            # Row 0 Col 0
+                            self.app.canvas("PE_Canvas_Profession", Map=None, width=48, height=48, bg="#000000",
+                                            sticky="W", row=0, column=0)
+                            # Row 0 Col 1
+                            self.app.canvas("PE_Canvas_Sprite", Map=None, width=32, height=32, bg="#C0C0C0",
+                                            sticky="W", row=0, column=1)
+                            # Row 1 Col 0
+                            self.app.label("PE_Label_Colours", "Colours:", row=1, column=0, font=10)
+                            # Row 1 Col 1
+                            self.app.label("PE_Label_Palettes", "Palettes:", row=1, column=1, font=10)
+                            # Row 2 Col 0
+                            self.app.optionBox("PE_Profession_Colours", colours_list, change=self._professions_input,
+                                               sticky="NW", row=2, column=0, font=10)
+                            # Row 2 Col 1
+                            self.app.optionBox("PE_Sprite_Palette_Top", list(range(0, 4)),
+                                               change=self._professions_input,
+                                               sticky="NW", row=2, column=1, font=10)
+                            # Row 3 Col 1
+                            self.app.optionBox("PE_Sprite_Palette_Bottom", list(range(0, 4)),
+                                               change=self._professions_input, sticky="NW", row=3, column=1, font=10)
 
-                    # --- Equipment ---
+                        # --- Equipment ---
 
-                    # Row 3 Col 0, 1
-                    with self.app.frame("PE_Frame_Gear", padding=[4, 2], row=3, column=0, colspan=2):
-                        # Row 0
-                        self.app.label("PE_Label_Best_Weapon", "Best Weapon:", row=0, column=0, font=10)
-                        self.app.optionBox("PE_Option_Weapon", self.weapon_names, change=self._professions_input,
-                                           width=10, row=0, column=1, font=10)
-                        # Row 1
-                        self.app.label("PE_Label_Best_Armour", "Best Armour:", row=1, column=0, font=10)
-                        self.app.optionBox("PE_Option_Armour", self.armour_names, change=self._professions_input,
-                                           width=10, row=1, column=1, font=10)
+                        # Row 3 Col 0, 1
+                        with self.app.frame("PE_Frame_Gear", padding=[4, 2], row=3, column=0, colspan=2):
+                            # Row 0
+                            self.app.label("PE_Label_Best_Weapon", "Best Weapon:", row=0, column=0, font=10)
+                            self.app.optionBox("PE_Option_Weapon", self.weapon_names, change=self._professions_input,
+                                               width=10, row=0, column=1, font=10)
+                            # Row 1
+                            self.app.label("PE_Label_Best_Armour", "Best Armour:", row=1, column=0, font=10)
+                            self.app.optionBox("PE_Option_Armour", self.armour_names, change=self._professions_input,
+                                               width=10, row=1, column=1, font=10)
 
-                    # --- Gender ---
+                        # --- Gender ---
 
-                    # Row 4 Col 0, 1
-                    with self.app.frame("PE_Frame_Gender", padding=[4, 2], row=4, column=0, colspan=2):
-                        # Row 0, Col 0, 1, 2
-                        self.app.checkBox("PE_Check_Gender", text="Gender based on Profession",
-                                          value=self.gender_by_profession, change=self._professions_input,
-                                          row=0, column=0, colspan=3, font=10)
-                        # Row 1, Col 0
-                        self.app.label("PE_Label_Gender", "Gender Chr.:", row=1, column=0, font=10)
-                        # Row 1, Col 1
-                        self.app.entry("PE_Gender_Character", "0x00", width=4, fg="#000000", font=9,
-                                       change=self._professions_input, row=1, column=1)
-                        # Row 1, Col 2
-                        self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg="#000000", map=None, sticky="W",
-                                        row=1, column=2)
+                        # Row 4 Col 0, 1
+                        with self.app.frame("PE_Frame_Gender", padding=[4, 2], row=4, column=0, colspan=2):
+                            # Row 0, Col 0, 1, 2
+                            self.app.checkBox("PE_Check_Gender", text="Gender based on Profession",
+                                              value=self.gender_by_profession, change=self._professions_input,
+                                              row=0, column=0, colspan=3, font=10)
+                            # Row 1, Col 0
+                            self.app.label("PE_Label_Gender", "Gender Chr.:", row=1, column=0, font=10)
+                            # Row 1, Col 1
+                            self.app.entry("PE_Gender_Character", "0x00", width=4, fg="#000000", font=9,
+                                           change=self._professions_input, row=1, column=1)
+                            # Row 1, Col 2
+                            self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg="#000000", map=None, sticky="W",
+                                            row=1, column=2)
+
+                    with self.app.frame("PE_Sub_Right", row=2, column=1):
+                        # --- Primary Attributes ---
+
+                        # Row 5, Col 0, 1
+                        with self.app.frame("PE_Frame_Primary_Attributes", padding=[4, 2], row=0, column=0,
+                                            stretch="ROW", sticky="NEW"):
+                            # Row 0, Col 0, 1
+                            self.app.label("PE_Label_Primary_Attributes", "Primary Attributes:", sticky="SEW",
+                                           row=0, column=0, colspan=2, font=11)
+                            # Row 1, Col 0
+                            self.app.optionBox("PE_Primary_0", self.attribute_names, change=self._professions_input,
+                                               row=1, column=0, sticky="NEW", font=10)
+                            # Row 1, Col 1
+                            self.app.optionBox("PE_Primary_1", self.attribute_names, change=self._professions_input,
+                                               row=1, column=1, sticky="NEW", font=10)
+
+                        # --- HP Gain ---
+
+                        with self.app.frame("PE_Frame_HP", row=1, column=0, stretch="ROW", sticky="NEW",
+                                            padding=[4, 4]):
+                            # Row 0
+                            self.app.label("PE_Label_HP", "HP gain:", row=0, column=0, colspan=4, sticky="SEW", font=10)
+                            # Row 1
+                            self.app.entry("PE_HP_Base", 0, width=3, fg="#000000", font=10,
+                                           change=self._professions_input,
+                                           row=1, column=0, sticky="NEW")
+                            self.app.label("PE_Label_Plus", "+ (", row=1, column=1)
+                            self.app.entry("PE_HP_Bonus", 0, width=3, fg="#000000", font=10,
+                                           change=self._professions_input,
+                                           row=1, column=2, sticky="NEW")
+                            self.app.label("PE_Label_Per_Level", "x level)", row=1, column=3, sticky="NEW", font=10)
+
+                        # --- Caster Flags ---
+
+                        with self.app.frame("PE_Frame_Caster", row=2, column=0, stretch="BOTH", sticky="NEWS"):
+                            self.app.label("PE_Label_Caster", "Caster Flags:", sticky="SEW", row=0, column=0, font=11)
+                            self.app.checkBox("PE_Check_Caster_0", False, name="Spell List 1", sticky="NEW",
+                                              change=self._professions_input, row=1, column=0, font=10)
+                            self.app.checkBox("PE_Check_Caster_1", False, name="Spell List 2", sticky="NEW",
+                                              change=self._professions_input, row=2, column=0, font=10)
+
+                        # --- MP Values ---
+
+                        with self.app.frame("PE_Frame_MP", row=3, column=0, stretch="BOTH", sticky="NEW"):
+                            self.app.label("PE_Label_MP", "MP:", sticky="NE", row=0, column=0, font=11)
+                            self.app.optionBox("PE_Option_MP", mp_options, sticky="NEW",
+                                               row=0, column=1, font=10)
 
             # Right Column
             with self.app.frame("PE_Frame_Right", row=0, column=1, stretch="BOTH", sticky="NEW", padding=[4, 2],
                                 bg="#C0F0D0"):
                 self.app.label("PE_Label_Names", "Profession Names:", sticky="NEW", row=0, column=0, font=10)
-                self.app.textArea("PE_Profession_Names", value=profession_names, width=10, height=11, font=10,
+                self.app.textArea("PE_Profession_Names", value=profession_names, width=11, height=11, font=10,
                                   change=self._professions_input,
                                   sticky="NEW", fg="#000000", scroll=True, row=1, column=0)
                 self.app.button("PE_Update_Profession_Names", value=self._professions_input, name="Update",
@@ -456,38 +529,14 @@ class PartyEditor:
                 with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
                                     bg="#C0D0D0"):
                     self.app.button("PE_Edit_Menu_String", value=self._professions_input, name="Edit Text", font=10,
-                                    image="res/edit-dlg.gif", sticky="NW", width=24, height=24, row=0, column=0)
+                                    image="res/edit-dlg.gif", sticky="NW", width=32, height=32, row=0, column=0)
                     self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1, font=10)
                     self.app.entry("PE_Menu_String_Id", value=f"0x{self.menu_string_id:02X}",
                                    change=self._professions_input,
                                    width=5, sticky="NES", row=0, column=2, font=10)
 
-            # --- Primary Attributes ---
-
-            # Row 5, Col 0, 1
-            with self.app.frame("PE_Frame_Primary_Attributes", padding=[4, 2], row=1, column=0, expand="BOTH",
-                                stretch="ROW", sticky="NEW", bg="#C0D0F0"):
-                # Row 0, Col 0, 1
-                self.app.label("PE_Label_Primary_Attributes", "Primary Attributes:", sticky="EW",
-                               row=0, column=0, colspan=2, font=10)
-                # Row 1, Col 0
-                self.app.optionBox("PE_Primary_0", self.attribute_names, change=self._professions_input,
-                                   row=1, column=0, font=10)
-                # Row 1, Col 1
-                self.app.optionBox("PE_Primary_1", self.attribute_names, change=self._professions_input,
-                                   row=1, column=1, font=10)
-
-            with self.app.frame("PE_Frame_HP", row=1, column=1, stretch="ROW", sticky="NEW", padding=[4, 4],
-                                expand="BOTH", bg="#C0D0F0"):
-                # Row 0
-                self.app.label("PE_Label_HP", "HP gain:", row=0, column=0, colspan=4, font=10)
-                # Row 1
-                self.app.entry("PE_HP_Base", 0, width=3, fg="#000000", font=10, change=self._professions_input,
-                               row=1, column=0)
-                self.app.label("PE_Label_Plus", "+ (", row=1, column=1)
-                self.app.entry("PE_HP_Bonus", 0, width=3, fg="#000000", font=10, change=self._professions_input,
-                               row=1, column=2)
-                self.app.label("PE_Label_Per_Level", "x level)", row=1, column=3, font=10)
+        # Read Max MP values
+        self._read_max_mp()
 
         # Disable inputs until a selection is made
         self.selected_index = -1
@@ -577,6 +626,22 @@ class PartyEditor:
 
         # Display the first pre-made character
         self.app.setOptionBox("PE_Character_Index", 0, callFunction=True)
+
+    # --- PartyEditor._create_magic_window() ---
+
+    def _create_magic_window(self) -> None:
+        """
+        Creates a window and widgets for editing magic spells
+        """
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(480, 320)
+
+            # Buttons
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
+                self.app.button("PE_Apply", name="Apply", value=self._generic_input, image="res/floppy.gif",
+                                tooltip="Apply Changes and Close Window", row=0, column=0)
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=1)
 
     # --- PartyEditor._create_special_window() ---
 
@@ -1077,6 +1142,14 @@ class PartyEditor:
             # Now we can show the "advanced" text editor
             self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
 
+        elif widget == "PE_Check_Caster_0":
+            if self.selected_index >= 0:
+                self.caster_flags[self.selected_index] = self.caster_flags[self.selected_index] | 1
+
+        elif widget == "PE_Check_Caster_1":
+            if self.selected_index >= 0:
+                self.caster_flags[self.selected_index] = self.caster_flags[self.selected_index] | 2
+
         else:
             log(3, f"{self.__class__.__name__}", f"Unimplemented widget callback: '{widget}'.")
 
@@ -1339,6 +1412,321 @@ class PartyEditor:
                 address = address + 1
             # Convert data to ASCII
             self.attribute_names[i] = exodus_to_ascii(data)
+
+    # --- PartyEditor._read_max_mp() ---
+
+    def _read_max_mp(self) -> bool:
+        """
+        Interprets the code that assigns Max MP values for each profession.
+
+        Returns
+        -------
+        bool
+            True if code is valid. False if customised / not supported / not recognised.
+        """
+        if self.rom.has_feature("enhanced party") is False:
+            # TODO Add support for vanilla game
+            return False
+
+        address = 0x881C
+        end_address = 0x885F  # We have exactly 4 bytes to spare in the Remastered ROM
+
+        # Read first byte of code
+        value = self.rom.read_byte(0xD, address)
+        address = address + 1
+        # We expect $A9 = LDA instruction
+        if value != 0xA9:
+            return False
+
+        # Get fixed value MP (0 by default)
+        value = self.rom.read_byte(0xD, address)
+        address = address + 1
+        # TODO Store this value somewhere, or put it in an entry widget
+
+        # We now expect one or more STA for professions that use fixed value Max MP, followed by LDY #$06
+        while address < end_address:
+            # Read next instructions
+            value = self.rom.read_byte(0xD, address)
+            address = address + 1
+
+            if value == 0x85:  # STA zp
+                # Read parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+                # Validate parameter
+                if 0x31 <= value <= 0x3B:
+                    # Calculate profession index for this value
+                    value = value - 0x31
+                    self.max_mp[value] = 8  # 8: MAX MP = Fixed Value
+                    log(4, f"{self.__class__.__name__}", f"{self.profession_names[value]} MAX MP = Fixed Value.")
+
+                else:
+                    log(3, f"{self.__class__.__name__}", "Unexpected parameter for STA instruction found while " +
+                        f"reading Max MP data: 0x{value:02X}.")
+                    return False
+
+            elif value == 0xA0:  # LDY d
+                break
+
+            else:  # Unexpected instructions
+                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
+                    f"@0D:{address - 1:04X}.")
+                return False
+
+        # Check that we have the correct bytecode for reading the character's Wisdom
+        bytecode = self.rom.read_bytes(0xD, address, 3)
+        address = address + 3
+        if bytecode != b'\x0A\xB1\x99':
+            log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
+                f"@0D:{address - 1:04X}. Expected $85 or $46.")
+            return False
+
+        # Now we look for a sequence of STA zp followed by LSR zp (WIS/2), ASL + ADC + ROR + LSR (WIS*3),
+        # or DEY (used to switch to INT calculations)
+        while address < end_address:
+            # Read next instruction
+            value = self.rom.read_byte(0xD, address)
+            address = address + 1
+
+            if value == 0x85:  # STA zp (Max MP = WIS)
+                # Read STA parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+                # Validate STA parameter
+                if 0x31 <= value <= 0x3B:
+                    # Calculate profession index for this value
+                    value = value - 0x31
+                    self.max_mp[value] = 0  # 0: MAX MP = WIS
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}.")
+
+                else:
+                    log(3, f"{self.__class__.__name__}",
+                        "Unexpected parameter for STA instruction found while " +
+                        f"reading Max MP data: 0x{value:02X}.")
+                    return False
+
+            elif value == 0x46:  # LSR zp (Max MP = WIS/2)
+                # Read parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+                # Validate parameter
+                if 0x31 <= value <= 0x3B:
+                    # Calculate profession index
+                    value = value - 0x31
+                    self.max_mp[value] = 1  # 1: MAX MP = WIS / 2
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}/2.")
+
+            elif value == 0x0A:  # ASL
+                break
+
+        # Read next instruction, we are expecting ADC zp
+        value = self.rom.read_byte(0xD, address)
+        address = address + 2  # Ignore parameter
+
+        if value != 0x65:  # ADC zp
+            log(3, f"{self.__class__.__name__}", f"Unexpected op code encountered @0D:{address - 2:04X}.")
+            return False
+
+        # Check rest of bytecode
+        bytecode = self.rom.read_bytes(0xD, address, 2)
+        address = address + 2
+        # Also make it work on the older, bugged ROM (the save function will fix it anyway)
+        if (bytecode[0] != 0x6A and bytecode[0] != 0x4A) or bytecode[1] != 0x4A:
+            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode encountered @0D:{address - 2:04X}.")
+            return False
+
+        # Now we expect a series of STA zp, followed by DEY
+        while address < end_address:
+            # Read next opcode
+            value = self.rom.read_byte(0xD, address)
+            address = address + 1
+
+            if value == 0x85:  # STA zp
+                # Read parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+                # Validate parameter
+                if 0x31 <= value <= 0x3B:
+                    value = value - 0x31
+                    self.max_mp[value] = 2  # 2: MAX MP = WIS*3/4
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}*3/4.")
+                else:
+                    log(3, f"{self.__class__.__name__}",
+                        "Unexpected parameter for STA instruction found while " +
+                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    return False
+
+            elif value == 0x88:  # DEY
+                break
+
+        # Now look for LDA($99),Y
+        bytecode = self.rom.read_bytes(0xD, address, 2)
+        address = address + 2
+
+        if bytecode != b'\xB1\x99':
+            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode encountered @0D:{address - 2:04X}.")
+            return False
+
+        # As usual, a sequence of STA zp should follow, then LSR and finally ASL
+        while address < end_address:
+            value = self.rom.read_byte(0xD, address)
+            address = address + 1
+
+            if value == 0x85:  # $85 = STA zp
+                # Get and check parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+
+                if 0x31 <= value <= 0x3B:
+                    value = value - 0x31
+                    self.max_mp[value] = 3  # 3: MAX MP = INT
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}.")
+
+                else:
+                    log(3, f"{self.__class__.__name__}",
+                        "Unexpected parameter for STA instruction found while " +
+                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    return False
+
+            elif value == 0x46:  # $46 = LSR
+                # Get and check parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+
+                if 0x31 <= value <= 0x3B:
+                    value = value - 0x31
+                    self.max_mp[value] = 4  # 4: MAX MP = INT/2
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}/2.")
+
+                else:
+                    log(3, f"{self.__class__.__name__}",
+                        "Unexpected parameter for STA instruction found while " +
+                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    return False
+
+            elif value == 0x0A:  # $0A = ASL
+                break
+
+            else:
+                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
+                    f"@0D:{address - 1:04X}. Expected $85 or $46.")
+                return False
+
+        # An ASL instruction was already found, ADC zp should follow
+        bytecode = self.rom.read_bytes(0xD, address, 4)
+        address = address + 4
+
+        if bytecode[0] != 0x65:
+            log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
+                f"@0D:{address - 5:04X}. Expected $65.")
+            return False
+
+        # Ignore parameter and check the rest, allowing for the older bugged ROM (the save routine will fix it)
+        if (bytecode[2] != 0x6A and bytecode[2] != 0x4A) or bytecode[3] != 0x4A:
+            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode '0x{bytecode[2]:02X} " +
+                f"0x{bytecode[3]:02X}' encountered @0D:{address - 2:04X}.")
+            return False
+
+        # There should now be a sequence of STA zp, followed by LDA zp at the end
+        while address < end_address:
+            # Read instruction
+            value = self.rom.read_byte(0xD, address)
+            address = address + 1
+
+            if value == 0x85:  # $85 = STA zp
+                # Check and adjust parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+                if 0x31 <= value <= 0x3B:
+                    value = value - 0x31
+                    self.max_mp[value] = 5  # 5: MAX MP = INT*3/4
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}*3/4.")
+
+                else:
+                    log(3, f"{self.__class__.__name__}",
+                        "Unexpected parameter for STA instruction found while " +
+                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    return False
+
+            elif value == 0xA5:  # $A5 = LDA zp
+                # Skip the parameter
+                address = address + 1
+                break
+
+        # CLC, ADC zp, LSR should follow
+        bytecode = self.rom.read_bytes(0xD, address, 4)
+        address = address + 4
+        if bytecode[0] != 0x18 or bytecode[1] != 0x65 or bytecode[3] != 0x4A:
+            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode encountered @0D:{address - 4:04X}.")
+            return False
+
+        # Sequence of STA zp, ending with LSR
+        while address < end_address:
+            # Read next op code
+            value = self.rom.read_byte(0xD, address)
+            address = address + 1
+
+            if value == 0x85:  # $85 = STA zp
+                # Validate and adjust parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+                if 0x31 <= value <= 0x3B:
+                    value = value - 0x31
+                    self.max_mp[value] = 6  # 6: MAX MP = (INT+WIS)/2
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
+                        f"{self.attribute_names[3]})/2.")
+
+            elif value == 0x4A:  # $4A = LSR
+                break
+
+            else:
+                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
+                    f"@0D:{address - 1:04X}. Expected $85 or $65.")
+                return False
+
+        # Last sequence of STA zp, ends with LDY #$06
+        while address < end_address:
+            # Read next instruction
+            value = self.rom.read_byte(0xD, address)
+            address = address + 1
+
+            if value == 0x85:  # $85 = STA zp
+                # Validate and adjust parameter
+                value = self.rom.read_byte(0xD, address)
+                address = address + 1
+                if 0x31 <= value <= 0x3B:
+                    value = value - 0x31
+                    self.max_mp[value] = 7  # 7: MAX MP = (INT+WIS) / 4
+                    log(4, f"{self.__class__.__name__}",
+                        f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
+                        f"{self.attribute_names[3]})/4.")
+
+                else:
+                    log(3, f"{self.__class__.__name__}",
+                        "Unexpected parameter for STA instruction found while " +
+                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    return False
+
+            elif value == 0xA0:  # $A0 = LDY d
+                # Skip parameter
+                # address = address + 1
+                # break
+                return True
+
+            else:
+                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
+                    f"@0D:{address - 1:04X}. Expected $85 or $A0.")
+                return False
+
+        # All done
+        return True
 
     # --- PartyEditor._read_weapon_armour_names() ---
 
@@ -1672,6 +2060,12 @@ class PartyEditor:
         self.app.setOptionBox("PE_Option_Weapon", self.best_weapon[self.selected_index], callFunction=False)
         self.app.setOptionBox("PE_Option_Armour", self.best_armour[self.selected_index], callFunction=False)
 
+        # Caster flags
+        self.app.setCheckBox("PE_Check_Caster_0", True if self.caster_flags[self.selected_index] & 1 else False,
+                             callFunction=False)
+        self.app.setCheckBox("PE_Check_Caster_1", True if self.caster_flags[self.selected_index] & 2 else False,
+                             callFunction=False)
+
     # --- PartyEditor._display_gender() ---
 
     def _display_gender(self, character_index: int) -> None:
@@ -1997,6 +2391,9 @@ class PartyEditor:
         # 8F43    STA $30
         # 8F45    JSR DrawTextForPreGameMenu
         self.rom.write_byte(0xC, 0x8F42, self.menu_string_id)
+
+        # Save caster flags
+        self.rom.write_bytes(0xF, 0xD455, self.caster_flags)
 
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()

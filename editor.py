@@ -1754,6 +1754,12 @@ def party_editor_press(button: str) -> bool:
     elif button == "PT_Button_Special":
         party_editor.show_window("Special Abilities")
 
+    elif button == "PT_Button_Magic":
+        party_editor.show_window("Magic")
+
+    elif button == "PT_Button_Items":
+        party_editor.show_window("Items")
+
     else:
         log(3, "PARTY_EDITOR", f"Unimplemented button '{button}'.")
 
