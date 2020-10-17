@@ -2244,7 +2244,7 @@ if __name__ == "__main__":
 
         # Party Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Party_Editor", title="Party Editor", size=[360, 240], modal=False, resizable=False,
-                           padding=0, inPadding=0, guiPadding=0, bg="#C0C0B0"):
+                           padding=0, inPadding=0, guiPadding=0, bg="#B0B0C0"):
             # noinspection PyArgumentList
             app.setStopFunction(party_editor_stop)
 
@@ -2497,7 +2497,7 @@ if __name__ == "__main__":
                                    font=9)
 
         # Text Editor Sub-Window ---------------------------------------------------------------------------------------
-        with app.subWindow("Text_Editor", "Text Editor", size=[400, 360], modal=False, resizable=False):
+        with app.subWindow("Text_Editor", "Text Editor", size=[420, 380], modal=False, resizable=False):
             # noinspection PyArgumentList
             app.setStopFunction(text_editor_stop)
 

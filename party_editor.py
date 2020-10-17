@@ -95,10 +95,25 @@ class PartyEditor:
         # Currently selected race/profession/weapon/spell etc. (depending on current window)
         self.selected_index: int = -1
 
+    # --- PartyEditor.error() ---
+
+    def error(self, message: str):
+        log(2, f"{self.__class__.__name__}", message)
+
+    # --- PartyEditor.warning() ---
+
+    def warning(self, message: str):
+        log(3, f"{self.__class__.__name__}", message)
+
+    # --- PartyEditor.info() ---
+
+    def info(self, message: str):
+        log(4, f"{self.__class__.__name__}", message)
+
     # --- PartyEditor.show_races_window() ---
 
     def show_window(self, window_name: str):
-        self.app.emptySubWindow("Party_Editor")
+        # self.app.emptySubWindow("Party_Editor") Now performed after closing the window
         self.selected_index = -1
 
         if window_name == "Races":
@@ -123,7 +138,7 @@ class PartyEditor:
             self._create_magic_window()
 
         else:
-            log(3, f"{self.__class__.__name__}", f"Unimplemented: {window_name}.")
+            self.warning(f"Unimplemented: {window_name}.")
             return
 
         self.current_window = window_name
@@ -369,11 +384,11 @@ class PartyEditor:
         _int = self.attribute_names[2]
         _wis = self.attribute_names[3]
         if self.rom.has_feature("enhanced party"):
-            mp_options = ["Zero", _wis, _int, f"{_wis} / 2", f"{_int} / 2", f"{_wis} x 3 / 4", f"{_int} x 3 / 4",
-                          f"{_wis} + {_int} / 2", f"{_wis} + {_int} / 4"]
+            mp_options = [_wis, f"{_wis} / 2", f"{_wis} x 3 / 4", _int, f"{_int} / 2", f"{_int} x 3 / 4",
+                          f"({_wis} + {_int}) / 2", f"({_wis} + {_int}) / 4", "Fixed Value", ]
         else:
-            mp_options = ["Zero", _wis, _int, f"{_wis} / 2", f"{_int} / 2",
-                          f"MAX({_wis} / 2, {_int} / 2)", f"MIN({_wis} / 2, {_int} / 2)"]
+            mp_options = [_wis, _int, f"{_wis} / 2", f"{_int} / 2", f"MAX({_wis} / 2, {_int} / 2)",
+                          f"MIN({_wis} / 2, {_int} / 2)", "Fixed Value"]
 
         # Read number of selectable professions
         # We use the routine at 0C:8D76 which creates the race/profession menu for character creation
@@ -387,7 +402,7 @@ class PartyEditor:
         self.menu_string_id = self.rom.read_byte(0xC, 0x8F42)
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(580, 380)
+            self.app.setSize(580, 460)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 2], sticky="NEW", stretch="BOTH"):
@@ -399,14 +414,15 @@ class PartyEditor:
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
                 # Left Column
                 with self.app.frame("PE_Frame_Left", row=1, column=0, stretch="BOTH", sticky="NEWS", padding=[4, 2],
-                                    colspan=2, bg="#C0D0F0"):
+                                    colspan=2):
                     # --- Profession selection ---
 
                     # Row 0 Col 0
-                    self.app.label("PE_Label_Professions", "Selectable Professions:", row=0, column=0, font=10)
+                    self.app.label("PE_Label_Professions", "Selectable Professions:", sticky="E",
+                                   row=0, column=0, font=10)
                     # Row 0 Col 1
                     self.app.spinBox("PE_Spin_Professions", list(range(11, 0, -1)),
-                                     change=self._professions_input, width=3, row=0, column=1, font=10)
+                                     change=self._professions_input, width=3, sticky="W", row=0, column=1, font=10)
                     self.app.setSpinBox("PE_Spin_Professions", self.selectable_professions)
                     # Row 1 Col 0, 1
                     self.app.optionBox("PE_Option_Profession", professions_list, change=self._professions_input,
@@ -468,6 +484,21 @@ class PartyEditor:
                             self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg="#000000", map=None, sticky="W",
                                             row=1, column=2)
 
+                        # --- Max MP ---
+
+                        with self.app.frame("PE_Frame_MP", padding=[4, 2], row=5, column=0, colspan=2):
+                            # Max MP / Fixed Value
+                            self.app.label("PE_Label_MP", "Max MP:", sticky="NE", row=0, column=0, font=11)
+                            self.app.optionBox("PE_Option_MP", mp_options, sticky="NW", row=0, column=1, font=10)
+                            self.app.label("PE_Label_Fixed_MP", "Fixed Value:", sticky="NE", row=1, column=0, font=11)
+                            self.app.entry("PE_Fixed_MP", "0", width=4, sticky="NW", row=1, column=1, font=10)
+                            # Custom code / override
+                            self.app.label("PE_Label_Custom", "This ROM uses custom code for Max MP.",
+                                           row=2, column=0, colspan=2, font=11, fg="#F03030")
+                            self.app.checkBox("PE_Overwrite_MP", name="Overwrite custom code",
+                                              change=self._professions_input,
+                                              row=3, column=0, colspan=2, font=10)
+
                     with self.app.frame("PE_Sub_Right", row=2, column=1):
                         # --- Primary Attributes ---
 
@@ -509,16 +540,9 @@ class PartyEditor:
                             self.app.checkBox("PE_Check_Caster_1", False, name="Spell List 2", sticky="NEW",
                                               change=self._professions_input, row=2, column=0, font=10)
 
-                        # --- MP Values ---
-
-                        with self.app.frame("PE_Frame_MP", row=3, column=0, stretch="BOTH", sticky="NEW"):
-                            self.app.label("PE_Label_MP", "MP:", sticky="NE", row=0, column=0, font=11)
-                            self.app.optionBox("PE_Option_MP", mp_options, sticky="NEW",
-                                               row=0, column=1, font=10)
-
             # Right Column
             with self.app.frame("PE_Frame_Right", row=0, column=1, stretch="BOTH", sticky="NEW", padding=[4, 2],
-                                bg="#C0F0D0"):
+                                bg="#C0C0D0"):
                 self.app.label("PE_Label_Names", "Profession Names:", sticky="NEW", row=0, column=0, font=10)
                 self.app.textArea("PE_Profession_Names", value=profession_names, width=11, height=11, font=10,
                                   change=self._professions_input,
@@ -536,7 +560,16 @@ class PartyEditor:
                                    width=5, sticky="NES", row=0, column=2, font=10)
 
         # Read Max MP values
-        self._read_max_mp()
+        if self._read_max_mp():
+            self.app.hideLabel("PE_Label_Custom")
+            self.app.hideCheckBox("PE_Overwrite_MP")
+
+        else:
+            self.app.showLabel("PE_Label_Custom")
+            self.app.showCheckBox("PE_Overwrite_MP")
+            self.app.setCheckBox("PE_Overwrite_MP", False, callFunction=False)
+            self.app.disableEntry("PE_Fixed_MP")
+            self.app.disableOptionBox("PE_Option_MP")
 
         # Disable inputs until a selection is made
         self.selected_index = -1
@@ -867,6 +900,8 @@ class PartyEditor:
         # TODO Ask to confirm if changes were made
         self.current_window = ""
         self.app.hideSubWindow("Party_Editor", False)
+        # Empty container
+        self.app.emptySubWindow("Party_Editor")
         return True
 
     # --- PartyEditor.generic_input() ---
@@ -887,7 +922,7 @@ class PartyEditor:
             self.gender_by_profession = self.app.getCheckBox(widget)
 
         else:
-            log(3, f"{self.__class__.__name__}", f"Unimplemented widget callback from '{widget}'.")
+            self.warning(f"Unimplemented widget callback from '{widget}'.")
 
     # --- PartyEditor._races_input() ---
 
@@ -981,7 +1016,7 @@ class PartyEditor:
             self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
 
         else:
-            log(3, f"{self.__class__.__name__}", f"Unimplemented widget callback from '{widget}'.")
+            self.warning(f"Unimplemented widget callback from '{widget}'.")
 
     # --- PartyEditor._professions_input() ---
 
@@ -1011,7 +1046,7 @@ class PartyEditor:
                 if value == '':
                     pass
                 else:
-                    log(3, f"{self.__class__.__name__}", f"Invalid value '{value}' for professions count.")
+                    self.warning(f"Invalid value '{value}' for professions count.")
 
         elif widget == "PE_Profession_Names":
             # Make sure the total length including newlines and string terminator is not over 59
@@ -1150,8 +1185,16 @@ class PartyEditor:
             if self.selected_index >= 0:
                 self.caster_flags[self.selected_index] = self.caster_flags[self.selected_index] | 2
 
+        elif widget == "PE_Overwrite_MP":
+            if self.app.getCheckBox(widget) is True:
+                self.app.enableOptionBox("PE_Option_MP")
+                self.app.enableEntry("PE_Fixed_MP")
+            else:
+                self.app.disbleOptionBox("PE_Option_MP")
+                self.app.disbleEntry("PE_Fixed_MP")
+
         else:
-            log(3, f"{self.__class__.__name__}", f"Unimplemented widget callback: '{widget}'.")
+            self.warning(f"Unimplemented widget callback: '{widget}'.")
 
     def _pre_made_input(self, widget: str) -> None:
         """
@@ -1225,7 +1268,7 @@ class PartyEditor:
                 return
 
         else:
-            log(3, f"{self.__class__.__name__}", f"Unimplemented input from widget: {widget}.")
+            self.warning(f"Unimplemented input from widget: {widget}.")
 
     # --- PartyEditor._special_input() ---
 
@@ -1317,7 +1360,7 @@ class PartyEditor:
                 self.app.disableEntry("PE_Adjustment_3")
 
         else:
-            log(3, f"{self.__class__.__name__}", f"Unimplemented input for widget: {widget}.")
+            self.warning(f"Unimplemented input for widget: {widget}.")
 
     # --- PartyEditor._read_race_names() ---
 
@@ -1441,7 +1484,8 @@ class PartyEditor:
         # Get fixed value MP (0 by default)
         value = self.rom.read_byte(0xD, address)
         address = address + 1
-        # TODO Store this value somewhere, or put it in an entry widget
+        self.app.clearEntry("PE_Fixed_MP", callFunction=False)
+        self.app.setEntry("PE_Fixed_MP", f"{value}", callFunction=False)
 
         # We now expect one or more STA for professions that use fixed value Max MP, followed by LDY #$06
         while address < end_address:
@@ -1458,27 +1502,26 @@ class PartyEditor:
                     # Calculate profession index for this value
                     value = value - 0x31
                     self.max_mp[value] = 8  # 8: MAX MP = Fixed Value
-                    log(4, f"{self.__class__.__name__}", f"{self.profession_names[value]} MAX MP = Fixed Value.")
+                    self.info(f"{self.profession_names[value]} MAX MP = Fixed Value.")
 
                 else:
-                    log(3, f"{self.__class__.__name__}", "Unexpected parameter for STA instruction found while " +
-                        f"reading Max MP data: 0x{value:02X}.")
+                    self.error("Unexpected parameter for STA instruction found while " +
+                               f"reading Max MP data: 0x{value:02X}.")
                     return False
 
             elif value == 0xA0:  # LDY d
                 break
 
             else:  # Unexpected instructions
-                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
-                    f"@0D:{address - 1:04X}.")
+                self.error(f"Unexpected op code ${value:02X} in Max MP routine @0D:{address - 1:04X}.")
                 return False
 
         # Check that we have the correct bytecode for reading the character's Wisdom
         bytecode = self.rom.read_bytes(0xD, address, 3)
         address = address + 3
         if bytecode != b'\x0A\xB1\x99':
-            log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
-                f"@0D:{address - 1:04X}. Expected $85 or $46.")
+            self.error(f"Unexpected op code ${value:02X} in Max MP routine " +
+                       f"@0D:{address - 1:04X}. Expected $85 or $46.")
             return False
 
         # Now we look for a sequence of STA zp followed by LSR zp (WIS/2), ASL + ADC + ROR + LSR (WIS*3),
@@ -1497,13 +1540,11 @@ class PartyEditor:
                     # Calculate profession index for this value
                     value = value - 0x31
                     self.max_mp[value] = 0  # 0: MAX MP = WIS
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}.")
+                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}.")
 
                 else:
-                    log(3, f"{self.__class__.__name__}",
-                        "Unexpected parameter for STA instruction found while " +
-                        f"reading Max MP data: 0x{value:02X}.")
+                    self.error("Unexpected parameter for STA instruction found while " +
+                               f"reading Max MP data: 0x{value:02X}.")
                     return False
 
             elif value == 0x46:  # LSR zp (Max MP = WIS/2)
@@ -1515,8 +1556,7 @@ class PartyEditor:
                     # Calculate profession index
                     value = value - 0x31
                     self.max_mp[value] = 1  # 1: MAX MP = WIS / 2
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}/2.")
+                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}/2.")
 
             elif value == 0x0A:  # ASL
                 break
@@ -1526,7 +1566,7 @@ class PartyEditor:
         address = address + 2  # Ignore parameter
 
         if value != 0x65:  # ADC zp
-            log(3, f"{self.__class__.__name__}", f"Unexpected op code encountered @0D:{address - 2:04X}.")
+            self.error(f"Unexpected op code encountered @0D:{address - 2:04X}.")
             return False
 
         # Check rest of bytecode
@@ -1534,7 +1574,7 @@ class PartyEditor:
         address = address + 2
         # Also make it work on the older, bugged ROM (the save function will fix it anyway)
         if (bytecode[0] != 0x6A and bytecode[0] != 0x4A) or bytecode[1] != 0x4A:
-            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode encountered @0D:{address - 2:04X}.")
+            self.error(f"Unexpected bytecode encountered @0D:{address - 2:04X}.")
             return False
 
         # Now we expect a series of STA zp, followed by DEY
@@ -1551,12 +1591,10 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 2  # 2: MAX MP = WIS*3/4
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}*3/4.")
+                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}*3/4.")
                 else:
-                    log(3, f"{self.__class__.__name__}",
-                        "Unexpected parameter for STA instruction found while " +
-                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    self.error("Unexpected parameter for STA instruction found while " +
+                               f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
                     return False
 
             elif value == 0x88:  # DEY
@@ -1567,7 +1605,7 @@ class PartyEditor:
         address = address + 2
 
         if bytecode != b'\xB1\x99':
-            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode encountered @0D:{address - 2:04X}.")
+            self.error(f"Unexpected bytecode encountered @0D:{address - 2:04X}.")
             return False
 
         # As usual, a sequence of STA zp should follow, then LSR and finally ASL
@@ -1583,13 +1621,11 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 3  # 3: MAX MP = INT
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}.")
+                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}.")
 
                 else:
-                    log(3, f"{self.__class__.__name__}",
-                        "Unexpected parameter for STA instruction found while " +
-                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    self.error("Unexpected parameter for STA instruction found while " +
+                               f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
                     return False
 
             elif value == 0x46:  # $46 = LSR
@@ -1600,21 +1636,19 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 4  # 4: MAX MP = INT/2
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}/2.")
+                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}/2.")
 
                 else:
-                    log(3, f"{self.__class__.__name__}",
-                        "Unexpected parameter for STA instruction found while " +
-                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    self.error("Unexpected parameter for STA instruction found while " +
+                               f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
                     return False
 
             elif value == 0x0A:  # $0A = ASL
                 break
 
             else:
-                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
-                    f"@0D:{address - 1:04X}. Expected $85 or $46.")
+                self.error(f"Unexpected op code ${value:02X} in Max MP routine " +
+                           f"@0D:{address - 1:04X}. Expected $85 or $46.")
                 return False
 
         # An ASL instruction was already found, ADC zp should follow
@@ -1622,14 +1656,14 @@ class PartyEditor:
         address = address + 4
 
         if bytecode[0] != 0x65:
-            log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
-                f"@0D:{address - 5:04X}. Expected $65.")
+            self.error(f"Unexpected op code ${value:02X} in Max MP routine " +
+                       f"@0D:{address - 5:04X}. Expected $65.")
             return False
 
         # Ignore parameter and check the rest, allowing for the older bugged ROM (the save routine will fix it)
         if (bytecode[2] != 0x6A and bytecode[2] != 0x4A) or bytecode[3] != 0x4A:
-            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode '0x{bytecode[2]:02X} " +
-                f"0x{bytecode[3]:02X}' encountered @0D:{address - 2:04X}.")
+            self.error(f"Unexpected bytecode '0x{bytecode[2]:02X} " +
+                       f"0x{bytecode[3]:02X}' encountered @0D:{address - 2:04X}.")
             return False
 
         # There should now be a sequence of STA zp, followed by LDA zp at the end
@@ -1645,13 +1679,11 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 5  # 5: MAX MP = INT*3/4
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}*3/4.")
+                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}*3/4.")
 
                 else:
-                    log(3, f"{self.__class__.__name__}",
-                        "Unexpected parameter for STA instruction found while " +
-                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    self.error("Unexpected parameter for STA instruction found while " +
+                               f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
                     return False
 
             elif value == 0xA5:  # $A5 = LDA zp
@@ -1663,7 +1695,7 @@ class PartyEditor:
         bytecode = self.rom.read_bytes(0xD, address, 4)
         address = address + 4
         if bytecode[0] != 0x18 or bytecode[1] != 0x65 or bytecode[3] != 0x4A:
-            log(3, f"{self.__class__.__name__}", f"Unexpected bytecode encountered @0D:{address - 4:04X}.")
+            self.error(f"Unexpected bytecode encountered @0D:{address - 4:04X}.")
             return False
 
         # Sequence of STA zp, ending with LSR
@@ -1679,16 +1711,15 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 6  # 6: MAX MP = (INT+WIS)/2
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
-                        f"{self.attribute_names[3]})/2.")
+                    self.info(f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
+                              f"{self.attribute_names[3]})/2.")
 
             elif value == 0x4A:  # $4A = LSR
                 break
 
             else:
-                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
-                    f"@0D:{address - 1:04X}. Expected $85 or $65.")
+                self.error(f"Unexpected op code ${value:02X} in Max MP routine " +
+                           f"@0D:{address - 1:04X}. Expected $85 or $65.")
                 return False
 
         # Last sequence of STA zp, ends with LDY #$06
@@ -1704,14 +1735,12 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 7  # 7: MAX MP = (INT+WIS) / 4
-                    log(4, f"{self.__class__.__name__}",
-                        f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
-                        f"{self.attribute_names[3]})/4.")
+                    self.info(f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
+                              f"{self.attribute_names[3]})/4.")
 
                 else:
-                    log(3, f"{self.__class__.__name__}",
-                        "Unexpected parameter for STA instruction found while " +
-                        f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
+                    self.error("Unexpected parameter for STA instruction found while " +
+                               f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
                     return False
 
             elif value == 0xA0:  # $A0 = LDY d
@@ -1721,8 +1750,8 @@ class PartyEditor:
                 return True
 
             else:
-                log(3, f"{self.__class__.__name__}", f"Unexpected op code ${value:02X} in Max MP routine " +
-                    f"@0D:{address - 1:04X}. Expected $85 or $A0.")
+                self.error(f"Unexpected op code ${value:02X} in Max MP routine " +
+                           f"@0D:{address - 1:04X}. Expected $85 or $A0.")
                 return False
 
         # All done
@@ -1833,7 +1862,7 @@ class PartyEditor:
         colour_index = self.colour_indices[self.selected_index]
 
         if colour_index > 6:
-            log(2, f"{self.__class__.__name__}", f"Invalid colour index #{colour_index} for profession graphics!")
+            self.error(f"Invalid colour index #{colour_index} for profession graphics!")
             return
 
         # Show colour index in the corresponding widget
@@ -2066,6 +2095,9 @@ class PartyEditor:
         self.app.setCheckBox("PE_Check_Caster_1", True if self.caster_flags[self.selected_index] & 2 else False,
                              callFunction=False)
 
+        # Max MP
+        self.app.setOptionBox("PE_Option_MP", self.max_mp[self.selected_index], callFunction=False)
+
     # --- PartyEditor._display_gender() ---
 
     def _display_gender(self, character_index: int) -> None:
@@ -2274,6 +2306,205 @@ class PartyEditor:
         # Update string ID widget, in case it contained invalid data
         self._update_menu_string_entry()
 
+    # --- PartyEditor._save_max_mp() ---
+
+    def _save_max_mp(self) -> bool:
+        """
+        Creates the routine that assigns max MP to each profession.
+        For the vanilla game, it populates the corresponding table instead.
+
+        Returns
+        -------
+        bool:
+            True if saved successfully. False on fail (e.g. not enough space for the routine or invalid data)
+        """
+        # We will create the new bytecode here, then commit it to the ROM buffer after checking that it fits
+        bytecode = bytearray()
+        max_size = 0x885F - 0x881C
+
+        # Write fixed value
+        try:
+            value = int(self.app.getEntry("PE_Fixed_MP"), 10)
+        except ValueError:
+            value = 0
+            self.warning("Invalid Fixed MP entry.")
+            self.app.clearEntry("PE_Fixed_MP", callFunction=False)
+            self.app.setEntry("PE_Fixed_MP", "0", callFunction=False)
+
+        bytecode.append(0xA9)
+        bytecode.append(value)
+
+        # Create a list of STA zp for each character that has Max MP = Fixed Value
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 8:
+                value = p + 0x31
+                bytecode.append(0x85)   # STA zp
+                bytecode.append(value)
+
+        # Add code to read the Wisdom attribute
+        # LDY #$0A
+        bytecode.append(0xA0)
+        bytecode.append(0x0A)
+        # LDA ($99),Y
+        bytecode.append(0xB1)
+        bytecode.append(0x99)
+
+        # List of STA zp for characters with Max MP = WIS or Max MP = WIS/2
+        wisdom_address = 0     # ZP address where WIS value is saved
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 0 or self.max_mp[p] == 1:
+                value = p + 0x31
+                bytecode.append(0x85)   # STA zp
+                bytecode.append(value)
+
+                # Save it for later
+                if self.max_mp[p] == 0:
+                    wisdom_address = value
+
+        # If no characters have Max MP = WIS, then WIS is not saved anywhere, which would be a problem since we need it
+        # to calculate WIS*3/4 and WIS+INT later.
+        # So we save it to a new location in that case.
+        if wisdom_address == 0:
+            wisdom_address = 0x3C
+            # STA wisdom_address
+            bytecode.append(0x85)
+            bytecode.append(wisdom_address)
+
+        # Create one LSR instruction for each character using WIS/2
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 1:
+                value = p + 0x31
+                bytecode.append(0x46)   # LSR zp
+                bytecode.append(value)
+
+        # Now we need the previously stored WIS value to calculate WIS*3/4
+        bytecode.append(0x0A)
+        # ADC wisdom_address
+        bytecode.append(0x65)
+        bytecode.append(wisdom_address)
+        # ROR
+        bytecode.append(0x6A)
+        # LSR
+        bytecode.append(0x4A)
+
+        # Finally store it on the location of each profession using WIS*3/4
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 2:
+                value = p + 0x31
+                bytecode.append(0x85)   # STA zp
+                bytecode.append(value)
+
+        # Now read INT
+        # DEY
+        bytecode.append(0x88)
+        # LDA ($99),Y
+        bytecode.append(0xB1)
+        bytecode.append(0x99)
+
+        # Store this for each profession that uses MAX MP = INT or INT/2
+        # We will also need it later to calculate INT*3/4 and INT+WIS
+        int_address = 0
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 3 or self.max_mp[p] == 4:
+                value = p + 0x31
+                bytecode.append(0x85)
+                bytecode.append(value)
+
+                # Save this for later
+                if self.max_mp[p] == 3:
+                    int_address = value
+
+        # If no professions were using INT, then we save it to another location
+        if int_address == 0:
+            int_address = 0x3D
+            # STA int_address
+            bytecode.append(0x85)
+            bytecode.append(int_address)
+
+        # Right shift one bit for each class using INT/2
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 4:
+                value = p + 0x31
+                bytecode.append(0x46)   # LSR zp
+                bytecode.append(value)
+
+        # Create the code that calculates INT*3/4 using the previously stored value at int_address
+        # ASL
+        bytecode.append(0x0A)
+        # ADC int_address
+        bytecode.append(0x65)
+        bytecode.append(int_address)
+        # ROR
+        bytecode.append(0x6A)
+        # LSR
+        bytecode.append(0x4A)
+
+        # Store INT*3/4 for each profession using it
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 5:
+                value = p + 0x31
+                bytecode.append(0x85)   # STA zp
+                bytecode.append(value)
+
+        # Calculate (INT+WIS)/2 using previously saved values
+        # LDA wisdom_address
+        bytecode.append(0xA5)
+        bytecode.append(wisdom_address)
+        # CLC
+        bytecode.append(0x18)
+        # ADC int_address
+        bytecode.append(0x65)
+        bytecode.append(int_address)
+        # LSR
+        bytecode.append(0x4A)
+
+        # Store this for professions using (INT+WIS)/2
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 6:
+                value = p + 0x31
+                bytecode.append(0x85)  # STA zp
+                bytecode.append(value)
+
+        # Divide again to obtain (INT+WIS)/4
+        bytecode.append(0x4A)
+
+        # Store this for professions using (INT+WIS)/4
+        for p in range(len(self.max_mp)):
+            if self.max_mp[p] == 7:
+                value = p + 0x31
+                bytecode.append(0x85)  # STA zp
+                bytecode.append(value)
+
+        # Assign value to current character, using profession to index the table we just created
+        # LDY #$06
+        bytecode.append(0xA0)
+        bytecode.append(0x06)
+        # LAX($99),Y
+        bytecode.append(0xB3)
+        bytecode.append(0x99)
+        # LDA $31,X
+        bytecode.append(0xB5)
+        bytecode.append(0x31)
+        # LDY #$38
+        bytecode.append(0xA0)
+        bytecode.append(0x38)
+        # STA ($99),Y
+        bytecode.append(0x91)
+        bytecode.append(0x99)
+
+        # All done, RTS
+        bytecode.append(0x60)
+
+        # Size check
+        if len(bytecode) > max_size:
+            self.error(f"Bytecode for MAX MP routine is too large ({len(bytecode)} bytes).")
+            return False
+
+        # Save to ROM
+        self.rom.write_bytes(0xD, 0x881C, bytecode)
+
+        return True
+
     # --- PartyEditor._save_profession_data() ---
 
     def _save_profession_data(self) -> None:
@@ -2394,6 +2625,13 @@ class PartyEditor:
 
         # Save caster flags
         self.rom.write_bytes(0xF, 0xD455, self.caster_flags)
+
+        # Save max MP data
+        # TODO Don't overwrite custom code unless option checked
+        if self._save_max_mp() is False:
+            self.app.errorBox("ERROR", "Error saving Max MP data.", parent="Party_Editor")
+        else:
+            self.info("MAX MP routine created.")
 
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()
