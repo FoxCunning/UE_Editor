@@ -525,7 +525,7 @@ class PartyEditor:
                             self.app.entry("PE_HP_Base", 0, width=3, fg="#000000", font=10,
                                            change=self._professions_input,
                                            row=1, column=0, sticky="NEW")
-                            self.app.label("PE_Label_Plus", "+ (", row=1, column=1)
+                            self.app.label("PE_Label_Plus", "+ (", row=1, column=1, font=10)
                             self.app.entry("PE_HP_Bonus", 0, width=3, fg="#000000", font=10,
                                            change=self._professions_input,
                                            row=1, column=2, sticky="NEW")
@@ -562,6 +562,7 @@ class PartyEditor:
         # Read Max MP values
         if self._read_max_mp():
             self.app.hideLabel("PE_Label_Custom")
+            self.app.setCheckBox("PE_Overwrite_MP", True, callFunction=False)
             self.app.hideCheckBox("PE_Overwrite_MP")
 
         else:
@@ -569,6 +570,9 @@ class PartyEditor:
             self.app.showCheckBox("PE_Overwrite_MP")
             self.app.setCheckBox("PE_Overwrite_MP", False, callFunction=False)
             self.app.disableEntry("PE_Fixed_MP")
+            self.app.changeOptionBox("PE_Option_MP",
+                                     [_wis, _int, f"{_wis} / 2", f"{_int} / 2", f"MAX({_wis} / 2, {_int} / 2)",
+                                      f"MIN({_wis} / 2, {_int} / 2)", "Fixed Value"], callFunction=False)
             self.app.disableOptionBox("PE_Option_MP")
 
         # Disable inputs until a selection is made
@@ -1190,8 +1194,8 @@ class PartyEditor:
                 self.app.enableOptionBox("PE_Option_MP")
                 self.app.enableEntry("PE_Fixed_MP")
             else:
-                self.app.disbleOptionBox("PE_Option_MP")
-                self.app.disbleEntry("PE_Fixed_MP")
+                self.app.disableOptionBox("PE_Option_MP")
+                self.app.disableEntry("PE_Fixed_MP")
 
         else:
             self.warning(f"Unimplemented widget callback: '{widget}'.")
@@ -1468,11 +1472,21 @@ class PartyEditor:
             True if code is valid. False if customised / not supported / not recognised.
         """
         if self.rom.has_feature("enhanced party") is False:
-            # TODO Add support for vanilla game
-            return False
+            # Support for vanilla game
+            values = self.rom.read_bytes(0xD, 0x8854, 11)
+            for p in range(11):
+                if values[p] > 6:
+                    # Custom code
+                    return False
+                self.max_mp[p] = values[p]
+
+            value = self.rom.read_byte(0xD, 0x881D)
+            self.app.clearEntry("PE_Fixed_MP", callFunction=False, setFocus=False)
+            self.app.setEntry("PE_Fixed_MP", f"{value}", callFunction=False)
+            return True
 
         address = 0x881C
-        end_address = 0x885F  # We have exactly 4 bytes to spare in the Remastered ROM
+        end_address = 0x885E  # We have exactly 4 bytes to spare in the Remastered ROM
 
         # Read first byte of code
         value = self.rom.read_byte(0xD, address)
@@ -1484,7 +1498,7 @@ class PartyEditor:
         # Get fixed value MP (0 by default)
         value = self.rom.read_byte(0xD, address)
         address = address + 1
-        self.app.clearEntry("PE_Fixed_MP", callFunction=False)
+        self.app.clearEntry("PE_Fixed_MP", callFunction=False, setFocus=False)
         self.app.setEntry("PE_Fixed_MP", f"{value}", callFunction=False)
 
         # We now expect one or more STA for professions that use fixed value Max MP, followed by LDY #$06
@@ -2080,8 +2094,8 @@ class PartyEditor:
             self.app.disableOptionBox("PE_Primary_1")
 
         # HP Gain
-        self.app.clearEntry("PE_HP_Base", callFunction=False)
-        self.app.clearEntry("PE_HP_Bonus", callFunction=False)
+        self.app.clearEntry("PE_HP_Base", callFunction=False, setFocus=False)
+        self.app.clearEntry("PE_HP_Bonus", callFunction=False, setFocus=False)
         self.app.setEntry("PE_HP_Base", self.hp_base, callFunction=False)
         self.app.setEntry("PE_HP_Bonus", self.hp_bonus[self.selected_index], callFunction=False)
 
@@ -2318,6 +2332,35 @@ class PartyEditor:
         bool:
             True if saved successfully. False on fail (e.g. not enough space for the routine or invalid data)
         """
+        # Detect vanilla game
+        vanilla = True
+
+        bytecode = self.rom.read_bytes(0xD, 0x8854, 11)
+        for p in bytecode:
+            if p > 0xA:
+                vanilla = False
+                break
+
+        # --- Vanilla game code ---
+
+        if vanilla:
+            # Save fixed value
+            try:
+                value = int(self.app.getEntry("PE_Fixed_MP"), 10)
+            except ValueError:
+                self.warning(f"Invalid entry for Fixed MP Value.")
+                value = 0
+                self.app.clearEntry("PE_Fixed_MP", callFunction=False, setFocus=False)
+                self.app.setEntry("PE_Fixed_MP", "0", callFunction=False)
+
+            self.rom.write_byte(0xD, 0x881D, value)
+
+            # Save table of values
+            self.rom.write_bytes(0xD, 0x8854, self.max_mp)
+            return True
+
+        # --- Remastered version code ---
+
         # We will create the new bytecode here, then commit it to the ROM buffer after checking that it fits
         bytecode = bytearray()
         max_size = 0x885F - 0x881C
@@ -2328,7 +2371,7 @@ class PartyEditor:
         except ValueError:
             value = 0
             self.warning("Invalid Fixed MP entry.")
-            self.app.clearEntry("PE_Fixed_MP", callFunction=False)
+            self.app.clearEntry("PE_Fixed_MP", callFunction=False, setFocus=False)
             self.app.setEntry("PE_Fixed_MP", "0", callFunction=False)
 
         bytecode.append(0xA9)
@@ -2338,7 +2381,7 @@ class PartyEditor:
         for p in range(len(self.max_mp)):
             if self.max_mp[p] == 8:
                 value = p + 0x31
-                bytecode.append(0x85)   # STA zp
+                bytecode.append(0x85)  # STA zp
                 bytecode.append(value)
 
         # Add code to read the Wisdom attribute
@@ -2350,11 +2393,11 @@ class PartyEditor:
         bytecode.append(0x99)
 
         # List of STA zp for characters with Max MP = WIS or Max MP = WIS/2
-        wisdom_address = 0     # ZP address where WIS value is saved
+        wisdom_address = 0  # ZP address where WIS value is saved
         for p in range(len(self.max_mp)):
             if self.max_mp[p] == 0 or self.max_mp[p] == 1:
                 value = p + 0x31
-                bytecode.append(0x85)   # STA zp
+                bytecode.append(0x85)  # STA zp
                 bytecode.append(value)
 
                 # Save it for later
@@ -2374,7 +2417,7 @@ class PartyEditor:
         for p in range(len(self.max_mp)):
             if self.max_mp[p] == 1:
                 value = p + 0x31
-                bytecode.append(0x46)   # LSR zp
+                bytecode.append(0x46)  # LSR zp
                 bytecode.append(value)
 
         # Now we need the previously stored WIS value to calculate WIS*3/4
@@ -2391,7 +2434,7 @@ class PartyEditor:
         for p in range(len(self.max_mp)):
             if self.max_mp[p] == 2:
                 value = p + 0x31
-                bytecode.append(0x85)   # STA zp
+                bytecode.append(0x85)  # STA zp
                 bytecode.append(value)
 
         # Now read INT
@@ -2425,7 +2468,7 @@ class PartyEditor:
         for p in range(len(self.max_mp)):
             if self.max_mp[p] == 4:
                 value = p + 0x31
-                bytecode.append(0x46)   # LSR zp
+                bytecode.append(0x46)  # LSR zp
                 bytecode.append(value)
 
         # Create the code that calculates INT*3/4 using the previously stored value at int_address
@@ -2443,7 +2486,7 @@ class PartyEditor:
         for p in range(len(self.max_mp)):
             if self.max_mp[p] == 5:
                 value = p + 0x31
-                bytecode.append(0x85)   # STA zp
+                bytecode.append(0x85)  # STA zp
                 bytecode.append(value)
 
         # Calculate (INT+WIS)/2 using previously saved values
@@ -2511,13 +2554,22 @@ class PartyEditor:
         """
         Applies changes to rom buffer, doesn't save to file
         """
-        # Starting HP values and bonus HP per level
-        for p in range(len(self.hp_bonus)):
-            self.rom.write_byte(0xC, 0xBFE4 + p, self.hp_bonus[p] + self.hp_base)
-            self.rom.write_byte(0xD, 0x889F + p, self.hp_bonus[p])
+        if self.rom.has_feature("enhanced party"):      # Remastered ROM
 
-        # Base HP
-        self.rom.write_byte(0xD, 0x8872, self.hp_base)
+            # Starting HP values and bonus HP per level
+            for p in range(len(self.hp_bonus)):
+                self.rom.write_byte(0xC, 0xBFE4 + p, self.hp_bonus[p] + self.hp_base)
+                self.rom.write_byte(0xD, 0x889F + p, self.hp_bonus[p])
+
+            # Base HP
+            self.rom.write_byte(0xD, 0x8872, self.hp_base)
+
+        else:                                           # Vanilla game ROM
+            # Starting HP values and bonus HP per level
+            self.rom.write_byte(0xD, 0x8866, self.hp_bonus[0])
+
+            # Base HP
+            self.rom.write_byte(0xD, 0x8870, self.hp_base)
 
         # Gender by profession / race (index in character record)
         # A637    LDY #$06                 ;Read character's Profession (#$05 = Race instead)
@@ -2536,26 +2588,26 @@ class PartyEditor:
             self.rom.write_byte(0xD, 0xA638, 0x5)
 
         # Primary attribute(s) per profession
+        if self.rom.has_feature("enhanced party"):
+            for i in range(11):
+                # 2 bytes per entry: multiply index x2 (or shift 1 bit left)
+                address = 0x97D6 + (i << 1)
 
-        for i in range(11):
-            # 2 bytes per entry: multiply index x2 (or shift 1 bit left)
-            address = 0x97D6 + (i << 1)
+                primary_0 = self.primary_attributes[i][0] + 7
+                primary_1 = self.primary_attributes[i][1] + 7
 
-            primary_0 = self.primary_attributes[i][0] + 7
-            primary_1 = self.primary_attributes[i][1] + 7
+                self.rom.write_byte(0xD, address, primary_0)
+                self.rom.write_byte(0xD, address + 1, primary_1)
 
-            self.rom.write_byte(0xD, address, primary_0)
-            self.rom.write_byte(0xD, address + 1, primary_1)
+                # Also there is a table with cursor position that indicates these attributes
+                # during character creation
+                address = 0x937A + (i << 1)
 
-            # Also there is a table with cursor position that indicates these attributes
-            # during character creation
-            address = 0x937A + (i << 1)
+                primary_0 = self.primary_attributes[i][0] * 5
+                primary_1 = self.primary_attributes[i][1] * 5
 
-            primary_0 = self.primary_attributes[i][0] * 5
-            primary_1 = self.primary_attributes[i][1] * 5
-
-            self.rom.write_byte(0xC, address, 0xED + primary_0)
-            self.rom.write_byte(0xC, address + 1, 0xED + primary_1)
+                self.rom.write_byte(0xC, address, 0xED + primary_0)
+                self.rom.write_byte(0xC, address + 1, 0xED + primary_1)
 
         # Profession graphics colours
         for i in range(11):
@@ -2573,17 +2625,6 @@ class PartyEditor:
 
             self.rom.write_byte(0xC, 0xA246 + i, self.best_armour[i])
             self.rom.write_byte(0xD, 0x97BD + i, self.best_armour[i])
-
-        # Save HP gain data
-        if self.rom.has_feature("enhanced party"):
-            self.rom.write_byte(0xD, 0x8872, self.hp_base)
-
-            for i in range(11):
-                self.rom.write_byte(0xD, 0x889F + i, self.hp_bonus[i])
-
-        else:
-            self.rom.write_byte(0xD, 0x8870, self.hp_base)
-            self.rom.write_byte(0xD, 0x8866, self.hp_bonus[0])
 
         # Save number of selectable professions
         # Modify the routine at 0C:8D76 which creates the menu
@@ -2627,11 +2668,12 @@ class PartyEditor:
         self.rom.write_bytes(0xF, 0xD455, self.caster_flags)
 
         # Save max MP data
-        # TODO Don't overwrite custom code unless option checked
-        if self._save_max_mp() is False:
-            self.app.errorBox("ERROR", "Error saving Max MP data.", parent="Party_Editor")
-        else:
-            self.info("MAX MP routine created.")
+        # Don't overwrite custom code unless option checked
+        if self.app.getCheckBox("PE_Overwrite_MP"):
+            if self._save_max_mp() is False:
+                self.app.errorBox("ERROR", "Error saving Max MP data.", parent="Party_Editor")
+            else:
+                self.info("MAX MP data saved.")
 
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()
@@ -2684,17 +2726,17 @@ class PartyEditor:
 
         if custom_1 > 255:
             custom_1 = 255
-            self.app.clearEntry("PE_Custom_1", callFunction=False)
+            self.app.clearEntry("PE_Custom_1", callFunction=False, setFocus=False)
             self.app.setEntry("PE_Custom_1", f"0x{custom_1:02X}", callFunction=False)
 
         if custom_2 > 255:
             custom_2 = 255
-            self.app.clearEntry("PE_Custom_2", callFunction=False)
+            self.app.clearEntry("PE_Custom_2", callFunction=False, setFocus=False)
             self.app.setEntry("PE_Custom_2", f"0x{custom_2:02X}", callFunction=False)
 
         if adjustment_3 > 255:
             adjustment_3 = 255
-            self.app.clearEntry("PE_Adjustment_3", callFunction=False)
+            self.app.clearEntry("PE_Adjustment_3", callFunction=False, setFocus=False)
             self.app.setEntry("PE_Adjustment_3", f"0x{adjustment_3:02X}", callFunction=False)
 
         # Save code and values to ROM buffer
