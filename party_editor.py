@@ -37,6 +37,8 @@ class PartyEditor:
         self.attribute_names: List[str] = ["", "", "", ""]
         self.weapon_names: List[str] = []
         self.armour_names: List[str] = []
+        self.spell_names_0: List[str] = []  # Wizard spells
+        self.spell_names_1: List[str] = []  # Cleric spells
 
         # Number of selectable races for character creation
         self.selectable_races: int = 5
@@ -216,7 +218,7 @@ class PartyEditor:
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 0], colspan=2,
-                                sticky='NEW', stretch='ROW'):
+                                sticky="NEW", stretch="ROW"):
                 self.app.button("PE_Apply", name="Apply", value=self._races_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
@@ -281,7 +283,7 @@ class PartyEditor:
                 with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
                                     bg="#C0D0D0"):
                     self.app.button("PE_Edit_Menu_String", value=self._races_input, name="Edit Text",
-                                    image="res/edit-dlg.gif", sticky="NW", width=24, height=24, row=0, column=0)
+                                    image="res/edit-dlg-small.gif", sticky="NW", width=16, height=16, row=0, column=0)
                     self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1, font=10)
                     self.app.entry("PE_Menu_String_Id", value=f"0x{self.menu_string_id:02X}",
                                    change=self._races_input,
@@ -622,44 +624,44 @@ class PartyEditor:
             self.app.setSize(400, 250)
 
             # Buttons
-            with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 0], sticky='NEW', stretch='ROW'):
+            with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 0], sticky="NEW", stretch="ROW"):
                 self.app.button("PE_Apply", name="Apply", value=self._pre_made_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Selector
-            with self.app.frame("PE_Frame_Top", row=1, column=0, padding=[4, 2], stretch='ROW'):
-                self.app.label("PE_Label_Character", "Pre-made character slot:", row=0, column=0, sticky='NEW')
+            with self.app.frame("PE_Frame_Top", row=1, column=0, padding=[4, 2], stretch="ROW"):
+                self.app.label("PE_Label_Character", "Pre-made character slot:", row=0, column=0, sticky="NEW")
                 self.app.optionbox("PE_Character_Index",
                                    value=["0", "1", "2", "-", "3", "4", "5", "-", "6", "7", "8", "-", "9", "10", "11"],
-                                   row=0, column=1, sticky='NEW', change=self._pre_made_input)
+                                   row=0, column=1, sticky="NEW", change=self._pre_made_input)
 
             # Character data
-            with self.app.frame("PE_Frame_Data", row=2, column=0, padding=[4, 2], sticky='NEW', stretch='ROW'):
+            with self.app.frame("PE_Frame_Data", row=2, column=0, padding=[4, 2], sticky="NEW", stretch="ROW"):
                 # Row 0 - Name
                 self.app.label("PE_Label_Name", "Name:", row=0, column=0, sticky='NE',
                                change=self._pre_made_input)
-                self.app.entry("PE_Character_Name", "", width=10, row=0, column=1, sticky='NW',
+                self.app.entry("PE_Character_Name", "", width=10, row=0, column=1, sticky="NW",
                                change=self._pre_made_input)
                 # Row 1 - Race and profession
-                self.app.optionbox("PE_Race", race_names, row=1, column=0, sticky='NW',
+                self.app.optionbox("PE_Race", race_names, row=1, column=0, sticky="NW",
                                    change=self._pre_made_input)
-                self.app.optionbox("PE_Profession", professions_list, row=1, column=1, sticky='NW',
+                self.app.optionbox("PE_Profession", professions_list, row=1, column=1, sticky="NW",
                                    change=self._pre_made_input)
 
             # Character attributes
-            with self.app.frame("PE_Frame_Attributes", row=3, column=0, padding=[2, 2], sticky='NEW', stretch='ROW'):
+            with self.app.frame("PE_Frame_Attributes", row=3, column=0, padding=[2, 2], sticky="NEW", stretch="ROW"):
                 for r in range(4):
                     self.app.label(f"PE_Label_Attribute_{r}", self.attribute_names[r], row=0, column=(r * 2),
-                                   sticky='NW')
-                    self.app.entry(f"PE_Attribute_{r}", "", width=5, row=0, column=(r * 2) + 1, sticky='NW',
+                                   sticky="NW")
+                    self.app.entry(f"PE_Attribute_{r}", "", width=5, row=0, column=(r * 2) + 1, sticky="NW",
                                    change=self._pre_made_input)
 
             # Total attribute points
-            with self.app.frame("PE_Frame_Total_Points", row=4, column=0, padding=[2, 2], sticky='NEWS', stretch='ROW'):
+            with self.app.frame("PE_Frame_Total_Points", row=4, column=0, padding=[2, 2], sticky="NEWS", stretch="ROW"):
                 self.app.label("PE_Label_Total", "Total attribute points:", row=0, column=0, sticky='NE')
-                self.app.label("PE_Total_Points", "0", row=0, column=1, sticky='NW')
+                self.app.label("PE_Total_Points", "0", row=0, column=1, sticky="NW")
 
         # Display the first pre-made character
         self.app.setOptionBox("PE_Character_Index", 0, callFunction=True)
@@ -670,15 +672,69 @@ class PartyEditor:
         """
         Creates a window and widgets for editing magic spells
         """
+        # Read spell names
+        self._read_spell_names()
+
+        spell_flags_list = ["Nowhere", "Battle Only", "Town, Continent, Dungeon", "Continent Only", "Dungeon Only",
+                            "Continent and Dungeon", "Battle and Continent", "Battle and Dungeon",
+                            "Battle, Continent, Dungeon", "Everywhere"]
+
         with self.app.subWindow("Party_Editor"):
             self.app.setSize(480, 320)
 
             # Buttons
-            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
                 self.app.button("PE_Apply", name="Apply", value=self._generic_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
+
+            # Spell list
+            with self.app.frame("PE_Frame_Top", padding=[2, 2], row=1, column=0, stretch="BOTH", sticky="NEW"):
+
+                with self.app.frame("PE_Frame_Top_Left", padding=[2, 2], row=0, column=0):
+                    self.app.optionBox("PE_Spell_List", ["Spell List 1", "Spell List 2"],
+                                       row=0, column=0, sticky="NEW", font=10)
+                    self.app.label("PE_Label_Magic_Professions", "Available to:", row=1, column=0, sticky="NW", font=11)
+                    self.app.label("PE_Magic_Professions", "(None)", row=2, column=0, sticky="EW", font=10)
+
+                with self.app.frame("PE_Frame_Top_Right", padding=[4, 2], row=0, column=1):
+                    self.app.label("PE_Label_Spell_Names", "List 1 Names:", row=0, column=0, sticky="NEW", font=11)
+                    self.app.entry("PE_Spell_String_ID_1", "3", change=self._magic_input,
+                                   width=5, row=0, column=1, sticky="NW", font=10)
+                    self.app.button("PE_Button_Spell_String_1", image="res/edit-dlg-small.gif", width=16, height=16,
+                                    value=self._magic_input, row=0, column=2)
+
+            # Spell editor
+            with self.app.frame("PE_Frame_Bottom", padding=[2, 2], row=3, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.label("PE_Label_Select_Spell", "Select a spell to edit:", font=11,
+                               row=0, column=0, sticky="NE")
+                self.app.optionBox("PE_Option_Spell", self.spell_names_0, font=10, row=0, column=1, sticky="NEW")
+
+                self.app.label("PE_Label_Spell_Flags", "Casting Flags:", sticky="NE", row=1, column=0, font=11)
+                self.app.optionBox("PE_Spell_Flags", spell_flags_list, sticky="NEW", row=1, column=1, font=10)
+
+                with self.app.frame("PE_Bottom_Left", padding=[2, 2], row=2, column=0, sticky="NEW"):
+                    self.app.label("PE_Label_Spell_Address", "Routine Address:", sticky="NE",
+                                   row=0, column=0, font=11)
+                    self.app.entry("PE_Spell_Address", "0x0000", change=self._magic_input, width=8, sticky="NW",
+                                   row=0, column=1, font=10)
+
+                with self.app.frame("PE_Bottom_Right", padding=[2, 2], row=2, column=1, sticky="NEW"):
+
+                    self.app.label("PE_Label_MP_Display", "MP to display:", sticky="NE", row=0, column=0, font=11)
+                    self.app.entry("PE_MP_Display", "0", change=self._magic_input, width=5, sticky="NW",
+                                   row=0, column=1, font=10)
+
+                    self.app.label("PE_Label_MP_Cast", "MP to cast:", sticky="NE", row=1, column=0, font=11)
+                    self.app.entry("PE_MP_Cast", "0", change=self._magic_input, width=5, sticky="NW",
+                                   row=1, column=1, font=10)
+
+                    self.app.label("PE_Spell_Custom", "This spell is using a custom routine", fg="#F03030", sticky="NW",
+                                   row=1, column=1, font=11)
+                    self.app.hideLabel("PE_Spell_Custom")
+
+        # TODO Default selection (list 1, spell 1)
 
     # --- PartyEditor._create_special_window() ---
 
@@ -698,14 +754,14 @@ class PartyEditor:
             self.app.setSize(400, 492)
 
             # Buttons
-            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
                 self.app.button("PE_Apply", name="Apply", value=self._special_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Special 0
-            with self.app.labelFrame("MP Regeneration", row=1, column=0, stretch='BOTH', sticky='NEWS',
+            with self.app.labelFrame("MP Regeneration", row=1, column=0, stretch="BOTH", sticky="NEWS",
                                      padding=[4, 0], bg="#D0D0B0"):
                 # Make sure the code we want to modify is actually there, to avoid issues with customised ROMs
                 # Bank 0xD
@@ -719,20 +775,20 @@ class PartyEditor:
                     # Description
                     self.app.label("PE_Description_0", "The selected profession will regenerate double the MP",
                                    fg="#303070",
-                                   row=1, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=1, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     self.app.label("PE_Description_1", "when moving on the map, compared to other professions.",
                                    fg="#303070",
-                                   row=2, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=2, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     # Initial value, read from ROM
                     value = self.rom.read_byte(0xD, 0x8716)
                     self.app.setOptionBox("PE_Profession_0", value, callFunction=False)
 
                 else:
                     self.app.label("PE_Label_Unsupported_0", "The loaded ROM does not support this feature.",
-                                   row=0, column=0, sticky='NEWS', stretch='ROW', font=11)
+                                   row=0, column=0, sticky="NEWS", stretch="ROW", font=11)
 
             # Special 1
-            with self.app.labelFrame("Critical Hit", row=2, column=0, stretch='BOTH', sticky='NEWS',
+            with self.app.labelFrame("Critical Hit", row=2, column=0, stretch="BOTH", sticky="NEWS",
                                      padding=[4, 0], bg="#D0D0B0"):
                 # Code to check (bank 0):
                 # B0C4    LDA ($99),Y
@@ -757,10 +813,10 @@ class PartyEditor:
                     # Description
                     self.app.label("PE_Description_2", "This profession will have a chance of scoring",
                                    fg="#303070",
-                                   row=3, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=3, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     self.app.label("PE_Description_3", "critical hits (chance is based on character level).",
                                    fg="#303070",
-                                   row=4, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=4, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     # Initial values, read from ROM
                     value = self.rom.read_byte(0x0, 0xB0C7)
                     self.app.setOptionBox("PE_Profession_1", value, callFunction=False)
@@ -781,10 +837,10 @@ class PartyEditor:
 
                 else:
                     self.app.label("PE_Label_Unsupported_1", "The loaded ROM does not support this feature.",
-                                   row=0, column=0, sticky='NEWS', stretch='ROW', font=11)
+                                   row=0, column=0, sticky="NEWS", stretch="ROW", font=11)
 
             # Special 2
-            with self.app.labelFrame("Extra Damage", row=3, column=0, stretch='BOTH', sticky='NEWS',
+            with self.app.labelFrame("Extra Damage", row=3, column=0, stretch="BOTH", sticky="NEWS",
                                      padding=[4, 0], bg="#D0D0B0"):
                 # Code to check (bank 0):
                 # B0E8    CMP #$05  ; #$05 = Barbarian
@@ -816,10 +872,10 @@ class PartyEditor:
                     # Description
                     self.app.label("PE_Description_4", "This profession will always deal additional",
                                    fg="#303070",
-                                   row=5, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=5, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     self.app.label("PE_Description_5", "damage when hitting an enemy in combat.",
                                    fg="#303070",
-                                   row=6, column=0, colspan=2, sticky='WE', stretch='ROW', font=10)
+                                   row=6, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
 
                     # Initial values, read from ROM
                     value = self.rom.read_byte(0x0, 0xB0E9)
@@ -888,7 +944,7 @@ class PartyEditor:
 
                 else:
                     self.app.label("PE_Label_Unsupported_2", "The loaded ROM does not support this feature.",
-                                   row=0, column=0, sticky='NEWS', stretch='ROW', font=11)
+                                   row=0, column=0, sticky="NEWS", stretch="ROW", font=11)
 
     # --- PartyEditor.close_window() ---
 
@@ -927,6 +983,18 @@ class PartyEditor:
 
         else:
             self.warning(f"Unimplemented widget callback from '{widget}'.")
+
+    # --- PartyEditor._magic_input() ---
+
+    def _magic_input(self, widget: str) -> None:
+        """
+        Processes UI input from a widget that is part of the Magic Editor sub-window
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget generating the input
+        """
 
     # --- PartyEditor._races_input() ---
 
@@ -1422,6 +1490,113 @@ class PartyEditor:
             ascii_string = exodus_to_ascii(data)
             self.profession_names.append(ascii_string)
             # profession_names = profession_names + '\n' + ascii_string
+
+    # --- PartyEditor._read_spell_names() ---
+
+    def _read_spell_names(self) -> bool:
+        """
+        Reads compressed text used to create the spell menus, and caches it as a list of ASCII strings.
+
+        Returns
+        -------
+        bool
+            True if strings have been found, False otherwise (usually means the ROM uses custom code).
+        """
+        # This will be set to True if the code for spell menus is not recognised
+        custom_menu_code = False
+
+        # Find the ID of the string used for the first menu (default: 3)
+        # D3AA  $A9 $03        LDA #$03
+        # D3AC  $8D $D4 $03    STA $03D4
+        # D3AF  $20 $15 $D4    JSR SpellMenu
+
+        bytecode = self.rom.read_bytes(0xF, 0xD3AA, 5)
+
+        if bytecode[0] != 0xA9 or bytecode[2:4] != b'\x8D\xD4\x03':
+            self.warning("This ROM seems to use custom code for spell menus. Using default string IDs.")
+            custom_menu_code = True
+            menu_id = 3
+
+        else:
+            menu_id = bytecode[1]
+
+        strings = self.text_editor.special_text[menu_id]
+
+        # Clear previous entries
+        self.spell_names_0.clear()
+
+        # Add each line as a separate string, remove terminator character
+        for s in strings.splitlines(False):
+            self.spell_names_0.append(s.replace('~', '', 1))
+
+        if custom_menu_code is False:
+            # We must have exactly 8 spells at this point
+            while len(self.spell_names_0) < 8:
+                self.spell_names_0.append(" ")
+            if len(self.spell_names_0) > 8:
+                self.spell_names_0 = self.spell_names_0[:8]
+
+        # The second part is always the ID of the first part + 1
+        # E5DD  $AD $D4 $03    LDA $03D4
+        # E5E0  $18            CLC
+        # E5E1  $69 $01        ADC #$01
+        # E5E3  $85 $30        STA $30
+        # E5E5  $4C $2B $E5    JMP $E52B
+
+        strings = self.text_editor.special_text[menu_id + 1]
+        for s in strings.splitlines(False):
+            self.spell_names_0.append(s.strip('~'))
+
+        if custom_menu_code is False:
+            # We must have exactly 16 spells now
+            while len(self.spell_names_0) < 16:
+                self.spell_names_0.append(" ")
+            if len(self.spell_names_0) > 16:
+                self.spell_names_0 = self.spell_names_0[:16]
+
+        # Second menu (cleric spells)
+        # D378  $A9 $05        LDA #$05
+        # D37A  $8D $D4 $03    STA $03D4
+        # D37D  $20 $15 $D4    JSR SpellMenu
+
+        bytecode = self.rom.read_bytes(0xF, 0xD378, 5)
+
+        if bytecode[0] != 0xA9 or bytecode[2:4] != b'\x8D\xD4\x03':
+            # Default string ID = 5
+            menu_id = 5
+            if custom_menu_code is False:   # This check is to avoid giving the same warning twice
+                self.warning("This ROM seems to use custom code for spell menus. Using default string IDs.")
+                custom_menu_code = True
+
+        else:
+            menu_id = bytecode[1]
+
+        self.spell_names_1.clear()
+
+        strings = self.text_editor.special_text[menu_id]
+        for s in strings.splitlines(False):
+            self.spell_names_1.append(s.strip('~'))
+
+        if custom_menu_code is False:
+            # Make sure we have exactly 8 spells at this point
+            while len(self.spell_names_1) < 8:
+                self.spell_names_1.append(" ")
+            if len(self.spell_names_1) > 8:
+                self.spell_names_1 = self.spell_names_1[:8]
+
+        # Second part
+        strings = self.text_editor.special_text[menu_id + 1]
+        for s in strings.splitlines(False):
+            self.spell_names_1.append(s.strip('~'))
+
+        if custom_menu_code is False:
+            # And now we should have 16
+            while len(self.spell_names_1) < 16:
+                self.spell_names_1.append(" ")
+            if len(self.spell_names_1) > 16:
+                self.spell_names_1 = self.spell_names_1[:16]
+
+        return custom_menu_code
 
     # --- PartyEditor._update_menu_string_entry() ---
 
