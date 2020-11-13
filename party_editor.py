@@ -1,5 +1,7 @@
 __author__ = "Fox Cunning"
 
+import configparser
+import glob
 from dataclasses import dataclass, field
 from typing import List
 
@@ -12,6 +14,7 @@ from rom import ROM
 from text_editor import TextEditor, exodus_to_ascii, ascii_to_exodus
 
 
+# noinspection SpellCheckingInspection
 class PartyEditor:
     # --- PartyEditor.PreMade class ---
     @dataclass(init=True, repr=False)
@@ -23,6 +26,60 @@ class PartyEditor:
         race: int = 0
         profession: int = 0
         attributes: list = field(default_factory=list)
+
+    # --- PartyEditor.MagicCheck class ---
+    @dataclass(init=True, repr=False)
+    class MagicCheck:
+        """
+        Helper class for the magic system: pointers to subroutines used to roll a Level/INT/WIS check
+        """
+        name: str = ""
+        address: int = 0
+
+    # --- PartyEditor.Spell class ---
+    @dataclass(init=True, repr=False)
+    class Spell:
+        """
+        A helper class used to store magic spell data
+        """
+        @dataclass(init=True, repr=False)
+        class Parameter:
+            """
+            A helper sub-class to store spell parameter data
+            """
+            # Bank 0xF if address >= 0xC000; banks 0x0 and 0x6 otherwise
+            address: int = 0
+            # Could be a byte (e.g. for LDA or CMP), or word (e.g. for a JMP or JSR instruction)
+            value: int = 0
+            # Description that will be displayed in the editor
+            description: str = ""
+            # Type is used to choose what kind of UI to build for this parameter, values can be:
+            # 0 = Decimal, 1 = 8-bit Hex, 2 = 16-bit Address, 3 = Attribute index, 4 = Dialogue ID
+            type: int = 0
+            # Constants used for types
+            TYPE_DECIMAL = 0
+            TYPE_HEX = 1
+            TYPE_POINTER = 2
+            TYPE_ATTRIBUTE = 3
+            TYPE_BOOL = 4
+            TYPE_STRING = 5
+            TYPE_CHECK = 6
+            TYPE_MAP = 7
+
+        # Parameters for each specific spell
+        parameters: List[Parameter] = field(default_factory=list)
+        # Notes will appear in the UI when this spell is selected
+        notes: str = ""
+        # Flags determine when/where a spell can be used (e.g. dungeon, battle, everywhere, etc.)
+        flags: int = 0
+        # MP needed for the spell to appear on the caster's list of available spells
+        mp_display: int = 0
+        # MP actually consumed upon casting the spell
+        mp_cast: int = 0
+        # Address of the subroutine, in bank 0xF
+        address: int = 0
+        # This will be True if the spell code was not recognised and parameters could not be extracted
+        custom_code: bool = True
 
     def __init__(self, app: gui, rom: ROM, text_editor: TextEditor, palette_editor: PaletteEditor):
         self.app: gui = app
@@ -37,8 +94,12 @@ class PartyEditor:
         self.attribute_names: List[str] = ["", "", "", ""]
         self.weapon_names: List[str] = []
         self.armour_names: List[str] = []
-        self.spell_names_0: List[str] = []  # Wizard spells
-        self.spell_names_1: List[str] = []  # Cleric spells
+        self.spell_names_0: List[str] = []  # Cleric spells
+        self.spell_names_1: List[str] = []  # Wizard spells
+        self.magic_checks: List[PartyEditor.MagicCheck] = []
+        self.spells: List[PartyEditor.Spell] = []
+        # List of spell definition file names
+        self.spell_definitions: List[str] = []
 
         # Number of selectable races for character creation
         self.selectable_races: int = 5
@@ -673,68 +734,169 @@ class PartyEditor:
         Creates a window and widgets for editing magic spells
         """
         # Read spell names
-        self._read_spell_names()
+        custom = self._read_spell_names()
+
+        # Read info that we will need for the UI (this module will not change any of this):
+        self.caster_flags = self.rom.read_bytes(0xF, 0xD455, 11)
+        self._read_profession_names()
+        self._read_attribute_names()
+
+        # Find spell definition files
+        self.spell_definitions.clear()
+        definitions = glob.glob("spells_*.ini")
+        definitions_list: List[str] = []
+
+        for d in definitions:
+            parser = configparser.ConfigParser()
+            parser.read(d)
+            if parser.has_section("INFO"):
+                definitions_list.append(parser["INFO"].get("VERSION", d))
+                self.spell_definitions.append(d)
+            del parser
+
+        if len(definitions_list) < 1:
+            definitions_list.append("- No Spell Definitions Found -")
+
+        # Read other spell data
+        mp_increment = self._read_spell_data()
 
         spell_flags_list = ["Nowhere", "Battle Only", "Town, Continent, Dungeon", "Continent Only", "Dungeon Only",
                             "Continent and Dungeon", "Battle and Continent", "Battle and Dungeon",
                             "Battle, Continent, Dungeon", "Everywhere"]
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 320)
+            self.app.setSize(480, 480)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
-                self.app.button("PE_Apply", name="Apply", value=self._generic_input, image="res/floppy.gif",
+                self.app.button("PE_Apply", name="Apply", value=self._magic_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Spell list
             with self.app.frame("PE_Frame_Top", padding=[2, 2], row=1, column=0, stretch="BOTH", sticky="NEW"):
-
                 with self.app.frame("PE_Frame_Top_Left", padding=[2, 2], row=0, column=0):
-                    self.app.optionBox("PE_Spell_List", ["Spell List 1", "Spell List 2"],
+                    self.app.optionBox("PE_Spell_List", ["Spell List 1", "Spell List 2"], change=self._magic_input,
                                        row=0, column=0, sticky="NEW", font=10)
                     self.app.label("PE_Label_Magic_Professions", "Available to:", row=1, column=0, sticky="NW", font=11)
-                    self.app.label("PE_Magic_Professions", "(None)", row=2, column=0, sticky="EW", font=10)
+                    self.app.message("PE_Magic_Professions", "(None)", width=400, row=2, column=0, sticky="EW", font=10)
 
                 with self.app.frame("PE_Frame_Top_Right", padding=[4, 2], row=0, column=1):
-                    self.app.label("PE_Label_Spell_Names", "List 1 Names:", row=0, column=0, sticky="NEW", font=11)
-                    self.app.entry("PE_Spell_String_ID_1", "3", change=self._magic_input,
+                    # List 1 string ID
+                    self.app.label("PE_Label_Spell_Names_1", "List 1 Names String:",
+                                   row=0, column=0, sticky="NEW", font=11)
+                    self.app.entry("PE_Spell_String_ID_1", "3", change=self._magic_input, fg="#000000",
                                    width=5, row=0, column=1, sticky="NW", font=10)
                     self.app.button("PE_Button_Spell_String_1", image="res/edit-dlg-small.gif", width=16, height=16,
                                     value=self._magic_input, row=0, column=2)
+                    # List 2 string ID
+                    self.app.label("PE_Label_Spell_Names_2", "List 2 Names String:",
+                                   row=1, column=0, sticky="NEW", font=11)
+                    self.app.entry("PE_Spell_String_ID_2", "3", change=self._magic_input, fg="#000000",
+                                   width=5, row=1, column=1, sticky="NW", font=10)
+                    self.app.button("PE_Button_Spell_String_2", image="res/edit-dlg-small.gif", width=16, height=16,
+                                    value=self._magic_input, row=1, column=2)
+                    self.app.message("PE_Message_Custom_Menus", "This ROM uses a custom routine for spell  menus.",
+                                     fg="#F03030", sticky="NEWS", width=220, row=2, column=0, colspan=3, font=11)
+
+            # MP cost routine
+            with self.app.frame("PE_Frame_Middle", padding=[2, 2], row=3, column=0, stretch="BOTH", sticky="NEW"):
+                with self.app.frame("PE_Frame_Mid_Left", row=0, column=0, sticky="NWS"):
+                    self.app.radioButton("PE_Radio_MP", "Incremental MP Cost", change=self._magic_input,
+                                         row=0, column=0, font=11)
+                    self.app.radioButton("PE_Radio_MP", "Uneven MP Cost", change=self._magic_input,
+                                         row=1, column=0, font=11)
+
+                    self.app.entry("PE_Incremental_MP", "4", change=self._magic_input, fg="#000000", width=4,
+                                   row=0, column=1, font=10)
+
+                with self.app.frame("PE_Frame_Mid_Right", row=0, column=1, sticky="NES"):
+                    self.app.message("PE_Message_Custom_MP", "This ROM uses custom code for the spell menu.", width=200,
+                                     row=0, column=0, sticky="NEWS", font=10, fg="#F03030")
 
             # Spell editor
-            with self.app.frame("PE_Frame_Bottom", padding=[2, 2], row=3, column=0, stretch="BOTH", sticky="NEWS"):
+            with self.app.frame("PE_Frame_Bottom", padding=[2, 2], row=4, column=0, stretch="BOTH", sticky="NEWS"):
                 self.app.label("PE_Label_Select_Spell", "Select a spell to edit:", font=11,
                                row=0, column=0, sticky="NE")
-                self.app.optionBox("PE_Option_Spell", self.spell_names_0, font=10, row=0, column=1, sticky="NEW")
+                self.app.optionBox("PE_Option_Spell", self.spell_names_0, change=self._magic_input,
+                                   font=10, row=0, column=1, sticky="NEW")
 
                 self.app.label("PE_Label_Spell_Flags", "Casting Flags:", sticky="NE", row=1, column=0, font=11)
-                self.app.optionBox("PE_Spell_Flags", spell_flags_list, sticky="NEW", row=1, column=1, font=10)
+                self.app.optionBox("PE_Spell_Flags", spell_flags_list, change=self._magic_input,
+                                   sticky="NEW", row=1, column=1, font=10)
 
                 with self.app.frame("PE_Bottom_Left", padding=[2, 2], row=2, column=0, sticky="NEW"):
                     self.app.label("PE_Label_Spell_Address", "Routine Address:", sticky="NE",
                                    row=0, column=0, font=11)
                     self.app.entry("PE_Spell_Address", "0x0000", change=self._magic_input, width=8, sticky="NW",
-                                   row=0, column=1, font=10)
+                                   fg="#000000", row=0, column=1, font=10)
 
                 with self.app.frame("PE_Bottom_Right", padding=[2, 2], row=2, column=1, sticky="NEW"):
-
                     self.app.label("PE_Label_MP_Display", "MP to display:", sticky="NE", row=0, column=0, font=11)
                     self.app.entry("PE_MP_Display", "0", change=self._magic_input, width=5, sticky="NW",
-                                   row=0, column=1, font=10)
+                                   fg="#000000", row=0, column=1, font=10)
 
                     self.app.label("PE_Label_MP_Cast", "MP to cast:", sticky="NE", row=1, column=0, font=11)
                     self.app.entry("PE_MP_Cast", "0", change=self._magic_input, width=5, sticky="NW",
-                                   row=1, column=1, font=10)
+                                   fg="#000000", row=1, column=1, font=10)
 
                     self.app.label("PE_Spell_Custom", "This spell is using a custom routine", fg="#F03030", sticky="NW",
                                    row=1, column=1, font=11)
                     self.app.hideLabel("PE_Spell_Custom")
 
-        # TODO Default selection (list 1, spell 1)
+                # Spell definitions file
+                self.app.label("PE_Label_Definitions", "Spell definitions file:", sticky="NSE", font=10,
+                               row=3, column=0)
+                self.app.optionBox("PE_Spell_Definitions", definitions_list, change=self._magic_input,
+                                   row=3, column=1, sticky="NSW", font=10)
+
+                # Spell parameters
+                with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2],
+                                         row=4, column=0, colspan=2, sticky="NEWS"):
+                    pass
+
+        # Spell list string IDs
+        if custom is False:
+            self.app.enableEntry("PE_Spell_String_ID_1")
+            self.app.enableButton("PE_Button_Spell_String_1")
+            string_id = self.rom.read_byte(0xF, 0xD3AB)
+            self.app.clearEntry("PE_Spell_String_ID_1", callFunction=False, setFocus=False)
+            self.app.setEntry("PE_Spell_String_ID_1", f"{string_id}", callFunction=False)
+
+            self.app.enableEntry("PE_Spell_String_ID_2")
+            self.app.enableButton("PE_Button_Spell_String_2")
+            string_id = self.rom.read_byte(0xF, 0xD379)
+            self.app.clearEntry("PE_Spell_String_ID_2", callFunction=False, setFocus=False)
+            self.app.setEntry("PE_Spell_String_ID_2", f"{string_id}", callFunction=False)
+
+            self.app.hideMessage("PE_Message_Custom_Menus")
+
+        else:
+            self.app.disableEntry("PE_Spell_String_ID_1")
+            self.app.disableButton("PE_Button_Spell_String_1")
+            self.app.disableEntry("PE_Spell_String_ID_2")
+            self.app.disableButton("PE_Button_Spell_String_2")
+            self.app.showMessage("PE_Message_Custom_Menus")
+
+        # MP system options
+        if mp_increment > -1:
+            self.app.setRadioButton("PE_Radio_MP", "Incremental MP Cost", callFunction=False)
+            self.app.clearEntry("PE_Incremental_MP", callFunction=False, setFocus=False)
+            self.app.setEntry("PE_Incremental_MP", f"{mp_increment}", callFunction=False)
+            self.app.hideMessage("PE_Message_Custom_MP")
+
+        elif mp_increment == -1:
+            self.app.setRadioButton("PE_Radio_MP", "Uneven MP Cost", callFunction=False)
+            self.app.disableEntry("PE_Incremental_MP")
+            self.app.hideMessage("PE_Message_Custom_MP")
+
+        else:
+            self.app.disableRadioButton("PE_Radio_MP")
+            self.app.disableEntry("PE_Incremental_MP")
+
+        # Default selection (list 1, spell 1)
+        self.app.setOptionBox("PE_Spell_List", 0, callFunction=True)
 
     # --- PartyEditor._create_special_window() ---
 
@@ -984,6 +1146,25 @@ class PartyEditor:
         else:
             self.warning(f"Unimplemented widget callback from '{widget}'.")
 
+    # --- PartyEditor._selected_spell_id() ---
+
+    def _selected_spell_id(self) -> int:
+        """
+
+        Returns
+        -------
+        int:
+            The index of the currently selected spell (0-31)
+        """
+        # A spell has been selected
+        value = self.app.getOptionBox("PE_Option_Spell")
+        box = self.app.getOptionBoxWidget("PE_Option_Spell")
+        spell_id = box.options.index(value)
+        if self.selected_index == 0:
+            spell_id = spell_id + 16
+
+        return spell_id
+
     # --- PartyEditor._magic_input() ---
 
     def _magic_input(self, widget: str) -> None:
@@ -995,6 +1176,65 @@ class PartyEditor:
         widget: str
             Name of the widget generating the input
         """
+        if widget == "PE_Spell_List":
+            # A new spell list has been selected
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            self.selected_index = box.options.index(value)
+            # Show which professions have access to this list
+            message = ""
+            for p in range(len(self.caster_flags)):
+                if self.caster_flags[p] == 3 or self.caster_flags[p] == self.selected_index + 1:
+                    if message != "":
+                        message = message + ", "
+                    message = message + self.profession_names[p]
+            if len(message) < 1:
+                message = "(None)"
+            self.app.clearMessage("PE_Magic_Professions")
+            self.app.setMessage("PE_Magic_Professions", message)
+            # Populate the spell option box with names from this list if needed
+            self.app.clearOptionBox("PE_Option_Spell", callFunction=False)
+            self.app.changeOptionBox("PE_Option_Spell",
+                                     self.spell_names_0 if self.selected_index == 0 else self.spell_names_1,
+                                     index=0, callFunction=False)
+            # Display info for the first spell in this list
+            self.magic_info(0 if self.selected_index == 1 else 16)
+
+        elif widget[:16] == "PE_Attribute_Id_":
+            # Get index of currently selected spell
+            spell_id = self._selected_spell_id()
+
+            # Set option box according to this value
+            try:
+                # Get parameter index
+                parameter_id = int(widget[-2:], 10)
+
+                value = int(self.app.getEntry(widget), 16)
+                self.app.entry(widget, fg="#000000")
+                if 6 < value < 0xB:
+                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=value - 7,
+                                          callFunction=False)
+                elif value == 0x33:
+                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=4,
+                                          callFunction=False)
+                else:
+                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=5,
+                                          callFunction=False)
+
+                # Set the value for this spell's parameter
+                self.spells[spell_id].parameters[parameter_id].value = value
+
+            except ValueError:
+                self.app.entry(widget, fg="#D03030")
+
+        elif widget == "PE_Option_Spell":
+            # A spell has been selected
+            spell_id = self._selected_spell_id()
+            # Update widgets for the current selection
+            self.magic_info(spell_id)
+
+        else:
+            self.warning(f"Unimplemented Magic Editor widget input: '{widget}'.")
 
     # --- PartyEditor._races_input() ---
 
@@ -1491,6 +1731,313 @@ class PartyEditor:
             self.profession_names.append(ascii_string)
             # profession_names = profession_names + '\n' + ascii_string
 
+    # --- PartyEditor._read_spell_data() ---
+
+    def _read_spell_data(self) -> int:
+        """
+        Reads data for each spell from ROM.
+
+        Returns
+        -------
+        bool:
+            -2 if the ROM is using custom code (e.g. spell tables and/or menu calls can't be found).<br/>
+            -1 if the ROM uses "uneven MP" code.<br/>
+            If the ROM uses the standard "incremental MP" code, the value of the increment will be returned (0-255).
+        """
+        # Clear local spell data first
+        self.spells.clear()
+
+        # Read table
+        # This will be set to True if the code doesn't match what we're looking for
+        custom_code = False
+
+        # Get spell table address
+        address = self.rom.read_word(0xF, 0xD3BD)
+
+        if custom_code is True:
+            # Everything is custom, we can't even find the table
+            for s in range(32):
+                self.spells.append(PartyEditor.Spell())
+            return -2
+
+        # First, try to determine whether this ROM uses the "incremental" MP system, or the "uneven cost" one
+        # Normally, this code is present:
+        # D441    LDY #$2F
+        # D443    LDA ($99),Y
+        # D445    LDY #$00
+        # D447    INY
+        # D448    SEC
+        # D449    SBC #$05  ; <-- Incremental cost
+        # D44B    BCS $D447
+        # D44D    CPY #$10
+        # D44F    BCC $D453
+        # D451    LDY #$10
+        # D453    TYA
+        # D454    RTS
+
+        bytecode = self.rom.read_bytes(0xF, 0xD448, 3)
+        if bytecode[0] == 0x38 and bytecode[1] == 0xE9:     # $38 = SEC, $E9 = SBC d
+            self.info("Incremental MP subroutine detected.")
+            incremental_mp = bytecode[2]
+
+        else:
+            self.info("Detecting uneven MP subroutine...")
+            incremental_mp = -1
+            # No "incremental MP" code was found, try to detect "uneven MP" code
+            # First, this call is JSR $D415 for incremental MP and JSR $D419 for uneven
+            bytecode = self.rom.read_bytes(0xF, 0xD37D, 3)
+
+            if bytecode[0] != 0x20:     # $20 = JSR d
+                # Unrecognised code
+                incremental_mp = -2
+                self.warning(f"Unrecognised bytecode {bytecode} at 0F:D37D.")
+
+            else:
+                if bytecode[1] == 0x19:
+                    # This points to the custom routine that builds the "cleric" spells list
+                    # Make sure that is so, we expect:
+                    # LDX #$40
+                    # LDY #$2F
+                    bytecode = self.rom.read_bytes(0xF, 0xD419, 4)
+                    if bytecode != b'\xA2\x40\xA0\x2F':
+                        # Unrecognised code
+                        incremental_mp = -2
+                        self.warning(f"Unrecognised bytecode {bytecode} at 0F:D419.")
+
+        # Keep track of previous spell's MP cost for incremental values
+        mp_cost = 0
+
+        self.app.setStatusbar("Decoding spell data...")
+
+        # Read spell data from the table
+        for s in range(32):
+            # Keep track of previous spell's MP cost for incremental values
+            if incremental_mp > -1:
+                if s == 0 or s == 16:
+                    mp_cost = 0
+                else:
+                    mp_cost = mp_cost + incremental_mp
+
+            spell = PartyEditor.Spell()
+            spell.flags = self.rom.read_byte(0xF, address)
+
+            # The MP value from the table is not used unless we inject our "uneven MP" code
+            if incremental_mp > -1:
+                spell.mp_display = mp_cost
+            else:
+                spell.mp_display = self.rom.read_byte(0xF, address + 1)
+
+            spell.address = self.rom.read_word(0xF, address + 2)
+
+            # Read routine and try to find MP to cast + parameters
+            values = self._decode_spell_routine(s, spell.address)
+            if values["Custom"] is True:
+                spell.custom_code = True
+            else:
+                spell.custom_code = False
+                spell.notes = values["Notes"]
+                spell.mp_cast = values["MP"]
+                spell.parameters = values["Parameters"]
+
+            # Store data
+            self.spells.append(spell)
+
+            # Each entry is 4 bytes long, move to the next one
+            address = address + 4
+
+        # Read attribute check definitions
+        parser = configparser.ConfigParser()
+        # TODO Use the currently selected entry for definitions file
+        parser.read(self.spell_definitions[0])
+        # Expect a maximum of 8 checks
+        self.magic_checks.clear()
+        for c in range(8):
+            if parser.has_section(f"CHECK_{c}") is False:
+                break
+            name = parser[f"CHECK_{c}"].get("NAME", f"Check#{c}")
+            address = parser[f"CHECK_{c}"].get("ADDRESS", "0")
+            try:
+                value = int(address, 16)
+                if value < 0x8000 or value > 0xFFFF:
+                    self.warning(f"Invalid address for Check '{name}' (0x{value:0x4}).")
+                    continue
+            except ValueError:
+                self.warning(f"Invalid address for Check '{name}' ({address}).")
+                continue
+
+            check = PartyEditor.MagicCheck()
+            check.name = name
+            check.address = value
+            self.magic_checks.append(check)
+
+        # TODO Read common code used by various spells (single-hit missiles, multi-hit magic...)
+
+        self.app.setStatusbar("Spell data decoded.")
+
+        return incremental_mp
+
+    # --- PartyEditor._decode_spell_routine() ---
+
+    def _decode_spell_routine(self, spell_id: int, address: int, config_file="remastered") -> dict:
+        """
+        Tries to decode a spell's routine to extract its parameters.
+
+        Parameters
+        ----------
+        spell_id: int
+            The index of the spell, so we know what to look for and where.
+
+        address: int
+            The base address of the routine, so we can also work with relocated (but unchanged) code.
+
+        Returns
+        -------
+        dict:
+            An a dictionary: {"Custom": bool, "MP": int, "parameters": List[Spell.Parameter]}.
+        """
+        decoded = {
+            "Custom": False,
+            "MP": 0,
+            "Notes": "",
+            "Parameters": []
+        }
+
+        # Read spell definitions from file
+        parser = configparser.ConfigParser()
+        parser.read(f"spells_{config_file}.ini")
+
+        # Find spell ID in config file
+        if parser.has_section(f"SPELL_{spell_id}") is False:
+            decoded["Custom"] = True
+            return decoded
+
+        section = parser[f"SPELL_{spell_id}"]
+
+        # Get actual MP cost
+        offset = section.get("MP", "zero")
+        if offset == "zero":
+            decoded["MP"] = 0
+        else:
+            try:
+                decoded["MP"] = self.rom.read_byte(0xF, address + int(offset, 16))
+            except ValueError:
+                self.app.warningBox("Decode Spell", f"WARNING: Spells file contains invalid MP offset: '{offset}' " +
+                                    f"for spell #{spell_id}.", "Party_Editor")
+                decoded["Custom"] = True
+                return decoded
+
+        # Read notes, if any
+        decoded["Notes"] = section.get("NOTES", "").replace("\\n", "\n")
+
+        # Read parameters (allow a maximum of 16)
+        parameters: List[PartyEditor.Spell.Parameter] = []
+        for p in range(16):
+            # Description
+            description = section.get(f"DESCRIPTION_{p}", "none")
+
+            if description == "none":
+                # Found last parameter
+                break
+
+            parameter = PartyEditor.Spell.Parameter()
+            parameter.description = description
+
+            # Type, if any
+            value = section.get(f"TYPE_{p}", "DECIMAL")
+            if value[0] == 'D':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_DECIMAL
+            elif value[0] == 'H':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_HEX
+            elif value[0] == 'P':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_POINTER
+            elif value[0] == 'S':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_STRING
+            elif value[0] == 'A':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_ATTRIBUTE
+            elif value[0] == 'B':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_BOOL
+            elif value[0] == 'C':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_CHECK
+            elif value[0] == 'M':
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_MAP
+            else:
+                self.warning(f"Invalid type '{value}' for parameter #{p} in spell #{spell_id}. Using defaults.")
+                parameter.type = PartyEditor.Spell.Parameter.TYPE_DECIMAL
+
+            # Pointer, if any
+            value = section.get(f"POINTER_{p}", "none")
+            if value != "none":
+                try:
+                    pointer_offset = int(value, 16)
+                    pointer = self.rom.read_word(0xF, address + pointer_offset)
+                    if pointer < 0x8000 or pointer > 0xFFFF:
+                        self.app.warningBox("Decode Spell",
+                                            f"WARNING: Spell #{spell_id} has invalid pointer '{value}' " +
+                                            f"for parameter #{p}.",
+                                            "Party_Editor")
+                        continue
+
+                except ValueError:
+                    self.app.warningBox("Decode Spell", f"WARNING: Spell #{spell_id} has invalid pointer '{value}' " +
+                                        f"for parameter #{p}.",
+                                        "Party_Editor")
+                    continue
+            else:
+                pointer = 0
+
+            # Offset
+            value = section.get(f"OFFSET_{p}")
+            if value is None:
+                self.app.warningBox("Decode Spell", f"WARNING: Spell #{spell_id} has no offset for parameter #{p}.",
+                                    "Party_Editor")
+                continue
+
+            try:
+                offset = int(value, 16)
+
+            except ValueError:
+                self.app.warningBox("Decode Spell", f"WARNING: Spell #{spell_id} has invalid offset '{value}' " +
+                                    f"for parameter #{p}.",
+                                    "Party_Editor")
+                continue
+
+            # If a pointer was specified, calculate the offset based on that
+            if pointer > 0:
+                parameter_address = pointer + offset
+
+            # Otherwise, use the spell address
+            else:
+                parameter_address = address + offset
+
+            # Figure out which bank contains this parameter
+            bank = 0xF if parameter_address >= 0xC000 else 0
+
+            # We need to know if the parameter is a Word or Byte, and we read the op code for that
+            # TODO Sanity check using paramter type? E.g. Pointers and Checks need to be 16-bit, Maps 8-bit etc.
+            code = self.rom.read_byte(bank, parameter_address - 1)
+            if code == 0x20 or code == 0x4C or code == 0xAD or code == 0xBD:
+                # Read Word
+                parameter.value = self.rom.read_word(bank, parameter_address)
+                # These must be 8-bit values
+                if (parameter.type == parameter.TYPE_MAP or parameter.type == parameter.TYPE_ATTRIBUTE or
+                        parameter.type == parameter.TYPE_STRING or parameter.type == parameter.TYPE_BOOL):
+                    self.app.warningBox("Decode Spell", f"WARNING: Spell #{spell_id}'s Parameter #{p} must be an " +
+                                        f"8-bit value, but is preceeded by 16-bit value instruction.")
+            else:
+                # Read Byte
+                parameter.value = self.rom.read_byte(bank, parameter_address)
+                # Pointers and Checks must be 16-bit
+                if parameter.type == parameter.TYPE_POINTER or parameter.type == parameter.TYPE_CHECK:
+                    self.app.warningBox("Decode Spell", f"WARNING: Spell #{spell_id}'s Parameter #{p} must be a " +
+                                        f"16-bit value, but is preceeded by 8-bit value instruction.")
+
+            parameters.append(parameter)
+
+        decoded["Custom"] = False
+        decoded["Parameters"] = parameters
+
+        return decoded
+
     # --- PartyEditor._read_spell_names() ---
 
     def _read_spell_names(self) -> bool:
@@ -1512,8 +2059,8 @@ class PartyEditor:
 
         bytecode = self.rom.read_bytes(0xF, 0xD3AA, 5)
 
-        if bytecode[0] != 0xA9 or bytecode[2:4] != b'\x8D\xD4\x03':
-            self.warning("This ROM seems to use custom code for spell menus. Using default string IDs.")
+        if bytecode[0] != 0xA9 or bytecode[2:5] != b'\x8D\xD4\x03':
+            self.warning("This ROM seems to use custom code for the Wizard spell menu. Using default string IDs.")
             custom_menu_code = True
             menu_id = 3
 
@@ -1523,18 +2070,18 @@ class PartyEditor:
         strings = self.text_editor.special_text[menu_id]
 
         # Clear previous entries
-        self.spell_names_0.clear()
+        self.spell_names_1.clear()
 
         # Add each line as a separate string, remove terminator character
         for s in strings.splitlines(False):
-            self.spell_names_0.append(s.replace('~', '', 1))
+            self.spell_names_1.append(s.replace('~', '', 1))
 
         if custom_menu_code is False:
             # We must have exactly 8 spells at this point
-            while len(self.spell_names_0) < 8:
-                self.spell_names_0.append(" ")
-            if len(self.spell_names_0) > 8:
-                self.spell_names_0 = self.spell_names_0[:8]
+            while len(self.spell_names_1) < 8:
+                self.spell_names_1.append(" ")
+            if len(self.spell_names_1) > 8:
+                self.spell_names_1 = self.spell_names_1[:8]
 
         # The second part is always the ID of the first part + 1
         # E5DD  $AD $D4 $03    LDA $03D4
@@ -1545,14 +2092,14 @@ class PartyEditor:
 
         strings = self.text_editor.special_text[menu_id + 1]
         for s in strings.splitlines(False):
-            self.spell_names_0.append(s.strip('~'))
+            self.spell_names_1.append(s.strip('~'))
 
         if custom_menu_code is False:
             # We must have exactly 16 spells now
-            while len(self.spell_names_0) < 16:
-                self.spell_names_0.append(" ")
-            if len(self.spell_names_0) > 16:
-                self.spell_names_0 = self.spell_names_0[:16]
+            while len(self.spell_names_1) < 16:
+                self.spell_names_1.append(" ")
+            if len(self.spell_names_1) > 16:
+                self.spell_names_1 = self.spell_names_1[:16]
 
         # Second menu (cleric spells)
         # D378  $A9 $05        LDA #$05
@@ -1561,40 +2108,40 @@ class PartyEditor:
 
         bytecode = self.rom.read_bytes(0xF, 0xD378, 5)
 
-        if bytecode[0] != 0xA9 or bytecode[2:4] != b'\x8D\xD4\x03':
+        if bytecode[0] != 0xA9 or bytecode[2:5] != b'\x8D\xD4\x03':
             # Default string ID = 5
             menu_id = 5
-            if custom_menu_code is False:   # This check is to avoid giving the same warning twice
-                self.warning("This ROM seems to use custom code for spell menus. Using default string IDs.")
+            if custom_menu_code is False:  # This check is to avoid giving the same warning twice
+                self.warning("This ROM seems to use custom code for the Cleric spell menu. Using default string IDs.")
                 custom_menu_code = True
 
         else:
             menu_id = bytecode[1]
 
-        self.spell_names_1.clear()
+        self.spell_names_0.clear()
 
         strings = self.text_editor.special_text[menu_id]
         for s in strings.splitlines(False):
-            self.spell_names_1.append(s.strip('~'))
+            self.spell_names_0.append(s.strip('~'))
 
         if custom_menu_code is False:
             # Make sure we have exactly 8 spells at this point
-            while len(self.spell_names_1) < 8:
-                self.spell_names_1.append(" ")
-            if len(self.spell_names_1) > 8:
-                self.spell_names_1 = self.spell_names_1[:8]
+            while len(self.spell_names_0) < 8:
+                self.spell_names_0.append(" ")
+            if len(self.spell_names_0) > 8:
+                self.spell_names_0 = self.spell_names_0[:8]
 
         # Second part
         strings = self.text_editor.special_text[menu_id + 1]
         for s in strings.splitlines(False):
-            self.spell_names_1.append(s.strip('~'))
+            self.spell_names_0.append(s.strip('~'))
 
         if custom_menu_code is False:
             # And now we should have 16
-            while len(self.spell_names_1) < 16:
-                self.spell_names_1.append(" ")
-            if len(self.spell_names_1) > 16:
-                self.spell_names_1 = self.spell_names_1[:16]
+            while len(self.spell_names_0) < 16:
+                self.spell_names_0.append(" ")
+            if len(self.spell_names_0) > 16:
+                self.spell_names_0 = self.spell_names_0[:16]
 
         return custom_menu_code
 
@@ -2197,6 +2744,152 @@ class PartyEditor:
         # Put the image on the canvas
         self.app.addCanvasImage("PE_Canvas_Sprite", 16, 16, ImageTk.PhotoImage(sprite))
 
+    # --- PartyEditor.magic_info() ---
+
+    def magic_info(self, spell_id: int) -> None:
+        """
+        Show info for the currently selected spell
+
+        Parameters
+        ----------
+        spell_id: int
+            Index of the spell whose info is going to be shown. Spell list index is self.selected_index.
+        """
+        mp_to_show = self.spells[spell_id].mp_display
+        mp_to_cast = self.spells[spell_id].mp_cast
+        routine_address = self.spells[spell_id].address
+
+        # ["Nowhere", "Battle Only", "Town, Continent, Dungeon", "Continent Only", "Dungeon Only",
+        #  "Continent and Dungeon", "Battle and Continent", "Battle and Dungeon",
+        #  "Battle, Continent, Dungeon", "Everywhere"]
+        flags = self.spells[spell_id].flags
+        self.app.clearEntry("PE_Spell_Address", callFunction=False, setFocus=False)
+        self.app.setEntry("PE_Spell_Address", f"0x{routine_address:04X}", callFunction=False)
+
+        self.app.clearEntry("PE_MP_Display", callFunction=False, setFocus=False)
+        self.app.setEntry("PE_MP_Display", f"{mp_to_show}", callFunction=False)
+
+        self.app.clearEntry("PE_MP_Cast", callFunction=False, setFocus=False)
+        self.app.setEntry("PE_MP_Cast", f"{mp_to_cast}", callFunction=False)
+
+        # Decode flags and set corresponding option
+        value = 9   # Default: Everywhere
+        if flags == 0:
+            value = 0   # Nowhere
+        elif flags == 1:
+            value = 4  # Dungeon Only
+        elif flags == 2:
+            value = 1   # Battle Only
+        elif flags == 3:
+            value = 7   # Dungeon and Battle
+        elif flags == 4:
+            value = 3   # Continent Only
+        elif flags == 5:
+            value = 5   # Continent and Dungeon
+        elif flags == 6:
+            value = 6   # Battle and Continent
+        elif flags == 7:
+            value = 8   # Battle, Continent and Dungeon
+        elif flags == 8 or flags == 9 or flags == 12 or flags == 13:
+            value = 2  # Town, Continent and Dungeon
+
+        self.app.setOptionBox("PE_Spell_Flags", value, callFunction=False)
+
+        self.app.emptyLabelFrame("PE_Frame_Parameters")
+
+        # Build a list of options for attribute checks, one for maps, and one for attribute names
+        check_options: List[str] = []
+        for c in self.magic_checks:
+            check_options.append(c.name)
+        if len(check_options) < 1:
+            check_options.append("- No Checks Defined -")
+
+        # TODO Use map names instead of IDs if locations names file present
+        map_options: List[str] = []
+        for m in range(32):
+            map_options.append(f"MAP #${m:02X}")
+
+        attribute_options: List[str] = [] + self.attribute_names
+        attribute_options.append("Level")
+        attribute_options.append("(Custom)")
+
+        # Resize the window depending on how many parameter options we need to display
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(480, 480 + (24 * len(self.spells[spell_id].parameters)))
+
+        with self.app.labelFrame("PE_Frame_Parameters"):
+            # Show spell notes, if any
+            self.app.message("PE_Spell_Notes", self.spells[spell_id].notes, width=400,
+                             row=0, column=0, colspan=3, sticky="NEWS", fg="#D03030", font=11)
+
+            # Add parameter widgets
+            for p in range(len(self.spells[spell_id].parameters)):
+                parameter = self.spells[spell_id].parameters[p]
+                self.app.label(f"PE_Label_Parameter_{p:02}", parameter.description,
+                               sticky="NE", row=1 + p, column=0, font=11)
+
+                if parameter.type == parameter.TYPE_DECIMAL:
+                    self.app.entry(f"PE_Decimal_Parameter_{p:02}", f"{parameter.value}", change=self._magic_input,
+                                   sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
+
+                elif parameter.type == parameter.TYPE_HEX:
+                    self.app.entry(f"PE_Hex_Parameter_{p:02}", f"0x{parameter.value:02X}", change=self._magic_input,
+                                   sticky="NW", width=5, row=1 + p, column=1, colspan=2, font=10)
+
+                elif parameter.type == parameter.TYPE_POINTER:
+                    self.app.entry(f"PE_Pointer_Parameter_{p:02}", f"{parameter.value:04X}", change=self._magic_input,
+                                   sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
+
+                elif parameter.type == parameter.TYPE_STRING:
+                    self.app.entry(f"PE_String_Id_Parameter_{p:02}", f"0x{parameter.value:02X}",
+                                   change=self._magic_input,
+                                   sticky="NW", width=8, row=1 + p, column=1, font=10)
+                    self.app.button(f"PE_String_Button_Parameter_{p:02}", image="res/edit-dlg-small.gif",
+                                    value=self._magic_input, sticky="NW", width=16, height=16, row=1 + p, column=2)
+
+                elif parameter.type == parameter.TYPE_MAP:
+                    self.app.optionBox(f"PE_Map_Parameter_{p:02}", map_options, change=self._magic_input,
+                                       width=24, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
+
+                elif parameter.type == parameter.TYPE_POINTER:
+                    self.app.entry(f"PE_Pointer_Parameter_{p:02}", f"0x{parameter.value:04X}", change=self._magic_input,
+                                   sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
+
+                elif parameter.type == parameter.TYPE_BOOL:
+                    self.app.checkBox(f"PE_Bool_Parameter_{p:02}", change=self._magic_input, sticky="NW",
+                                      row=1 + p, column=1, colspan=2)
+                    self.app.setCheckBox(f"PE_Bool_Parameter_{p:02}", ticked=True if parameter.value != 0 else False,
+                                         callFunction=False)
+
+                elif parameter.type == parameter.TYPE_ATTRIBUTE:
+                    self.app.entry(f"PE_Attribute_Id_Parameter_{p:02}", f"0x{parameter.value:02X}",
+                                   change=self._magic_input, sticky="NW", width=8, row=1 + p, column=1, font=10)
+                    self.app.optionBox(f"PE_Attribute_List_Parameter_{p:02}", attribute_options,
+                                       change=self._magic_input,
+                                       width=12, sticky="NW", row=1 + p, column=2, font=9)
+                    # Select the appropriate option from the list
+                    self._magic_input(f"PE_Attribute_Id_Parameter_{p:02}")
+
+                elif parameter.type == parameter.TYPE_CHECK:
+                    # Find out which check this is
+                    check_id = -1
+                    for c in range(len(self.magic_checks)):
+                        if parameter.value == self.magic_checks[c].address:
+                            check_id = c
+                            break
+                    if check_id == -1:
+                        self.warning(f"Unrecognised Check address '0x{parameter.value:04X}' for parameter #{p}.")
+                        check_id = 0
+
+                    self.app.optionBox(f"PE_Check_Parameter_{p:02}", check_options, change=self._magic_input,
+                                       sticky="NW", width=20, row=1 + p, column=1, colspan=2, font=10)
+                    self.app.setOptionBox(f"PE_Check_Parameter_{p:02}", index=check_id, callFunction=False)
+
+                else:
+                    self.warning(f"Unknown type: '{parameter.type}' for parameter #{p}.")
+                    self.app.entry(f"PE_Hex_Parameter_{p:02}", f"0x{parameter.value:02X}", change=self._magic_input,
+                                   sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
+
     # --- PartyEditor.race_info() ---
 
     def race_info(self) -> None:
@@ -2729,7 +3422,7 @@ class PartyEditor:
         """
         Applies changes to rom buffer, doesn't save to file
         """
-        if self.rom.has_feature("enhanced party"):      # Remastered ROM
+        if self.rom.has_feature("enhanced party"):  # Remastered ROM
 
             # Starting HP values and bonus HP per level
             for p in range(len(self.hp_bonus)):
@@ -2739,7 +3432,7 @@ class PartyEditor:
             # Base HP
             self.rom.write_byte(0xD, 0x8872, self.hp_base)
 
-        else:                                           # Vanilla game ROM
+        else:  # Vanilla game ROM
             # Starting HP values and bonus HP per level
             self.rom.write_byte(0xD, 0x8866, self.hp_bonus[0])
 
