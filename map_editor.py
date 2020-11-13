@@ -1,7 +1,7 @@
 __author__ = "Fox Cunning"
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, TextIO
 
 from PIL import Image, ImageTk
 
@@ -182,6 +182,38 @@ class MapEditor:
         # Each entry contains: bits 0,1 = bottom palette | bits 2,3 = top palette
         self.npc_palette_indices = []
 
+        # List of all location names, as read from locations txt file
+        self.location_names: List[str] = []
+        try:
+            # TODO Use different list instead of default one if name matches ROM file
+            locations_file: TextIO = open("location_names.txt", "r")
+            location_names = locations_file.readlines()
+            locations_file.close()
+            for m in range(self.max_maps()):
+                if m >= len(location_names):
+                    self.location_names.append("(Unnamed)")
+                else:
+                    self.location_names.append(location_names[m].rstrip("\n\r\a"))
+        except IOError as error:
+            log(3, "EDITOR", f"Error reading location names: {error}.")
+            for m in range(self.max_maps()):
+                self.location_names.append(f"MAP{m:02}")
+
+    # --- MapEditor.error() ---
+
+    def error(self, message: str):
+        log(2, f"{self.__class__.__name__}", message)
+
+    # --- MapEditor.warning() ---
+
+    def warning(self, message: str):
+        log(3, f"{self.__class__.__name__}", message)
+
+    # --- MapEditor.info() ---
+
+    def info(self, message: str):
+        log(4, f"{self.__class__.__name__}", message)
+
     # --- MapEditor.load_tiles() ---
 
     def load_tiles(self, map_index: int = -1, map_colour: int = -1) -> None:
@@ -206,7 +238,7 @@ class MapEditor:
         else:
             self.map_index = map_index
 
-        log(4, f"{self.__class__.__name__}", f"Loading tiles for map 0x{map_index:02X}...")
+        self.info(f"Loading tiles for map 0x{map_index:02X}...")
 
         # TODO Use the table at 0A:B600 if the version of the game supports it
         # TODO Also detect vanilla game and use hardcoded vanilla substitutions
@@ -242,7 +274,7 @@ class MapEditor:
         """
         Loads and caches tile images for a dungeon map
         """
-        log(4, f"{self.__class__.__name__}", "Loading dungeon tileset...")
+        self.info("Loading dungeon tileset...")
 
         # Custom dungeon colour
         if self.rom.has_feature("custom map colours"):
@@ -294,15 +326,15 @@ class MapEditor:
             0x9540,  # Stairs Up
             0x9530,  # Stairs Down
             0x9550,  # Stairs Up + Down
-            0x8960,  # 'M'ark
-            0x88F0,  # 'F'ountain
-            0x89C0,  # Message 'S'ign
-            0x8A00,  # 'W'ind
-            0x8900,  # 'G'remlins
-            0x88C0,  # Treasure 'C'hest
-            0x89D0,  # 'T'rap
+            0x8960,  # M: Mark
+            0x88F0,  # F: Fountain
+            0x89C0,  # S: Message Sign
+            0x8A00,  # W: Wind
+            0x8900,  # G: Gremlins
+            0x88C0,  # C: Treasure Chest
+            0x89D0,  # T: Trap
             0x8000,  # Regular Floor
-            0x8950,  # Time 'L'ord
+            0x8950,  # L: Time Lord
             0x94C0  # Safe Floor
         ]
 
@@ -350,7 +382,7 @@ class MapEditor:
         """
         Loads and caches tile images for a non-dungeon map
         """
-        log(4, f"{self.__class__.__name__}", "Loading town/castle/continent tileset...")
+        self.info("Loading town/castle/continent tileset...")
 
         # Make a copy of the palette instead of referencing it directly, to avoid modifications
         if self.map_index == 0x0F:
@@ -369,7 +401,7 @@ class MapEditor:
 
         if self.map_colour > 0 and self.rom.has_feature("custom map colours"):
             # If not zero, load the two custom colours into the current palette
-            log(4, f"{self.__class__.__name__}", f"Loading custom map colour set #{self.map_colour}")
+            self.info(f"Loading custom map colour set #{self.map_colour}")
             address = 0xEDEE + (self.map_colour * 2)
             map_palette[9] = self.rom.read_byte(0xF, address)
             map_palette[10] = self.rom.read_byte(0xF, address + 1)
@@ -538,7 +570,7 @@ class MapEditor:
                 try:
                     colour_index = self.palette_editor.palettes[1][c]
                 except IndexError:
-                    log(2, f"{self.__class__.__name__}", f"Index out of range for palette[1]: {c}")
+                    self.error(f"Index out of range for palette[1]: {c}")
                     colour_index = 0
                 colour = bytearray(self.palette_editor.get_colour(colour_index))
                 top_colours.append(colour[0])
@@ -553,7 +585,7 @@ class MapEditor:
                 try:
                     colour_index = self.palette_editor.palettes[1][c]
                 except IndexError:
-                    log(2, f"{self.__class__.__name__}", f"Index out of range for palette[1]: {c}")
+                    self.error(f"Index out of range for palette[1]: {c}")
                     colour_index = 0
                 colour = bytearray(self.palette_editor.get_colour(colour_index))
                 bottom_colours.append(colour[0])  # Red
@@ -644,7 +676,7 @@ class MapEditor:
         for _ in range(11):
             self.dungeon_data.append(DungeonData(message_pointers=[], messages=[], fountain_ids=[], mark_ids=[]))
 
-        log(4, f"{self.__class__.__name__}", "Reading dungeon data...")
+        self.info("Reading dungeon data...")
 
         # Get base address of message pointers table from ROM, by reading the instruction that is by default:
         # 0D:AA87    LDA $AAF6,X
@@ -663,8 +695,8 @@ class MapEditor:
 
         # Same sanity check for this
         if 0x8000 > base_mark_pointer > 0xBFFF:
-            log(3, f"{self.__class__.__name__}", f"Base Mark/Fountain pointer 0x{base_mark_pointer:04X} out of scope."
-                                                 f"Using default value.")
+            self.warning(f"Base Mark/Fountain pointer 0x{base_mark_pointer:04X} out of scope."
+                         f"Using default value.")
             base_mark_pointer = 0xB95D
 
         # Loop through all the maps, loading data for those who have the dungeon flag set
@@ -775,7 +807,7 @@ class MapEditor:
 
         # If either the bank number or the address is out of range, then we are creating an empty map
         if bank > 0xE or address > 0xBFFF:
-            log(4, f"{self.__class__.__name__}", f"Creating empty NPC table for map {self.map_index}.")
+            self.info(f"Creating empty NPC table for map {self.map_index}.")
             self.app.changeOptionBox("NPCE_Option_NPC_List", ["No NPCs found on this map"])
             return
 
@@ -849,7 +881,7 @@ class MapEditor:
         self.canvas_icon_start = self.app.addCanvasImage("ME_Canvas_Map",
                                                          (starting_x << 4) + 8, (starting_y << 4) + 8, image)
 
-        # Process Sosarian entrances
+        # Process entrances from Sosaria
         if self.map_index == 0x0:
             # Pre-load the entrance icon
             image = ImageTk.PhotoImage(Image.open("res/icon-entrance.gif"))
@@ -884,7 +916,7 @@ class MapEditor:
                 self.app.addListItem("EE_List_Entrances", f"0x{e:02X} -> {entrance.x:02d}, {entrance.y:02d}",
                                      select=False)
 
-        # Process Ambrosian entrances
+        # Process entrances from Ambrosia
         elif self.map_index == 0xF:
             # Pre-load the entrance icon
             image = ImageTk.PhotoImage(Image.open("res/icon-entrance.gif"))
@@ -1180,7 +1212,7 @@ class MapEditor:
             self.app.setButtonBg("ME_Button_Clear", _INACTIVE)
 
         else:
-            log(3, f"{self.__class__.__name__}", f"Unimplemented tool: '{tool}'")
+            self.warning(f"Unimplemented tool: '{tool}'")
 
     # --- MapEditor.open_map() ---
 
@@ -1256,7 +1288,7 @@ class MapEditor:
 
         elif compression == "RLE":
 
-            log(4, f"{self.__class__.__name__}", f"Opening dungeon map @{bank:X}:{address:04X} (RLE compressed)...")
+            self.info(f"Opening dungeon map @{bank:X}:{address:04X} (RLE compressed)...")
             uncompressed = rle.decode(data)
             for i in range(2048):
                 value = uncompressed[i]
@@ -1266,7 +1298,7 @@ class MapEditor:
 
         elif compression == "LZSS":
 
-            log(4, f"{self.__class__.__name__}", f"Opening dungeon map @{bank:X}:{address:04X} (LZSS compressed)...")
+            self.info(f"Opening dungeon map @{bank:X}:{address:04X} (LZSS compressed)...")
             uncompressed = lzss.decode(data)
             for i in range(2048):
                 value = uncompressed[i]
@@ -1311,12 +1343,12 @@ class MapEditor:
 
         # If the bank or address is out of range, we create an empty map
         if bank > 0xE or 0x8000 > address or address > 0xBFFF:
-            log(4, f"{self.__class__.__name__}", f"Creating new empty map...")
+            self.info(f"Creating new empty map...")
             for _ in range(64 * 64):
                 self.map.append(0)
 
         elif compression == "none":
-            log(4, f"{self.__class__.__name__}", f"Opening map @{bank:X}:{address:04X} (uncompressed)...")
+            self.info(f"Opening map @{bank:X}:{address:04X} (uncompressed)...")
             for y in range(64):
                 for x in range(32):
                     # Each byte represents two tiles
@@ -1328,7 +1360,7 @@ class MapEditor:
             self.show_map()
 
         elif compression == "RLE":
-            log(4, f"{self.__class__.__name__}", f"Opening map @{bank:X}:{address:04X} (RLE compressed)...")
+            self.info(f"Opening map @{bank:X}:{address:04X} (RLE compressed)...")
             data = self.rom.read_bytes(bank, address, 2048)
             uncompressed = rle.decode(data)
             offset = 0
@@ -1344,7 +1376,7 @@ class MapEditor:
 
         elif compression == "LZSS":
 
-            log(4, f"{self.__class__.__name__}", f"Opening map @{bank:X}:{address:04X} (LZSS compressed)...")
+            self.info(f"Opening map @{bank:X}:{address:04X} (LZSS compressed)...")
             data = self.rom.read_bytes(bank, address, 2048)
             uncompressed = lzss.decode(data)
             offset = 0
@@ -1459,7 +1491,7 @@ class MapEditor:
                         new_map.append(t & 0x0F)
 
             except IndexError as error:
-                log(2, f"{self.__class__.__name__}", f"Bad map data in file '{file_name}': {error}.")
+                self.error(f"Bad map data in file '{file_name}': {error}.")
                 file.close()
                 return False
 
@@ -1486,7 +1518,7 @@ class MapEditor:
             return True
 
         except OSError as error:
-            log(2, f"{self.__class__.__name__}", f"System error importing '{file_name}': {error}.")
+            self.error(f"System error importing '{file_name}': {error}.")
 
             if file is not None:
                 file.close()
@@ -1559,7 +1591,7 @@ class MapEditor:
         if self.is_dungeon():
             return
 
-        log(4, f"{self.__class__.__name__}", f"Jump to {x}, {y}.")
+        self.info(f"Jump to {x}, {y}.")
 
         pane = self.app.getScrollPaneWidget("ME_Scroll_Pane")
         delta_x = (x - 12)
@@ -1576,7 +1608,7 @@ class MapEditor:
         Use cached tiles to display the currently loaded map
         """
 
-        # log(4, f"{self.__class__.__name__}", "Drawing map on canvas...")
+        # self.info("Drawing map on canvas...")
         self.app.clearCanvas("ME_Canvas_Map")
         self.canvas_map_images.clear()
 
@@ -1699,7 +1731,7 @@ class MapEditor:
         else:
             # Don't fill dungeons with special tiles, to avoid problems with pointers
             if self.selected_tile_id != 0 and self.selected_tile_id != 0xD and self.selected_tile_id != 0xF:
-                log(4, f"{self.__class__.__name__}", f"Cannot fill dungeon with tile #${self.selected_tile_id:X}.")
+                self.info(f"Cannot fill dungeon with tile #${self.selected_tile_id:X}.")
                 return
 
             # If the old ID is a special tile, behave like the "draw" tool
@@ -1725,7 +1757,6 @@ class MapEditor:
         old_tile_id: int
             ID of the tile(s) that will be replaced
         """
-        # root = self.app.getCanvas("ME_Canvas_Map").winfo_toplevel()
         self.app.setCanvasCursor("ME_Canvas_Map", "watch")
 
         queue = list()
@@ -1871,8 +1902,8 @@ class MapEditor:
                                                                    f"floor above is occupied by either a Mark or a "
                                                                    f"Fountain.\nCoordinates: {x}, {y}.")
                             elif 3 <= old_tile <= 5:
-                                log(4, f"{self.__class__.__name__}", f"Auto-Ladder: ladder already present in level "
-                                                                     f"{self.dungeon_level - 1} ({x}, {y}).")
+                                self.info(f"Auto-Ladder: ladder already present in level "
+                                          f"{self.dungeon_level - 1} ({x}, {y}).")
 
                             else:
                                 self.map[map_index - 256] = 4
@@ -1897,8 +1928,8 @@ class MapEditor:
                                                                    f"floor below is occupied by either a Mark or a "
                                                                    f"Fountain.\nCoordinates: {x}, {y}.")
                             elif 3 <= old_tile <= 5:
-                                log(4, f"{self.__class__.__name__}", f"Auto-Ladder: ladder already present in level "
-                                                                     f"{self.dungeon_level + 1} ({x}, {y}).")
+                                self.info(f"Auto-Ladder: ladder already present in level "
+                                          f"{self.dungeon_level + 1} ({x}, {y}).")
                             else:
                                 self.map[map_index + 256] = 3
 
@@ -1917,17 +1948,17 @@ class MapEditor:
                 # If a fountain was already there, just show the fountain ID and allow to change it
                 if self.map[map_index] == 7:
                     if fountain_index < 0:
-                        log(3, f"{self.__class__.__name__}", "Wrong fountain count for this map!")
+                        self.warning("Wrong fountain count for this map!")
                         fountain_id = 0
                     else:
                         fountain_id = self.dungeon_data[dungeon_id].fountain_ids[fountain_index]
-                        log(4, f"{self.__class__.__name__}", f"Found fountain type {fountain_id} at {x}, {y}.")
+                        self.info(f"Found fountain type {fountain_id} at {x}, {y}.")
 
                 # If this is a new fountain, insert it in the list after the previous one
                 else:
                     fountain_id = 0
                     self.dungeon_data[dungeon_id].fountain_ids.insert(fountain_index, fountain_id)
-                    log(4, f"{self.__class__.__name__}", f"Inserting new fountain, index {fountain_index} at {x}, {y}.")
+                    self.info(f"Inserting new fountain, index {fountain_index} at {x}, {y}.")
 
                 # Update the label with the fountains count
                 self.show_fountains_count()
@@ -1949,17 +1980,17 @@ class MapEditor:
                 # If a Mark was already there, show the Mark ID and allow to change it
                 if self.map[map_index] == 6:
                     if mark_index < 0:
-                        log(3, f"{self.__class__.__name__}", "Wrong Mark count for this map!")
+                        self.warning("Wrong Mark count for this map!")
                         mark_id = 0
                     else:
                         mark_id = self.dungeon_data[dungeon_id].mark_ids[mark_index]
-                        log(4, f"{self.__class__.__name__}", f"Found Mark type {mark_id} at {x}, {y}.")
+                        self.info(f"Found Mark type {mark_id} at {x}, {y}.")
 
                 # If this is a new Mark, insert it in the list after the previous one
                 else:
                     mark_id = 0
                     self.dungeon_data[dungeon_id].mark_ids.insert(mark_index, mark_id)
-                    log(4, f"{self.__class__.__name__}", f"Inserting new Mark, index {mark_index} at {x}, {y}.")
+                    self.info(f"Inserting new Mark, index {mark_index} at {x}, {y}.")
 
                 # Update label with mark count
                 self.show_marks_count()
@@ -1977,7 +2008,7 @@ class MapEditor:
 
             self.app.hideFrame("ME_Frame_Special_Tile")
 
-        # log(4, f"{self.__class__.__name__}", f"Editing cached image #{self.canvas_images[index]}.")
+        # self.info(f"Editing cached image #{self.canvas_images[index]}.")
         # Update cached map data
         self.map[map_index] = tile_id
         # Update canvas image
@@ -2153,7 +2184,7 @@ class MapEditor:
             self.app.addCanvasImage("ME_Canvas_Selected_Tile", 8, 8, self.tiles[tile_id])
             self.app.setLabel("ME_Selected_Tile_Properties", f"({info[tile_id]})")
         except IndexError as error:
-            log(2, f"{self.__class__.__name__}", f"_dungeon_tile_info: {error}.")
+            self.error(f"_dungeon_tile_info: {error}.")
 
         # If coordinates are specified, show additional info
         if x > 0 and y > 0:
@@ -2266,7 +2297,7 @@ class MapEditor:
             try:
                 colour_index = self.palette_editor.palettes[1][c]
             except IndexError:
-                log(2, f"{self.__class__.__name__}", f"Index out of range for palette[1]: {c}")
+                self.error(f"Index out of range for palette[1]: {c}")
                 colour_index = 0
             colour = bytearray(self.palette_editor.get_colour(colour_index))
             top_colours.append(colour[0])
@@ -2281,7 +2312,7 @@ class MapEditor:
             try:
                 colour_index = self.palette_editor.palettes[1][c]
             except IndexError:
-                log(2, f"{self.__class__.__name__}", f"Index out of range for palette[1]: {c}")
+                self.error(f"Index out of range for palette[1]: {c}")
                 colour_index = 0
             colour = bytearray(self.palette_editor.get_colour(colour_index))
             bottom_colours.append(colour[0])  # Red
@@ -2422,7 +2453,7 @@ class MapEditor:
             Index of the NPC whose info will be displayed, from this map's NPC data table
         """
         if npc_index >= len(self.npc_data):
-            log(3, f"{self.__class__.__name__}", f"Invalid NPC Index: {npc_index}!")
+            self.warning(f"Invalid NPC Index: {npc_index}!")
             return
         elif npc_index < 0:
             try:
@@ -2473,7 +2504,7 @@ class MapEditor:
             Index of this Moongate in the list (0 to 8, last entry is Dawn)
         """
         if moongate_index < 0 or moongate_index > 8:
-            log(3, f"{self.__class__.__name__}", f"Invalid Moongate index: {moongate_index}!")
+            self.warning(f"Invalid Moongate index: {moongate_index}!")
             return
 
         # Clear previous Moon Phase image
@@ -2542,7 +2573,7 @@ class MapEditor:
             Index of this entrance in the current map's list
         """
         if entrance_index < 0 or entrance_index > len(self.entrances):
-            log(3, f"{self.__class__.__name__}", f"Invalid entrance index: {entrance_index}!")
+            self.warning(f"Invalid entrance index: {entrance_index}!")
             return
 
         entrance = self.entrances[entrance_index]
@@ -2580,7 +2611,7 @@ class MapEditor:
             ID of the tile that appears on Dawn's coordinates; 0 to 15 or -1 to leave unchanged
         """
         if moongate_index < 0 or moongate_index > len(self.moongates):
-            log(3, f"{self.__class__.__name__}", f"Invalid Moongate index: {moongate_index}.")
+            self.warning(f"Invalid Moongate index: {moongate_index}.")
             return
 
         if new_x > -1:
@@ -2687,7 +2718,7 @@ class MapEditor:
             map_index = self.map_index
 
         if map_index < 0:
-            log(3, f"{self.__class__.__name__}", "is_dungeon(): No map loaded.")
+            self.warning("is_dungeon(): No map loaded.")
             return False
 
         map_data = self.map_table[map_index]
@@ -2894,7 +2925,7 @@ class MapEditor:
         index = self.get_mark_index(x, y)
         dungeon_id: int = self.get_map_id()
         if index >= len(self.dungeon_data[dungeon_id].mark_ids):
-            log(3, f"{self.__class__.__name__}", f"Invalid Mark index: {index} at {x}, {y}!")
+            self.warning(f"Invalid Mark index: {index} at {x}, {y}!")
             self.app.errorBox("ERROR", f"Invalid Mark index: {index} at {x}, {y}!", parent="Map_Editor")
         else:
             self.dungeon_data[dungeon_id].mark_ids[index] = new_id
@@ -2918,7 +2949,7 @@ class MapEditor:
         index = self.get_fountain_index(x, y)
         dungeon_id: int = self.get_map_id()
         if index >= len(self.dungeon_data[dungeon_id].fountain_ids):
-            log(3, f"{self.__class__.__name__}", f"Invalid Mark index: {index} at {x}, {y}!")
+            self.warning(f"Invalid Mark index: {index} at {x}, {y}!")
             self.app.errorBox("ERROR", f"Invalid Fountain index: {index} at {x}, {y}!", parent="Map_Editor")
         else:
             self.dungeon_data[dungeon_id].fountain_ids[index] = new_id
@@ -2988,7 +3019,7 @@ class MapEditor:
         Also shows/hides moongates for the currently opened map accordingly
         """
         # Moongate conditions
-        log(4, f"{self.__class__.__name__}", "Saving Moongate conditional check code...")
+        self.info("Saving Moongate conditional check code...")
         # Bank $0B
         # B200    LDA $A8	; <-- Change to lda $70 ($A5 $70) to load map index instead
         # B202    CMP #$0C	; <-- Change 0B:B203 to the index of the map where Moongates and Dawn should be enabled
@@ -3031,7 +3062,7 @@ class MapEditor:
         bool
             True if changes were successfully saved, False otherwise
         """
-        log(4, f"{self.__class__.__name__}", "Saving map changes...")
+        self.info("Saving map changes...")
 
         # Create a new map table
         new_table: List[MapTableEntry] = []
@@ -3221,7 +3252,7 @@ class MapEditor:
 
         # If we were editing a dungeon map, also reallocate and save messages, marks and fountains
         if self.is_dungeon():
-            log(4, f"{self.__class__.__name__}", "Saving dungeon data...")
+            self.info("Saving dungeon data...")
 
             # Get base address of message pointers table from ROM, by reading the instruction that is by default:
             # 0D:AA87    LDA $AAF6,X
@@ -3363,27 +3394,27 @@ class MapEditor:
 
             # Custom dungeon colours only if the ROM supports them
             if self.rom.has_feature("custom map colours"):
-                log(4, f"{self.__class__.__name__}", "Saving custom map colours...")
+                self.info("Saving custom map colours...")
                 address = self.rom.read_word(0xB, 0x86AF) + self.get_map_id()
                 self.rom.write_byte(0xB, address, self.map_colour)
                 address = self.rom.read_word(0xD, 0xBDD2) + self.get_map_id()
                 self.rom.write_byte(0xD, address, self.map_colour)
             else:
-                log(4, f"{self.__class__.__name__}", "Custom map colours not supported by this ROM.")
+                self.info("Custom map colours not supported by this ROM.")
 
         else:
             # Custom map colours only if the ROM supports them
             if self.rom.has_feature("custom map colours"):
-                log(4, f"{self.__class__.__name__}", "Saving custom map colours...")
+                self.info("Saving custom map colours...")
                 address = self.rom.read_word(0xF, 0xEE03) + self.map_index
                 self.rom.write_byte(0xF, address, self.map_colour)
             else:
-                log(4, f"{self.__class__.__name__}", "Custom map colours not supported by this ROM.")
+                self.info("Custom map colours not supported by this ROM.")
 
         # Save Entrances and Moongates if enabled on this map
         # Entrances
         if self.map_index == 0 or self.map_index == 0xF:
-            log(4, f"{self.__class__.__name__}", "Saving map entrance data...")
+            self.info("Saving map entrance data...")
 
             # Entrances from Sosaria
             if self.map_index == 0:
@@ -3410,7 +3441,7 @@ class MapEditor:
 
         # Moongates
         if len(self.moongates) > 0:
-            log(4, f"{self.__class__.__name__}", "Saving Moongate data...")
+            self.info("Saving Moongate data...")
 
             # Store Moongate coordinates and replacement tile ids
             address_1 = 0xC4D2
@@ -3445,5 +3476,5 @@ class MapEditor:
         if sync_npc_sprites:
             self.rom.write_bytes(0xC, 0xBA08, bytes(self.npc_palette_indices[:23]))
 
-        log(4, f"{self.__class__.__name__}", "All done!")
+        self.info("All done!")
         return True

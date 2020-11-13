@@ -9,6 +9,7 @@ from PIL import Image, ImageTk
 
 from appJar import gui
 from debug import log
+from map_editor import MapEditor
 from palette_editor import PaletteEditor
 from rom import ROM
 from text_editor import TextEditor, exodus_to_ascii, ascii_to_exodus
@@ -81,10 +82,12 @@ class PartyEditor:
         # This will be True if the spell code was not recognised and parameters could not be extracted
         custom_code: bool = True
 
-    def __init__(self, app: gui, rom: ROM, text_editor: TextEditor, palette_editor: PaletteEditor):
+    def __init__(self, app: gui, rom: ROM, text_editor: TextEditor, palette_editor: PaletteEditor,
+                 map_editor: MapEditor):
         self.app: gui = app
         self.rom: ROM = rom
         self.text_editor: TextEditor = text_editor
+        self.map_editor: MapEditor = map_editor
         self.palette_editor: PaletteEditor = palette_editor
         self.current_window: str = ""
 
@@ -2804,10 +2807,10 @@ class PartyEditor:
         if len(check_options) < 1:
             check_options.append("- No Checks Defined -")
 
-        # TODO Use map names instead of IDs if locations names file present
-        map_options: List[str] = []
-        for m in range(32):
-            map_options.append(f"MAP #${m:02X}")
+        map_options: List[str] = [] + self.map_editor.location_names
+        if len(map_options) < 1:
+            for m in range(self.map_editor.max_maps()):
+                map_options.append(f"MAP #{m:02}")
 
         attribute_options: List[str] = [] + self.attribute_names
         attribute_options.append("Level")

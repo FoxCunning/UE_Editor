@@ -18,7 +18,7 @@ import os
 import shlex
 import subprocess
 from dataclasses import dataclass
-from typing import TextIO, List
+from typing import List
 
 from appJar import gui
 from debug import log
@@ -1188,21 +1188,12 @@ def open_rom(file_name: str) -> None:
         update_text_table(app.getOptionBox("Text_Type"))
 
         # Read map location names from file
-        # TODO Use different list instead of default one if name matches ROM file
-        location_names: List[str] = []
-        try:
-            locations_file: TextIO = open("location_names.txt", "r")
-            location_names = locations_file.readlines()
-            locations_file.close()
-        except IOError as error:
-            log(3, "EDITOR", f"Error reading location names: {error}.")
-
         # Update map list for the correct maximum number of maps
         maps = []
         for m in range(0, map_editor.max_maps()):
             name = "(No Name)"
-            if m < len(location_names):
-                name = location_names[m].rstrip("\n\r\a")
+            if m < len(map_editor.location_names):
+                name = map_editor.location_names[m].rstrip("\n\r\a")
                 if len(name) > 16:  # Truncate names that are too long to be displayed correctly
                     name = name[:15] + '-'
             maps.append(f"0x{m:02X} {name}")
@@ -1222,7 +1213,7 @@ def open_rom(file_name: str) -> None:
         app.hideFrame("ET_Frame_Encounter")
 
         # Party editor
-        party_editor = PartyEditor(app, rom, text_editor, palette_editor)
+        party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
 
         # Activate tabs
         app.setTabbedFrameDisabledTab("TabbedFrame", "Map", False)
