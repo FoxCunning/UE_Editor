@@ -69,6 +69,8 @@ class PartyEditor:
 
         # Parameters for each specific spell
         parameters: List[Parameter] = field(default_factory=list)
+        # Ignored for actual spells, used in the UI only by common routines that are unnamed in the game
+        name: str = ""
         # Notes will appear in the UI when this spell is selected
         notes: str = ""
         # Flags determine when/where a spell can be used (e.g. dungeon, battle, everywhere, etc.)
@@ -77,6 +79,8 @@ class PartyEditor:
         mp_display: int = 0
         # MP actually consumed upon casting the spell
         mp_cast: int = 0
+        # Address where the MP to cast value is stored in ROM
+        mp_address: int = 0
         # Address of the subroutine, in bank 0xF
         address: int = 0
         # This will be True if the spell code was not recognised and parameters could not be extracted
@@ -100,6 +104,7 @@ class PartyEditor:
         self.spell_names_0: List[str] = []  # Cleric spells
         self.spell_names_1: List[str] = []  # Wizard spells
         self.magic_checks: List[PartyEditor.MagicCheck] = []
+        # Spells (0-31) and common routines (32-...)
         self.spells: List[PartyEditor.Spell] = []
         # List of spell definition file names
         self.spell_definitions: List[str] = []
@@ -749,6 +754,7 @@ class PartyEditor:
         definitions = glob.glob("spells_*.ini")
         definitions_list: List[str] = []
 
+        # Get spell definition files info
         for d in definitions:
             parser = configparser.ConfigParser()
             parser.read(d)
@@ -758,17 +764,54 @@ class PartyEditor:
             del parser
 
         if len(definitions_list) < 1:
+            self.app.errorBox("Spell Editor", "ERROR: Could not find any spell definitions.\n" +
+                              "Make sure at least one spells_xxx.ini file is present in the editor's directory.",
+                              "Party_Editor")
             definitions_list.append("- No Spell Definitions Found -")
 
+        # Find spell string IDs
+        spell_strings: List[int] = [5, 3]
+        # List 1 (Cleric):
+        # D378  $A9 $05        LDA #$05
+        # D37A  $8D $D4 $03    STA $03D4
+        # D37D  $20 $15 $D4    JSR SpellMenu
+        bytecode = self.rom.read_bytes(0xF, 0xD378, 2)
+        if bytecode[0] == 0xA9:
+            spell_strings[0] = bytecode[1]
+        else:
+            custom = True
+        # List 2 (Wizard):
+        # D3AA  $A9 $03        LDA #$03
+        # D3AC  $8D $D4 $03    STA $03D4
+        # D3AF  $20 $15 $D4    JSR SpellMenu
+        bytecode = self.rom.read_bytes(0xF, 0xD3AA, 2)
+        if bytecode[0] == 0xA9:
+            spell_strings[1] = bytecode[1]
+        else:
+            custom = True
+
         # Read other spell data
-        mp_increment = self._read_spell_data()
+        if len(self.spell_definitions) > 0:
+            mp_increment = self._read_spell_data(self.spell_definitions[0])
+        else:
+            mp_increment = self._read_spell_data()
+
+        # Create a list of common routines from the spell data we just read
+        common_routines: List[str] = []
+        if len(self.spells) > 32:
+            c = 32
+            while c < len(self.spells):
+                common_routines.append(self.spells[c].name)
+                c = c + 1
+        else:
+            common_routines.append("- No Common Routines Defined -")
 
         spell_flags_list = ["Nowhere", "Battle Only", "Town, Continent, Dungeon", "Continent Only", "Dungeon Only",
                             "Continent and Dungeon", "Battle and Continent", "Battle and Dungeon",
                             "Battle, Continent, Dungeon", "Everywhere"]
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 480)
+            self.app.setSize(480, 640)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
@@ -776,6 +819,8 @@ class PartyEditor:
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
+                self.app.button("PE_Reload", name="Reload", value=self._magic_input, image="res/reload.gif",
+                                tooltip="Update Spell Names", row=0, column=3, sticky="E")
 
             # Spell list
             with self.app.frame("PE_Frame_Top", padding=[2, 2], row=1, column=0, stretch="BOTH", sticky="NEW"):
@@ -789,19 +834,24 @@ class PartyEditor:
                     # List 1 string ID
                     self.app.label("PE_Label_Spell_Names_1", "List 1 Names String:",
                                    row=0, column=0, sticky="NEW", font=11)
-                    self.app.entry("PE_Spell_String_ID_1", "3", change=self._magic_input, fg="#000000",
-                                   width=5, row=0, column=1, sticky="NW", font=10)
-                    self.app.button("PE_Button_Spell_String_1", image="res/edit-dlg-small.gif", width=16, height=16,
+                    self.app.entry("PE_Spell_String_ID_1", f"0x{spell_strings[0]:02X}", change=self._magic_input,
+                                   fg="#000000", width=5, row=0, column=1, sticky="NW", font=10)
+                    self.app.button("PE_Button_Spell_String_1_1", image="res/edit-dlg-small.gif", width=16, height=16,
                                     value=self._magic_input, row=0, column=2)
+                    self.app.button("PE_Button_Spell_String_1_2", image="res/edit-dlg-small.gif", width=16, height=16,
+                                    value=self._magic_input, row=0, column=3)
                     # List 2 string ID
                     self.app.label("PE_Label_Spell_Names_2", "List 2 Names String:",
                                    row=1, column=0, sticky="NEW", font=11)
-                    self.app.entry("PE_Spell_String_ID_2", "3", change=self._magic_input, fg="#000000",
-                                   width=5, row=1, column=1, sticky="NW", font=10)
-                    self.app.button("PE_Button_Spell_String_2", image="res/edit-dlg-small.gif", width=16, height=16,
+                    self.app.entry("PE_Spell_String_ID_2", f"0x{spell_strings[1]:02X}", change=self._magic_input,
+                                   fg="#000000", width=5, row=1, column=1, sticky="NW", font=10)
+                    self.app.button("PE_Button_Spell_String_2_1", image="res/edit-dlg-small.gif", width=16, height=16,
                                     value=self._magic_input, row=1, column=2)
+                    self.app.button("PE_Button_Spell_String_2_2", image="res/edit-dlg-small.gif", width=16, height=16,
+                                    value=self._magic_input, row=1, column=3)
+                    # Message for custom menus
                     self.app.message("PE_Message_Custom_Menus", "This ROM uses a custom routine for spell  menus.",
-                                     fg="#F03030", sticky="NEWS", width=220, row=2, column=0, colspan=3, font=11)
+                                     fg="#D03030", sticky="NEWS", width=220, row=2, column=0, colspan=3, font=11)
 
             # MP cost routine
             with self.app.frame("PE_Frame_Middle", padding=[2, 2], row=3, column=0, stretch="BOTH", sticky="NEW"):
@@ -820,7 +870,7 @@ class PartyEditor:
 
             # Spell editor
             with self.app.frame("PE_Frame_Bottom", padding=[2, 2], row=4, column=0, stretch="BOTH", sticky="NEWS"):
-                self.app.label("PE_Label_Select_Spell", "Select a spell to edit:", font=11,
+                self.app.label("PE_Label_Select_Spell", "Edit Spell:", font=11,
                                row=0, column=0, sticky="NE")
                 self.app.optionBox("PE_Option_Spell", self.spell_names_0, change=self._magic_input,
                                    font=10, row=0, column=1, sticky="NEW")
@@ -859,27 +909,32 @@ class PartyEditor:
                                          row=4, column=0, colspan=2, sticky="NEWS"):
                     pass
 
-        # Spell list string IDs
+            # Common magic routines
+            with self.app.frame("PE_Frame_Common", padding=[2, 2], row=5, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.label("PE_Label_Common_Routine", "Edit Common Routine:", sticky="NE", row=0, column=0, font=11)
+                self.app.optionBox("PE_Option_Common_Routine", common_routines, change=self._magic_input,
+                                   row=0, column=1, font=10, sticky="NEW")
+                with self.app.labelFrame("PE_Common_Parameter", name="Parameters", padding=[2, 2],
+                                         row=1, column=0, colspan=2, sticky="NEWS"):
+                    pass
+
+        # Spell list string IDs input widgets enable/disable
         if custom is False:
             self.app.enableEntry("PE_Spell_String_ID_1")
-            self.app.enableButton("PE_Button_Spell_String_1")
-            string_id = self.rom.read_byte(0xF, 0xD3AB)
-            self.app.clearEntry("PE_Spell_String_ID_1", callFunction=False, setFocus=False)
-            self.app.setEntry("PE_Spell_String_ID_1", f"{string_id}", callFunction=False)
-
+            self.app.enableButton("PE_Button_Spell_String_1_1")
+            self.app.enableButton("PE_Button_Spell_String_1_2")
             self.app.enableEntry("PE_Spell_String_ID_2")
-            self.app.enableButton("PE_Button_Spell_String_2")
-            string_id = self.rom.read_byte(0xF, 0xD379)
-            self.app.clearEntry("PE_Spell_String_ID_2", callFunction=False, setFocus=False)
-            self.app.setEntry("PE_Spell_String_ID_2", f"{string_id}", callFunction=False)
-
+            self.app.enableButton("PE_Button_Spell_String_2_1")
+            self.app.enableButton("PE_Button_Spell_String_2_2")
             self.app.hideMessage("PE_Message_Custom_Menus")
 
         else:
             self.app.disableEntry("PE_Spell_String_ID_1")
-            self.app.disableButton("PE_Button_Spell_String_1")
+            self.app.disableButton("PE_Button_Spell_String_1_1")
+            self.app.disableButton("PE_Button_Spell_String_1_2")
             self.app.disableEntry("PE_Spell_String_ID_2")
-            self.app.disableButton("PE_Button_Spell_String_2")
+            self.app.disableButton("PE_Button_Spell_String_2_1")
+            self.app.disableButton("PE_Button_Spell_String_2_2")
             self.app.showMessage("PE_Message_Custom_Menus")
 
         # MP system options
@@ -1203,6 +1258,55 @@ class PartyEditor:
             # Display info for the first spell in this list
             self.magic_info(0 if self.selected_index == 1 else 16)
 
+        elif widget == "PE_Option_Spell":
+            # A spell has been selected
+            spell_id = self._selected_spell_id()
+            # Update widgets for the current selection
+            self.magic_info(spell_id)
+
+        elif widget == "PE_Spell_Flags":
+            spell_id = self._selected_spell_id()
+            # Get selection index
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            selection = box.options.index(value)
+            # 0: Nowhere 1: Battle Only 2: Town, Continent, Dungeon 3: Continent Only 4: Dungeon Only
+            # 5: Continent and Dungeon 6: Battle and Continent 7: Battle and Dungeon
+            # 8: Battle, Continent, Dungeon 9: Everywhere
+            if selection == 0:
+                self.spells[spell_id].flags = 0x0
+            elif selection == 1:
+                self.spells[spell_id].flags = 0x2
+            elif selection == 2:
+                self.spells[spell_id].flags = 0x8
+            elif selection == 3:
+                self.spells[spell_id].flags = 0x4
+            elif selection == 4:
+                self.spells[spell_id].flags = 0x1
+            elif selection == 5:
+                self.spells[spell_id].flags = 0x5
+            elif selection == 6:
+                self.spells[spell_id].flags = 0x6
+            elif selection == 7:
+                self.spells[spell_id].flags = 0x3
+            elif selection == 8:
+                self.spells[spell_id].flags = 0x7
+            elif selection == 9:
+                self.spells[spell_id].flags = 0xF
+
+        elif widget == "PE_Spell_Definitions":
+            spell_id = self._selected_spell_id()
+            # Get selection index
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            selection = box.options.index(value)
+            # Get file name
+            definitions = self.spell_definitions[selection]
+            # Re-read spell data
+            self._read_spell_data(definitions)
+            # Show info for the currently selected spell again
+            self.magic_info(spell_id)
+
         elif widget[:16] == "PE_Attribute_Id_":
             # Get index of currently selected spell
             spell_id = self._selected_spell_id()
@@ -1230,11 +1334,110 @@ class PartyEditor:
             except ValueError:
                 self.app.entry(widget, fg="#D03030")
 
-        elif widget == "PE_Option_Spell":
-            # A spell has been selected
+        elif widget[:18] == "PE_Attribute_List_":
             spell_id = self._selected_spell_id()
-            # Update widgets for the current selection
-            self.magic_info(spell_id)
+
+            # Get selection index
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            selection = box.options.index(value)
+
+            parameter_id = int(widget[-2:], 10)
+
+            # Set value according to this selection
+            self.app.clearEntry(f"PE_Attribute_Id_Parameter_{parameter_id:02}", callFunction=False)
+            if 0 <= selection <= 3:
+                value = selection + 7
+            elif selection == 4:
+                value = 0x33
+            else:
+                value = 0
+            # Assign and show value
+            self.spells[spell_id].parameters[parameter_id] = value
+            self.app.setEntry(f"PE_Attribute_Id_Parameter_{parameter_id:02}", f"0x{value:02X}", callFunction=False)
+
+        elif widget[:19] == "PE_Spell_String_ID_":
+            try:
+                value = int(self.app.getEntry(widget), 16)
+                if 0 <= value <= 255:
+                    self.app.entry(widget, fg="#000000")
+                else:
+                    self.app.entry(widget, fg="#D03030")
+            except ValueError:
+                self.app.entry(widget, fg="#D03030")
+
+        elif widget[:23] == "PE_Button_Spell_String_":
+            try:
+                list_id = int(widget[-3:-2], 10)
+                string_id = int(self.app.getEntry(f"PE_Spell_String_ID_{list_id}"), 16)
+                if int(widget[-1:], 10) == 2:
+                    string_id = string_id + 1
+                # Open this string in the Eext Editor
+                self.text_editor.show_window(string_id, "Special")
+            except ValueError as e:
+                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+
+        elif widget[:17] == "PE_String_Button_":
+            spell_id = self._selected_spell_id()
+            try:
+                parameter_id = int(widget[-2:], 10)
+                string_id = self.spells[spell_id].parameters[parameter_id].value
+                # int(self.app.getEntry(f"PE_String_Id_Parameter_{parameter_id:02}"), 16)
+                if 0 <= string_id <= 255:
+                    self.text_editor.show_window(string_id, "Special")
+            except ValueError:
+                pass
+
+        elif widget[:13] == "PE_String_Id_":
+            try:
+                parameter_id = int(widget[-2:], 10)
+                spell_id = self._selected_spell_id()
+                value = int(self.app.getEntry(widget), 16)
+                if 0 <= value <= 255:
+                    self.spells[spell_id].parameters[parameter_id].value = value
+                    self.app.entry(widget, fg="#000000")
+                else:
+                    self.app.entry(widget, fg="#D03030")
+            except ValueError as e:
+                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+                self.app.entry(widget, fg="#D03030")
+
+        elif widget[:7] == "PE_Hex_":
+            try:
+                parameter_id = int(widget[-2:], 10)
+                spell_id = self._selected_spell_id()
+                value = int(self.app.getEntry(widget), 16)
+                self.spells[spell_id].parameters[parameter_id].value = value
+                self.app.entry(widget, fg="#000000")
+            except ValueError as e:
+                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+                self.app.entry(widget, fg="#D03030")
+
+        elif widget[:11] == "PE_Decimal_":
+            try:
+                parameter_id = int(widget[-2:], 10)
+                spell_id = self._selected_spell_id()
+                value = int(self.app.getEntry(widget), 10)
+                self.spells[spell_id].parameters[parameter_id].value = value
+                self.app.entry(widget, fg="#000000")
+            except ValueError as e:
+                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+                self.app.entry(widget, fg="#D03030")
+
+        elif widget[:9] == "PE_Check_":
+            parameter_id = int(widget[-2:], 10)
+            spell_id = self._selected_spell_id()
+
+            # Get selection index
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            selection = box.options.index(value)
+
+            # The value is the address of the check indexed by the selection
+            if selection < len(self.magic_checks):
+                self.spells[spell_id].parameters[parameter_id].value = self.magic_checks[selection].address
+            else:
+                self.warning(f"Error processing input from widget: '{widget}': {selection} is not a valid check.")
 
         else:
             self.warning(f"Unimplemented Magic Editor widget input: '{widget}'.")
@@ -1736,7 +1939,7 @@ class PartyEditor:
 
     # --- PartyEditor._read_spell_data() ---
 
-    def _read_spell_data(self) -> int:
+    def _read_spell_data(self, config_file: str = "spells_remastered.ini") -> int:
         """
         Reads data for each spell from ROM.
 
@@ -1833,13 +2036,15 @@ class PartyEditor:
             spell.address = self.rom.read_word(0xF, address + 2)
 
             # Read routine and try to find MP to cast + parameters
-            values = self._decode_spell_routine(s, spell.address)
+            values = self._decode_spell_routine(s, spell.address, config_file)
+
+            spell.notes = values["Notes"]
             if values["Custom"] is True:
                 spell.custom_code = True
             else:
                 spell.custom_code = False
-                spell.notes = values["Notes"]
                 spell.mp_cast = values["MP"]
+                spell.mp_address = values["MP Address"]
                 spell.parameters = values["Parameters"]
 
             # Store data
@@ -1850,8 +2055,7 @@ class PartyEditor:
 
         # Read attribute check definitions
         parser = configparser.ConfigParser()
-        # TODO Use the currently selected entry for definitions file
-        parser.read(self.spell_definitions[0])
+        parser.read(config_file)
         # Expect a maximum of 8 checks
         self.magic_checks.clear()
         for c in range(8):
@@ -1873,7 +2077,24 @@ class PartyEditor:
             check.address = value
             self.magic_checks.append(check)
 
-        # TODO Read common code used by various spells (single-hit missiles, multi-hit magic...)
+        # Read common code used by various spells (single-hit missiles, multi-hit magic...)
+        for s in range(16):
+            if parser.has_section(f"COMMON_{s}") is False:
+                break
+            spell = PartyEditor.Spell()
+            values = self._decode_spell_routine(s + 32, 0, config_file)
+
+            spell.notes = values["Notes"]
+            spell.name = values["Name"]
+            # Only show parameters if code is not customised
+            if values["Custom"] is True:
+                spell.custom_code = True
+            else:
+                spell.custom_code = False
+                # These don't have an MP cost, so we use the MP Address value as the routine address
+                spell.address = values["MP Address"]
+                spell.parameters = values["Parameters"]
+            self.spells.append(spell)
 
         self.app.setStatusbar("Spell data decoded.")
 
@@ -1881,7 +2102,7 @@ class PartyEditor:
 
     # --- PartyEditor._decode_spell_routine() ---
 
-    def _decode_spell_routine(self, spell_id: int, address: int, config_file="remastered") -> dict:
+    def _decode_spell_routine(self, spell_id: int, address: int, config_file="spell_remastered.ini") -> dict:
         """
         Tries to decode a spell's routine to extract its parameters.
 
@@ -1889,6 +2110,7 @@ class PartyEditor:
         ----------
         spell_id: int
             The index of the spell, so we know what to look for and where.
+            Indices >= 32 are used for common routines, so common routine 0 will have index 32, etc.
 
         address: int
             The base address of the routine, so we can also work with relocated (but unchanged) code.
@@ -1900,33 +2122,53 @@ class PartyEditor:
         """
         decoded = {
             "Custom": False,
+            "Name": "",
             "MP": 0,
+            "MP Address": 0,
             "Notes": "",
             "Parameters": []
         }
 
         # Read spell definitions from file
         parser = configparser.ConfigParser()
-        parser.read(f"spells_{config_file}.ini")
+        parser.read(config_file)
 
-        # Find spell ID in config file
-        if parser.has_section(f"SPELL_{spell_id}") is False:
-            decoded["Custom"] = True
-            return decoded
+        if spell_id < 32:   # Spells 0-31
+            # Find spell ID in config file
+            if parser.has_section(f"SPELL_{spell_id}") is False:
+                decoded["Custom"] = True
+                return decoded
+            section = parser[f"SPELL_{spell_id}"]
 
-        section = parser[f"SPELL_{spell_id}"]
+        else:               # Common routines
+            if parser.has_section(f"COMMON_{spell_id - 32}") is False:
+                decoded["Custom"] = True
+                return decoded
+            section = parser[f"COMMON_{spell_id - 32}"]
+            decoded["Name"] = section.get("NAME", "(Unnamed Routine)")
 
         # Get actual MP cost
-        offset = section.get("MP", "zero")
-        if offset == "zero":
-            decoded["MP"] = 0
+        if spell_id < 32:
+            offset = section.get("MP", "zero")
+            if offset == "zero":
+                decoded["MP"] = 0
+                decoded["MP Address"] = 0
+            else:
+                try:
+                    mp_address = address + int(offset, 16)
+                    decoded["MP"] = self.rom.read_byte(0xF, mp_address)
+                    decoded["MP Address"] = mp_address
+                except ValueError:
+                    self.app.warningBox("Decode Spell", f"WARNING: Spells file contains invalid MP offset: +"
+                                                        f"'{offset}' for spell #{spell_id}.", "Party_Editor")
+                    decoded["Custom"] = True
+                    return decoded
         else:
-            try:
-                decoded["MP"] = self.rom.read_byte(0xF, address + int(offset, 16))
-            except ValueError:
-                self.app.warningBox("Decode Spell", f"WARNING: Spells file contains invalid MP offset: '{offset}' " +
-                                    f"for spell #{spell_id}.", "Party_Editor")
-                decoded["Custom"] = True
+            decoded["MP Address"] = section.get("ADDRESS", "0")
+            address = int(decoded["MP Address"], 16)
+            if address == 0:
+                self.app.errorBox("Decode Common Routine", f"ERROR: Routine #{spell_id - 32} has invalid or no address",
+                                  "Party_Editor")
                 return decoded
 
         # Read notes, if any
@@ -2016,7 +2258,6 @@ class PartyEditor:
             bank = 0xF if parameter_address >= 0xC000 else 0
 
             # We need to know if the parameter is a Word or Byte, and we read the op code for that
-            # TODO Sanity check using paramter type? E.g. Pointers and Checks need to be 16-bit, Maps 8-bit etc.
             code = self.rom.read_byte(bank, parameter_address - 1)
             if code == 0x20 or code == 0x4C or code == 0xAD or code == 0xBD:
                 # Read Word
@@ -2772,8 +3013,14 @@ class PartyEditor:
         self.app.clearEntry("PE_MP_Display", callFunction=False, setFocus=False)
         self.app.setEntry("PE_MP_Display", f"{mp_to_show}", callFunction=False)
 
-        self.app.clearEntry("PE_MP_Cast", callFunction=False, setFocus=False)
-        self.app.setEntry("PE_MP_Cast", f"{mp_to_cast}", callFunction=False)
+        # Certain spells do not allow altering their MP cost, e.g. the first spell in each list always has zero cost,
+        # while other spells jump into a different spell's routine and use that spell's MP cost instead
+        if self.spells[spell_id].mp_address < 0xC000:
+            self.app.disableEntry("PE_MP_Cast")
+        else:
+            self.app.enableEntry("PE_MP_Cast")
+            self.app.clearEntry("PE_MP_Cast", callFunction=False, setFocus=False)
+            self.app.setEntry("PE_MP_Cast", f"{mp_to_cast}", callFunction=False)
 
         # Decode flags and set corresponding option
         value = 9   # Default: Everywhere
@@ -2818,7 +3065,7 @@ class PartyEditor:
 
         # Resize the window depending on how many parameter options we need to display
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 480 + (24 * len(self.spells[spell_id].parameters)))
+            self.app.setSize(480, 720 + (24 * len(self.spells[spell_id].parameters)))
 
         with self.app.labelFrame("PE_Frame_Parameters"):
             # Show spell notes, if any
