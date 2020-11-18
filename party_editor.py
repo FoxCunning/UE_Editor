@@ -928,11 +928,13 @@ class PartyEditor:
             self.app.clearEntry("PE_Incremental_MP", callFunction=False, setFocus=False)
             self.app.setEntry("PE_Incremental_MP", f"{mp_increment}", callFunction=False)
             self.app.hideMessage("PE_Message_Custom_MP")
+            self.app.disableEntry("PE_MP_Display")
 
         elif mp_increment == -1:
             self.app.setRadioButton("PE_Radio_MP", "Uneven MP Cost", callFunction=False)
             self.app.disableEntry("PE_Incremental_MP")
             self.app.hideMessage("PE_Message_Custom_MP")
+            self.app.enableEntry("PE_MP_Display")
 
         else:
             self.app.disableRadioButton("PE_Radio_MP")
@@ -1230,7 +1232,16 @@ class PartyEditor:
         widget: str
             Name of the widget generating the input
         """
-        if widget == "PE_Spell_List":
+        if widget == "PE_Apply":
+            if self.save_magic_data() is True:
+                self.app.setStatusbar("Spell Data saved.")
+                self.close_window()
+
+        elif widget == "PE_Reload":
+            self._read_spell_names()
+            self._magic_input("PE_Spell_List")
+
+        elif widget == "PE_Spell_List":
             # A new spell list has been selected
             self.selected_index = self._get_selection_index(widget)
 
@@ -1267,15 +1278,38 @@ class PartyEditor:
             # Display info for the first spell in this list
             self.magic_info(selection)
 
-        elif widget == "PE_Reload":
-            self._read_spell_names()
-            self._magic_input("PE_Spell_List")
+        elif widget == "PE_Radio_MP":
+            value = self.app.getRadioButton(widget)
+            if value[:1] == 'I':        # Incremental
+                self.app.disableEntry("PE_MP_Display")
+            else:
+                self.app.enableEntry("PE_MP_Display")
 
         elif widget == "PE_Option_Spell":
             # A spell has been selected
             spell_id = self._selected_spell_id()
             # Update widgets for the current selection
             self.magic_info(spell_id)
+
+        elif widget == "PE_MP_Display":
+            spell_id = self._selected_spell_id()
+            if spell_id < 32:
+                try:
+                    value = int(self.app.getEntry(widget), 10)
+                    self.spells[spell_id].mp_display = value
+                    self.app.entry(widget, fg="#000000")
+                except ValueError:
+                    self.app.entry(widget, fg="#D03030")
+
+        elif widget == "PE_MP_Cast":
+            spell_id = self._selected_spell_id()
+            if spell_id < 32:
+                try:
+                    value = int(self.app.getEntry(widget), 10)
+                    self.spells[spell_id].mp_cast = value
+                    self.app.entry(widget, fg="#000000")
+                except ValueError:
+                    self.app.entry(widget, fg="#D03030")
 
         elif widget == "PE_Spell_Flags":
             spell_id = self._selected_spell_id()
@@ -1971,6 +2005,15 @@ class PartyEditor:
             -1 if the ROM uses "uneven MP" code.<br/>
             If the ROM uses the standard "incremental MP" code, the value of the increment will be returned (0-255).
         """
+        # Show progress
+        self.app.setLabel("PE_Progress_Label", "Decoding spell data...")
+        progress = 0.0
+        self.app.setMeter("PE_Progress_Meter", progress)
+        self.app.showSubWindow("PE_Progress")
+
+        root = self.app.topLevel
+        root.update()
+
         # Clear local spell data first
         self.spells.clear()
 
@@ -1985,6 +2028,7 @@ class PartyEditor:
             # Everything is custom, we can't even find the table
             for s in range(32):
                 self.spells.append(PartyEditor.Spell())
+            self.app.hideSubWindow("PE_Progress")
             return -2
 
         # First, try to determine whether this ROM uses the "incremental" MP system, or the "uneven cost" one
@@ -2001,6 +2045,10 @@ class PartyEditor:
         # D451    LDY #$10
         # D453    TYA
         # D454    RTS
+
+        progress = progress + 5.0
+        self.app.setMeter("PE_Progress_Meter", progress)
+        root.update()
 
         bytecode = self.rom.read_bytes(0xF, 0xD448, 3)
         if bytecode[0] == 0x38 and bytecode[1] == 0xE9:  # $38 = SEC, $E9 = SBC d
@@ -2031,6 +2079,10 @@ class PartyEditor:
                         incremental_mp = -2
                         self.warning(f"Unrecognised bytecode {bytecode} at 0F:D419.")
 
+        progress = progress + 5.0
+        self.app.setMeter("PE_Progress_Meter", progress)
+        root.update()
+
         # Keep track of previous spell's MP cost for incremental values
         mp_cost = 0
 
@@ -2059,6 +2111,10 @@ class PartyEditor:
 
             # Read routine and try to find MP to cast + parameters
             values = self._decode_spell_routine(s, spell.address, config_file)
+
+            progress = progress + 5.0
+            self.app.setMeter("PE_Progress_Meter", progress)
+            root.update()
 
             spell.notes = values["Notes"]
             if values["Custom"] is True:
@@ -2094,6 +2150,10 @@ class PartyEditor:
                 self.warning(f"Invalid address for Check '{name}' ({address}).")
                 continue
 
+            progress = progress + 5.0
+            self.app.setMeter("PE_Progress_Meter", progress)
+            root.update()
+
             check = PartyEditor.MagicCheck()
             check.name = name
             check.address = value
@@ -2105,6 +2165,10 @@ class PartyEditor:
                 break
             spell = PartyEditor.Spell()
             values = self._decode_spell_routine(s + 32, 0, config_file)
+
+            progress = progress + 5.0
+            self.app.setMeter("PE_Progress_Meter", progress)
+            root.update()
 
             spell.notes = values["Notes"]
             spell.name = values["Name"]
@@ -2121,6 +2185,9 @@ class PartyEditor:
         self.app.setStatusbar("Spell data decoded.")
 
         self._ignore_warnings = True
+
+        # Hide progress
+        self.app.hideSubWindow("PE_Progress")
 
         return incremental_mp
 
@@ -2289,14 +2356,16 @@ class PartyEditor:
             else:
                 parameter_address = address + offset
 
+            parameter.address = parameter_address
+
             # Figure out which bank contains this parameter
-            bank = 0xF if parameter_address >= 0xC000 else 0
+            bank = 0xF if parameter.address >= 0xC000 else 0
 
             # We need to know if the parameter is a Word or Byte, and we read the op code for that
-            code = self.rom.read_byte(bank, parameter_address - 1)
+            code = self.rom.read_byte(bank, parameter.address - 1)
             if code == 0x20 or code == 0x4C or code == 0xAD or code == 0xBD:
                 # Read Word
-                parameter.value = self.rom.read_word(bank, parameter_address)
+                parameter.value = self.rom.read_word(bank, parameter.address)
                 # These must be 8-bit values
                 if (parameter.type == parameter.TYPE_MAP or parameter.type == parameter.TYPE_ATTRIBUTE or
                         parameter.type == parameter.TYPE_STRING or parameter.type == parameter.TYPE_BOOL):
@@ -2308,12 +2377,12 @@ class PartyEditor:
                             self._ignore_warnings = True
             else:
                 # Read Byte
-                parameter.value = self.rom.read_byte(bank, parameter_address)
+                parameter.value = self.rom.read_byte(bank, parameter.address)
                 # Pointers and Checks must be 16-bit
                 if parameter.type == parameter.TYPE_POINTER or parameter.type == parameter.TYPE_CHECK:
                     if self._ignore_warnings is False:
-                        if self.app.okBox("Decode Spell", f"WARNING: Spell #{spell_id}'s Parameter #{p} must be a " +
-                                                          f"16-bit value, but is preceeded by 8-bit value instruction.\n" +
+                        if self.app.okBox("Decode Spell", f"WARNING: Spell #{spell_id}'s Parameter #{p} must be a 16-" +
+                                                          f"bit value, but is preceeded by 8-bit value instruction.\n" +
                                                           "Click 'Cancel' to ignore further warnings.",
                                           "Party_Editor") is False:
                             self._ignore_warnings = True
@@ -3068,7 +3137,9 @@ class PartyEditor:
 
             self.app.clearEntry("PE_MP_Display", callFunction=False, setFocus=False)
             self.app.setEntry("PE_MP_Display", f"{mp_to_show}", callFunction=False)
-            self.app.enableEntry("PE_MP_Display")
+            # Only enable this if using "Uneven" MP cost routine
+            if self.app.getRadioButton("PE_Radio_MP")[:1] == 'U':
+                self.app.enableEntry("PE_MP_Display")
 
             # Certain spells do not allow altering their MP cost, e.g. the first spell in each list always has
             # zero cost, while other spells jump into a different spell's routine and use that spell's MP cost instead
@@ -3856,11 +3927,146 @@ class PartyEditor:
 
     # --- PartyEditor.save_magic_data() ---
 
-    def save_magic_data(self) -> None:
+    def save_magic_data(self) -> bool:
         """
         Apply changes to ROM buffer.
+
+        Returns
+        -------
+        bool
+            True if everything was successfully saved, False if any of the data was not valid.
         """
-        pass
+        success = True
+        self._ignore_warnings = False
+
+        # Save spell data table
+        if len(self.spells) < 32:
+            self.app.warningBox("Save Spell Data", "ERROR: Expecting at least 32 spells, found only " +
+                                f"{len(self.spells)} instead.", "Party_Editor")
+            success = False
+        else:
+            # Prepare table
+            data = bytearray()
+            for s in range(32):
+                data.append(self.spells[s].flags)
+                data.append(self.spells[s].mp_display)
+                data.append(self.spells[s].address & 0x00FF)
+                data.append((self.spells[s].address & 0xFF00) >> 8)
+
+            # Write table
+            self.rom.write_bytes(0xF, 0xD460, data)
+
+        # Save spell menu routine (progressive/uneven MP)
+        if self.app.getRadioButton("PE_Radio_MP")[:2] == 'I':
+            # Incremental MP cost
+            data = bytearray(b'\x20\x41\xD4\xA2\x00\xC9\x09\x90\x03\xAA\xA9\x08\x85\x9C\x86\x9D'
+                             b'\xA9\x0A\x8D\xD0\x03\xA9\x06\x8D\xD1\x03\xA9\x0A\x8D\xD2\x03\xA5'
+                             b'\x9C\x18\x69\x01\x0A\x8D\xD3\x03\x4C\xFF\xE4\x60\xA0\x2F\xB1\x99'
+                             b'\xA0\x00\xC8\x38\xE9\x04\xB0\xFA\xC0\x10\x90\x02\xA0\x10\x98\x60')
+            # MP cost is hardcoded here:
+            # D449  $E9 $04     SBC  #$04
+            try:
+                value = int(self.app.getEntry("PE_MP_Display"))
+            except ValueError:
+                value = 4
+                success = False
+                self.app.warningBox("Save Spell Data", "WARNING: Invalid value for incremental MP cost.\n" +
+                                    "The default value '4' will be used.")
+                self.app.clearEntry("PE_MP_Display", callFunction=False, setFocus=False)
+                self.app.setEntry("PE_MP_Display", "4", callFunction=False)
+
+            data[53] = value
+            address = 0xD415
+
+        else:
+            # Uneven MP cost
+            data = b'\xA2\x00\xF0\x02\xA2\x40\xA0\x2F\xB1\x99\xA0\x00\xDD\x61\xD4\x90\x09\xE8\xE8\xE8\xE8\xC8\xC0\x10' \
+                   b'\xD0\xF2\x98\xA2\x00\xC9\x09\x90\x03\xAA\xA9\x08\x85\x9C\x86\x9D\xA9\x0A\x8D\xD0\x03\x8D\xD2\x03' \
+                   b'\xA9\x06\x8D\xD1\x03\xA7\x9C\xE8\x8A\x0A\x8D\xD3\x03\x4C\xFF\xE4'
+            address = 0xD419
+
+        # Save the new table
+        self.rom.write_bytes(0xF, 0xD415, data)
+        # Set the address of this call:
+        # D37E:  JSR ClericSpellMenu    ; $D415 incremental, $D419 uneven
+        self.rom.write_word(0xF, 0xD37E, address)
+
+        # Save MP cost and parameter values for each spell
+        for s in range(len(self.spells)):
+            if s < 32:
+                # MP Cost
+                address = self.spells[s].mp_address
+                if address >= 0xC000:
+                    self.rom.write_byte(0xF, address, self.spells[s].mp_cast)
+                elif address >= 0x8000:
+                    self.rom.write_byte(0x0, address, self.spells[s].mp_cast)
+                    self.rom.write_byte(0x6, address, self.spells[s].mp_cast)
+                elif address == 0:
+                    # This spell does not consume any MP
+                    pass
+                else:
+                    success = False
+
+                    if self._ignore_warnings is False:
+                        if self.app.okBox("Save Spell Data",
+                                          f"ERROR: Invalid address 0x{address:04X} for MP cost for Spell#{s}." +
+                                          "\n\nClick 'Cancel' to ignore further warnings.",
+                                          "Party_Editor") is False:
+                            self._ignore_warnings = True
+
+                # Parameters
+                for p in self.spells[s].parameters:
+                    # 16-bit parameter types
+                    if p.type == PartyEditor.Spell.Parameter.TYPE_POINTER or \
+                            p.type == PartyEditor.Spell.Parameter.TYPE_CHECK:
+                        if p.address >= 0xC000:
+                            self.rom.write_word(0xF, p.address, p.value)
+                        elif p.address >= 0x8000:
+                            self.rom.write_word(0x0, p.address, p.value)
+                            if p.address >= 0xBF10: # A few subroutines must also be mirrored in bank 6
+                                self.rom.write_word(0x6, p.address, p.value)
+                        else:
+                            success = False
+
+                            if self._ignore_warnings is False:
+                                if self.app.okBox("Save Spell Data",
+                                                  f"ERROR: Invalid address 0x{p.address:04X} for Parameter " +
+                                                  f"'{p.description}' in Spell#{s}." +
+                                                  "\n\nClick 'Cancel' to ignore further warnings.",
+                                                  "Party_Editor") is False:
+                                    self._ignore_warnings = True
+
+                    # Everything else is 8-bit
+                    else:
+                        if p.value > 255:
+                            if self._ignore_warnings is False:
+                                if self.app.okBox("Save Spell Data", f"ERROR: Spell#{s} invalid data for parameter: " +
+                                                  f"'{p.description}': expecting 8-bit value, got {p.value} instead." +
+                                                  "\n\nClick 'Cancel' to ignore further warnings.",
+                                                  "Party_Editor") is False:
+                                    self._ignore_warnings = True
+                            success = False
+                        else:
+                            if p.address >= 0xC000:
+                                self.rom.write_byte(0xF, p.address, p.value)
+                            elif p.address >= 0x8000:
+                                self.rom.write_byte(0x0, p.address, p.value)
+                                if p.address >= 0xBF10:
+                                    self.rom.write_byte(0x6, p.address, p.value)
+                            else:
+                                success = False
+
+                                if self._ignore_warnings is False:
+                                    if self.app.okBox("Save Spell Data",
+                                                      f"ERROR: Invalid address 0x{p.address:04X} for Parameter " +
+                                                      f"'{p.description}' in Spell#{s}." +
+                                                      "\n\nClick 'Cancel' to ignore further warnings.",
+                                                      "Party_Editor") is False:
+                                        self._ignore_warnings = True
+
+        self._ignore_warnings = False
+
+        return success
 
     # --- PartyEditor.save_special_abilities() ---
 

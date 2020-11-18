@@ -2250,6 +2250,16 @@ if __name__ == "__main__":
 
             app.label("PE_Label_p0", "")
 
+            # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
+            with app.subWindow("PE_Progress", title="Loading", modal=True, size=[300, 100], padding=[4, 4],
+                               bg="#F0E0C0"):
+                # noinspection PyArgumentList
+                app.setStopFunction(no_stop)
+
+                app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE',
+                          font=16)
+                app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE', fill="#9090F0")
+
         # Map Editor Sub-Window ----------------------------------------------------------------------------------------
         with app.subWindow("Map_Editor", "Map Editor", size=[512, 480], modal=False, resizable=False, padding=0,
                            inPadding=0, guiPadding=0, bg="#A0A0A0"):
