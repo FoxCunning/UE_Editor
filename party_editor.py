@@ -1311,6 +1311,18 @@ class PartyEditor:
                 except ValueError:
                     self.app.entry(widget, fg="#D03030")
 
+        elif widget == "PE_Spell_Address":
+            spell_id = self._selected_spell_id()
+            try:
+                value = int(self.app.getEntry(widget), 16)
+                if 0x8000 <= value <= 0xFFFF:
+                    self.spells[spell_id].address = value
+                    self.app.entry(widget, fg="#000000")
+                else:
+                    self.app.entry(widget, fg="#D03030")
+            except ValueError:
+                self.app.entry(widget, fg="#D03030")
+
         elif widget == "PE_Spell_Flags":
             spell_id = self._selected_spell_id()
             # Get selection index
@@ -1408,7 +1420,7 @@ class PartyEditor:
             else:
                 value = 0
             # Assign and show value
-            self.spells[spell_id].parameters[parameter_id] = value
+            self.spells[spell_id].parameters[parameter_id].value = value
             self.app.setEntry(f"PE_Attribute_Id_Parameter_{parameter_id:02}", f"0x{value:02X}", callFunction=False)
 
         elif widget[:19] == "PE_Spell_String_ID_":
@@ -4023,7 +4035,7 @@ class PartyEditor:
                             self.rom.write_word(0xF, p.address, p.value)
                         elif p.address >= 0x8000:
                             self.rom.write_word(0x0, p.address, p.value)
-                            if p.address >= 0xBF10: # A few subroutines must also be mirrored in bank 6
+                            if p.address >= 0xBF10:     # A few subroutines must also be mirrored in bank 6
                                 self.rom.write_word(0x6, p.address, p.value)
                         else:
                             success = False
