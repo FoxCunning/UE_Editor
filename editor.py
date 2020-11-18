@@ -1499,12 +1499,21 @@ def text_editor_press(widget: str) -> None:
         if text_editor.type == "Dialogue" or text_editor.type == "Special":
             try:
                 new_name: int = ast.literal_eval(app.getOptionBox("TE_Option_Name")[:6])
-                new_portrait = int(app.getOptionBox("TE_Option_Portrait")[:2])
             except SyntaxError:
                 value = app.getOptionBox("TE_Option_Name")[:6]
                 log(3, "TEXT EDITOR", f"Could not convert value from '{value}'.")
                 new_name = -1
+
+            value = app.getOptionBox("TE_Option_Portrait")
+            try:
+                if value[:2] != "No":
+                    new_portrait = int(value[:2], 10)
+                else:
+                    new_portrait = -1
+            except ValueError:
+                log(3, "TEXT EDITOR", f"Could not convert value from '{value}'.")
                 new_portrait = -1
+
         else:
             new_portrait = -1
             new_name = -1
