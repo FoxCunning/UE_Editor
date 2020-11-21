@@ -76,6 +76,8 @@ class PartyEditor:
         notes: str = ""
         # Flags determine when/where a spell can be used (e.g. dungeon, battle, everywhere, etc.)
         flags: int = 0
+        # Fine flags are used in the second check, for example to make a spell work only on one specific map
+        fine_flags: int = 0
         # MP needed for the spell to appear on the caster's list of available spells
         mp_display: int = 0
         # MP actually consumed upon casting the spell
@@ -794,6 +796,12 @@ class PartyEditor:
         else:
             custom = True
 
+        # Get map names
+        map_options: List[str] = [] + self.map_editor.location_names
+        if len(map_options) < 1:
+            for m in range(self.map_editor.max_maps()):
+                map_options.append(f"MAP #{m:02}")
+
         # Read other spell data
         if len(self.spell_definitions) > 0:
             mp_increment = self._read_spell_data(self.spell_definitions[0])
@@ -805,7 +813,7 @@ class PartyEditor:
                             "Battle, Continent, Dungeon", "Everywhere"]
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 480)
+            self.app.setSize(480, 580)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
@@ -818,13 +826,13 @@ class PartyEditor:
 
             # Spell list
             with self.app.frame("PE_Frame_Top", padding=[2, 2], row=1, column=0, stretch="BOTH", sticky="NEW"):
-                with self.app.frame("PE_Frame_Top_Left", padding=[2, 2], row=0, column=0):
+                with self.app.frame("PE_Frame_Top_Left", padding=[2, 2], row=0, column=0, bg="#D0E0E0"):
                     self.app.optionBox("PE_Spell_List", ["Spell List 1", "Spell List 2", "Common Routines"],
                                        change=self._magic_input, row=0, column=0, sticky="NEW", font=10)
                     self.app.label("PE_Label_Magic_Professions", "Available to:", row=1, column=0, sticky="NW", font=11)
                     self.app.message("PE_Magic_Professions", "(None)", width=400, row=2, column=0, sticky="EW", font=10)
 
-                with self.app.frame("PE_Frame_Top_Right", padding=[4, 2], row=0, column=1):
+                with self.app.frame("PE_Frame_Top_Right", padding=[4, 2], row=0, column=1, bg="#E0D0D0"):
                     # List 1 string ID
                     self.app.label("PE_Label_Spell_Names_1", "List 1 Names String:",
                                    row=0, column=0, sticky="NEW", font=11)
@@ -848,22 +856,23 @@ class PartyEditor:
                                      fg="#D03030", sticky="NEWS", width=220, row=2, column=0, colspan=3, font=11)
 
             # MP cost routine
-            with self.app.frame("PE_Frame_Middle", padding=[2, 2], row=3, column=0, stretch="BOTH", sticky="NEW"):
-                with self.app.frame("PE_Frame_Mid_Left", row=0, column=0, sticky="NWS"):
+            with self.app.frame("PE_Frame_Middle", padding=[2, 2], row=3, column=0, stretch="BOTH", sticky="NEW",
+                                bg="#D0D0E0"):
+                with self.app.frame("PE_Frame_Mid_Left", padding=[2, 2], row=0, column=0, sticky="NWS"):
                     self.app.radioButton("PE_Radio_MP", "Incremental MP Cost", change=self._magic_input,
                                          row=0, column=0, font=11)
-                    self.app.radioButton("PE_Radio_MP", "Uneven MP Cost", change=self._magic_input,
-                                         row=1, column=0, font=11)
-
+                    self.app.radioButton("PE_Radio_MP", "Uneven MP Cost:", change=self._magic_input,
+                                         row=0, column=1, font=11)
                     self.app.entry("PE_Incremental_MP", "4", change=self._magic_input, fg="#000000", width=4,
-                                   row=0, column=1, font=10)
+                                   row=0, column=2, font=10)
 
                 with self.app.frame("PE_Frame_Mid_Right", row=0, column=1, sticky="NES"):
                     self.app.message("PE_Message_Custom_MP", "This ROM uses custom code for the spell menu.", width=200,
                                      row=0, column=0, sticky="NEWS", font=10, fg="#F03030")
 
             # Spell editor
-            with self.app.frame("PE_Frame_Bottom", padding=[2, 2], row=4, column=0, stretch="BOTH", sticky="NEWS"):
+            with self.app.frame("PE_Frame_Bottom", padding=[2, 2], row=4, column=0, stretch="BOTH", sticky="NEWS",
+                                bg="#E0D0E0"):
                 # Spell definitions file
                 self.app.label("PE_Label_Definitions", "Spell definitions file:", sticky="NSE", font=10,
                                row=0, column=0)
@@ -875,17 +884,50 @@ class PartyEditor:
                 self.app.optionBox("PE_Option_Spell", self.spell_names_0, change=self._magic_input,
                                    font=10, row=1, column=1, sticky="NEW")
 
-                self.app.label("PE_Label_Spell_Flags", "Casting Flags:", sticky="NE", row=1, column=0, font=11)
+                self.app.label("PE_Label_Spell_Flags", "Casting Flags:", sticky="NE", row=2, column=0, font=11)
                 self.app.optionBox("PE_Spell_Flags", spell_flags_list, change=self._magic_input,
                                    sticky="NEW", row=2, column=1, font=10)
 
-                with self.app.frame("PE_Bottom_Left", padding=[2, 2], row=3, column=0, sticky="NEW"):
+                # Specific usability flags (same used for "tools")
+                with self.app.frame("PE_Specific_Flags", padding=[2, 2], row=3, column=0, colspan=2, sticky="NEW",
+                                    bg="#E0E0D0"):
+                    self.app.label("PE_Label_Specific", "Specific usability flags:", font=11,
+                                   sticky="NEW", row=0, column=0, colspan=4)
+                    # Left
+                    self.app.checkBox("PE_Flag_0x01", name="Battle (anywhere)", change=self._magic_input, font=10,
+                                      sticky="NEW", row=1, column=0, colspan=2)
+                    self.app.checkBox("PE_Flag_0x04", name="Map:", change=self._magic_input, font=10,
+                                      sticky="NEW", row=2, column=0)
+                    self.app.optionBox("PE_Map_Flag_0x04", map_options, change=self._magic_input, font=10, width=16,
+                                       tooltip="This will apply to ALL spells using this flag.",
+                                       sticky="NW", row=2, column=1)
+                    self.app.checkBox("PE_Flag_0x10", name="Map:", change=self._magic_input, font=10,
+                                      sticky="NEW", row=3, column=0)
+                    self.app.optionBox("PE_Map_Flag_0x10", map_options, change=self._magic_input, font=10, width=16,
+                                       tooltip="This will apply to ALL spells using this flag.",
+                                       sticky="NW", row=3, column=1)
+                    self.app.checkBox("PE_Flag_0x40", name="Continents (embarked)", change=self._magic_input,
+                                      font=10, sticky="NEW", row=4, column=0, colspan=2)
+                    # Right
+                    self.app.checkBox("PE_Flag_0x02", name="Map:", change=self._magic_input, font=10,
+                                      sticky="NEW", row=1, column=2)
+                    self.app.optionBox("PE_Map_Flag_0x02", map_options, change=self._magic_input, font=10, width=16,
+                                       tooltip="This will apply to ALL spells using this flag.",
+                                       sticky="NW", row=1, column=3)
+                    self.app.checkBox("PE_Flag_0x08", name="Dungeons", change=self._magic_input, font=10,
+                                      sticky="NEW", row=2, column=2, colspan=2)
+                    self.app.checkBox("PE_Flag_0x20", name="Towns and Shrines", change=self._magic_input, font=10,
+                                      sticky="NEW", row=3, column=2, colspan=2)
+                    self.app.checkBox("PE_Flag_0x80", name="Continents (not embarked)", change=self._magic_input,
+                                      font=10, sticky="NEW", row=4, column=2, colspan=2)
+
+                with self.app.frame("PE_Bottom_Left", padding=[2, 2], row=4, column=0, sticky="NEW"):
                     self.app.label("PE_Label_Spell_Address", "Routine Address:", sticky="NE",
                                    row=0, column=0, font=11)
                     self.app.entry("PE_Spell_Address", "0x0000", change=self._magic_input, width=8, sticky="NW",
                                    fg="#000000", row=0, column=1, font=10)
 
-                with self.app.frame("PE_Bottom_Right", padding=[2, 2], row=3, column=1, sticky="NEW"):
+                with self.app.frame("PE_Bottom_Right", padding=[2, 2], row=4, column=1, sticky="NEW"):
                     self.app.label("PE_Label_MP_Display", "MP to display:", sticky="NE", row=0, column=0, font=11)
                     self.app.entry("PE_MP_Display", "0", change=self._magic_input, width=5, sticky="NW",
                                    fg="#000000", row=0, column=1, font=10)
@@ -899,8 +941,8 @@ class PartyEditor:
                     self.app.hideLabel("PE_Spell_Custom")
 
                 # Spell parameters
-                with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2],
-                                         row=4, column=0, colspan=2, sticky="NEWS"):
+                with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2], bg="#E0E0E0",
+                                         row=5, column=0, colspan=2, sticky="NEWS"):
                     pass
 
         # Spell list string IDs input widgets enable/disable
@@ -939,6 +981,19 @@ class PartyEditor:
         else:
             self.app.disableRadioButton("PE_Radio_MP")
             self.app.disableEntry("PE_Incremental_MP")
+
+        # Read map IDs for fine flags from this code (bank $0B):
+        # TODO Check if code has been customised
+        # AF24  $A5 $70        LDA _CurrentMapId
+        # AF26  $C9 $14        CMP #$14                 ;Check if in Castle Death
+        # AF2C  $C9 $0F        CMP #$0F                 ;Check if in Ambrosia
+        # AF32  $C9 $06        CMP #$06                 ;Check if in Castle British
+        value = self.rom.read_byte(0xB, 0xAF27)
+        self.app.setOptionBox("PE_Map_Flag_0x02", index=value, callFunction=False)
+        value = self.rom.read_byte(0xB, 0xAF2D)
+        self.app.setOptionBox("PE_Map_Flag_0x04", index=value, callFunction=False)
+        value = self.rom.read_byte(0xB, 0xAF33)
+        self.app.setOptionBox("PE_Map_Flag_0x10", index=value, callFunction=False)
 
         # Default selections
         self.app.setOptionBox("PE_Spell_List", 0, callFunction=True)
@@ -1352,6 +1407,22 @@ class PartyEditor:
                 self.spells[spell_id].flags = 0x7
             elif selection == 9:
                 self.spells[spell_id].flags = 0xF
+
+        elif widget[:8] == "PE_Flag_":
+            # Calculate fine flags
+            flag = 1
+            value = 0
+            for w in range(8):
+                if self.app.getCheckBox(f"PE_Flag_0x{flag:02X}") is True:
+                    value = value | flag
+                flag = flag << 1
+            # Save new value for fine flags
+            spell_id = self._selected_spell_id()
+            self.spells[spell_id].fine_flags = value
+
+        elif widget[:12] == "PE_Map_Flag_":
+            # Nothing to do here, this will be read when saving to ROM buffer
+            pass
 
         elif widget == "PE_Spell_Definitions":
             spell_id = self._selected_spell_id()
@@ -2112,6 +2183,7 @@ class PartyEditor:
 
             spell = PartyEditor.Spell()
             spell.flags = self.rom.read_byte(0xF, address)
+            spell.fine_flags = self.rom.read_byte(0xB, 0xAF47 + s)
 
             # The MP value from the table is not used unless we inject our "uneven MP" code
             if incremental_mp > -1:
@@ -3134,6 +3206,14 @@ class PartyEditor:
             self.app.disableEntry("PE_MP_Cast")
             self.app.disableOptionBox("PE_Spell_Flags")
 
+            flag = 1
+            for w in range(8):
+                self.app.disableCheckBox(f"PE_Flag_0x{flag:02X}")
+                flag = flag << 1
+            self.app.disableOptionBox("PE_Map_Flag_0x02")
+            self.app.disableOptionBox("PE_Map_Flag_0x04")
+            self.app.disableOptionBox("PE_Map_Flag_0x10")
+
         else:
             mp_to_show = self.spells[spell_id].mp_display
             mp_to_cast = self.spells[spell_id].mp_cast
@@ -3146,6 +3226,15 @@ class PartyEditor:
             self.app.clearEntry("PE_Spell_Address", callFunction=False, setFocus=False)
             self.app.setEntry("PE_Spell_Address", f"0x{routine_address:04X}", callFunction=False)
             self.app.enableEntry("PE_Spell_Address")
+
+            # Same with fine flags
+            flag = 1
+            for w in range(8):
+                self.app.enableCheckBox(f"PE_Flag_0x{flag:02X}")
+                flag = flag << 1
+            self.app.enableOptionBox("PE_Map_Flag_0x02")
+            self.app.enableOptionBox("PE_Map_Flag_0x04")
+            self.app.enableOptionBox("PE_Map_Flag_0x10")
 
             self.app.clearEntry("PE_MP_Display", callFunction=False, setFocus=False)
             self.app.setEntry("PE_MP_Display", f"{mp_to_show}", callFunction=False)
@@ -3186,6 +3275,15 @@ class PartyEditor:
             self.app.setOptionBox("PE_Spell_Flags", value, callFunction=False)
             self.app.enableOptionBox("PE_Spell_Flags")
 
+            # Also show "fine" flags
+            flag = 1
+            for w in range(8):
+                if self.spells[spell_id].fine_flags & flag != 0:
+                    self.app.setCheckBox(f"PE_Flag_0x{flag:02X}", ticked=True, callFunction=False)
+                else:
+                    self.app.setCheckBox(f"PE_Flag_0x{flag:02X}", ticked=False, callFunction=False)
+                flag = flag << 1
+
         self.app.emptyLabelFrame("PE_Frame_Parameters")
 
         # Build a list of options for attribute checks, one for maps, and one for attribute names
@@ -3206,7 +3304,7 @@ class PartyEditor:
 
         # Resize the window depending on how many parameter options we need to display
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 480 + (24 * len(self.spells[spell_id].parameters)))
+            self.app.setSize(480, 580 + (24 * len(self.spells[spell_id].parameters)))
 
         with self.app.labelFrame("PE_Frame_Parameters"):
             # Show spell notes, if any
@@ -3241,6 +3339,7 @@ class PartyEditor:
                 elif parameter.type == parameter.TYPE_MAP:
                     self.app.optionBox(f"PE_Map_Parameter_{p:02}", map_options, change=self._magic_input,
                                        width=24, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
+                    self.app.setOptionBox(f"PE_Map_Parameter_{p:02}", index=parameter.value, callFunction=False)
 
                 elif parameter.type == parameter.TYPE_POINTER:
                     self.app.entry(f"PE_Pointer_Parameter_{p:02}", f"0x{parameter.value:04X}", change=self._magic_input,
@@ -4002,6 +4101,23 @@ class PartyEditor:
         # Set the address of this call:
         # D37E:  JSR ClericSpellMenu    ; $D415 incremental, $D419 uneven
         self.rom.write_word(0xF, 0xD37E, address)
+
+        # "Fine flags" table in bank $0B
+        for s in range(32):
+            self.rom.write_byte(0xB, 0xAF47 + s, self.spells[s].fine_flags)
+
+        # Save hardcoded map IDs used by some fine flags:
+        # TODO Check if code has been customised (e.g. read opcodes)
+        # AF24  $A5 $70        LDA _CurrentMapId
+        # AF26  $C9 $14        CMP #$14                 ;Check if in Castle Death
+        # AF2C  $C9 $0F        CMP #$0F                 ;Check if in Ambrosia
+        # AF32  $C9 $06        CMP #$06                 ;Check if in Castle British
+        value = self._get_selection_index("PE_Map_Flags_0x02")
+        self.rom.write_byte(0xB, 0xAF27, value)
+        value = self._get_selection_index("PE_Map_Flags_0x04")
+        self.rom.write_byte(0xB, 0xAF2D, value)
+        value = self._get_selection_index("PE_Map_Flags_0x10")
+        self.rom.write_byte(0xB, 0xAF33, value)
 
         # Save MP cost and parameter values for each spell
         for s in range(len(self.spells)):
