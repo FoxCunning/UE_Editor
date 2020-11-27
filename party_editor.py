@@ -2,6 +2,7 @@ __author__ = "Fox Cunning"
 
 import configparser
 import glob
+import os
 from dataclasses import dataclass, field
 from typing import List
 
@@ -757,7 +758,7 @@ class PartyEditor:
 
         # Find spell definition files
         self.spell_definitions.clear()
-        definitions = glob.glob("spells_*.ini")
+        definitions = glob.glob("*.def")
         definitions_list: List[str] = []
 
         # Get spell definition files info
@@ -803,8 +804,16 @@ class PartyEditor:
                 map_options.append(f"MAP #{m:02}")
 
         # Read other spell data
+        definition = 0
         if len(self.spell_definitions) > 0:
-            mp_increment = self._read_spell_data(self.spell_definitions[0])
+            # If any definition filename matches the currently loaded ROM filename, then use that one
+            rom_name = os.path.basename(self.rom.path).rsplit('.')[0].lower()
+            for d in range(len(self.spell_definitions)):
+                definition_name = os.path.basename(self.spell_definitions[d]).rsplit('.')[0].lower()
+                if definition_name == rom_name:
+                    definition = d
+                    break
+            mp_increment = self._read_spell_data(self.spell_definitions[definition])
         else:
             mp_increment = self._read_spell_data()
 
@@ -996,6 +1005,7 @@ class PartyEditor:
         self.app.setOptionBox("PE_Map_Flag_0x10", index=value, callFunction=False)
 
         # Default selections
+        self.app.setOptionBox("PE_Spell_Definitions", definition, callFunction=False)
         self.app.setOptionBox("PE_Spell_List", 0, callFunction=True)
 
     # --- PartyEditor._create_special_window() ---
@@ -2077,7 +2087,7 @@ class PartyEditor:
 
     # --- PartyEditor._read_spell_data() ---
 
-    def _read_spell_data(self, config_file: str = "spells_remastered.ini") -> int:
+    def _read_spell_data(self, config_file: str = "Ultima - Exodus Remastered.def") -> int:
         """
         Reads data for each spell from ROM.
 
