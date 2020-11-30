@@ -173,6 +173,9 @@ class PartyEditor:
         # Should we ignore warnings or show a messagebox?
         self._ignore_warnings: bool = False
 
+        # Set to True every time there is a change that needs to be saved
+        self._unsaved_changes: bool = False
+
     # --- PartyEditor.error() ---
 
     def error(self, message: str):
@@ -190,7 +193,15 @@ class PartyEditor:
 
     # --- PartyEditor.show_races_window() ---
 
-    def show_window(self, window_name: str):
+    def show_window(self, window_name: str) -> None:
+        """
+        Show sub-window for a specific editor
+
+        Parameters
+        ----------
+        window_name: str
+            Valid options: "Races", "Professions", "Pre-Made", "Special Abilities", "Magic"
+        """
         # self.app.emptySubWindow("Party_Editor") Now performed after closing the window
         self.selected_index = -1
 
@@ -1229,11 +1240,44 @@ class PartyEditor:
         bool
             True if the window was closed, False otherwise (e.g. user cancelled)
         """
-        # TODO Ask to confirm if changes were made
-        self.current_window = ""
+        # Ask to confirm if changes were made
+        if self._unsaved_changes is True:
+            if self.app.yesNoBox("Confirm Close", "There are unsaved changes. Are you sure you want to quit?",
+                                 "Party_Editor") is False:
+                return False
+
         self.app.hideSubWindow("Party_Editor", False)
-        # Empty container
         self.app.emptySubWindow("Party_Editor")
+
+        # Cleanup
+        if self.current_window == "Races":
+            self.race_names.clear()
+            self.attribute_names.clear()
+
+        elif self.current_window == "Professions":
+            self.profession_names.clear()
+            self.attribute_names.clear()
+            self.weapon_names.clear()
+            self.armour_names.clear()
+
+        elif self.current_window == "Special Abilities":
+            self.profession_names.clear()
+            self.attribute_names.clear()
+
+        elif self.current_window == "Pre-Made":
+            self.pre_made.clear()
+
+        elif self.current_window == "Magic":
+            self.spells.clear()
+            self.spell_definitions.clear()
+            self.spell_names_0.clear()
+            self.spell_names_1.clear()
+            self.magic_checks.clear()
+            self.attribute_names.clear()
+
+        self.current_window = ""
+        self._unsaved_changes = False
+
         return True
 
     # --- PartyEditor.generic_input() ---
@@ -1251,6 +1295,7 @@ class PartyEditor:
             self.close_window()
 
         elif widget == "PE_Check_Gender":
+            self._unsaved_changes = True
             self.gender_by_profession = self.app.getCheckBox(widget)
 
         else:
@@ -1300,6 +1345,7 @@ class PartyEditor:
         if widget == "PE_Apply":
             if self.save_magic_data() is True:
                 self.app.setStatusbar("Spell Data saved.")
+                self._unsaved_changes = False
                 self.close_window()
 
         elif widget == "PE_Reload":
@@ -1345,6 +1391,7 @@ class PartyEditor:
 
         elif widget == "PE_Radio_MP":
             value = self.app.getRadioButton(widget)
+            self._unsaved_changes = True
             if value[:1] == 'I':        # Incremental
                 self.app.disableEntry("PE_MP_Display")
             else:
@@ -1357,6 +1404,8 @@ class PartyEditor:
             self.magic_info(spell_id)
 
         elif widget == "PE_MP_Display":
+            # Changing the value of MP needed to make a spell available
+            self._unsaved_changes = True
             spell_id = self._selected_spell_id()
             if spell_id < 32:
                 try:
@@ -1367,6 +1416,8 @@ class PartyEditor:
                     self.app.entry(widget, fg="#D03030")
 
         elif widget == "PE_MP_Cast":
+            # Changing the value of MP deduced after casting a spell
+            self._unsaved_changes = True
             spell_id = self._selected_spell_id()
             if spell_id < 32:
                 try:
@@ -1377,6 +1428,7 @@ class PartyEditor:
                     self.app.entry(widget, fg="#D03030")
 
         elif widget == "PE_Spell_Address":
+            self._unsaved_changes = True
             spell_id = self._selected_spell_id()
             try:
                 value = int(self.app.getEntry(widget), 16)
@@ -1389,6 +1441,7 @@ class PartyEditor:
                 self.app.entry(widget, fg="#D03030")
 
         elif widget == "PE_Spell_Flags":
+            self._unsaved_changes = True
             spell_id = self._selected_spell_id()
             # Get selection index
             value = self.app.getOptionBox(widget)
@@ -1419,6 +1472,7 @@ class PartyEditor:
                 self.spells[spell_id].flags = 0xF
 
         elif widget[:8] == "PE_Flag_":
+            self._unsaved_changes = True
             # Calculate fine flags
             flag = 1
             value = 0
@@ -1448,6 +1502,8 @@ class PartyEditor:
             self.magic_info(spell_id)
 
         elif widget[:8] == "PE_Bool_":
+            # Changing a boolean spell parameter
+            self._unsaved_changes = True
             spell_id = self._selected_spell_id()
             # Get parameter index
             parameter_id = int(widget[-2:], 10)
@@ -1456,6 +1512,7 @@ class PartyEditor:
             self.spells[spell_id].parameters[parameter_id].value = value
 
         elif widget[:16] == "PE_Attribute_Id_":
+            self._unsaved_changes = True
             # Get index of currently selected spell
             spell_id = self._selected_spell_id()
 
@@ -1483,6 +1540,7 @@ class PartyEditor:
                 self.app.entry(widget, fg="#D03030")
 
         elif widget[:18] == "PE_Attribute_List_":
+            self._unsaved_changes = True
             spell_id = self._selected_spell_id()
 
             # Get selection index
@@ -1509,6 +1567,7 @@ class PartyEditor:
                 value = int(self.app.getEntry(widget), 16)
                 if 0 <= value <= 255:
                     self.app.entry(widget, fg="#000000")
+                    self._unsaved_changes = True
                 else:
                     self.app.entry(widget, fg="#D03030")
             except ValueError:
@@ -1544,6 +1603,7 @@ class PartyEditor:
                 if 0 <= value <= 255:
                     self.spells[spell_id].parameters[parameter_id].value = value
                     self.app.entry(widget, fg="#000000")
+                    self._unsaved_changes = True
                 else:
                     self.app.entry(widget, fg="#D03030")
             except ValueError as e:
@@ -1557,6 +1617,7 @@ class PartyEditor:
                 value = int(self.app.getEntry(widget), 16)
                 self.spells[spell_id].parameters[parameter_id].value = value
                 self.app.entry(widget, fg="#000000")
+                self._unsaved_changes = True
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
                 self.app.entry(widget, fg="#D03030")
@@ -1568,6 +1629,7 @@ class PartyEditor:
                 value = int(self.app.getEntry(widget), 10)
                 self.spells[spell_id].parameters[parameter_id].value = value
                 self.app.entry(widget, fg="#000000")
+                self._unsaved_changes = True
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
                 self.app.entry(widget, fg="#D03030")
@@ -1584,6 +1646,7 @@ class PartyEditor:
             # The value is the address of the check indexed by the selection
             if selection < len(self.magic_checks):
                 self.spells[spell_id].parameters[parameter_id].value = self.magic_checks[selection].address
+                self._unsaved_changes = True
             else:
                 self.warning(f"Error processing input from widget: '{widget}': {selection} is not a valid check.")
 
@@ -1612,9 +1675,11 @@ class PartyEditor:
         elif widget == "PE_Apply":
             if self.save_races() is not False:
                 self.app.setStatusbar("Race data saved.")
+                self._unsaved_changes = False
                 self.close_window()
 
         elif widget == "PE_Gender_By_Race":
+            self._unsaved_changes = True
             self.gender_by_profession = not self.app.getCheckBox("PE_Gender_By_Race")
 
             if self.gender_by_profession:
@@ -1630,6 +1695,7 @@ class PartyEditor:
                 self.app.textArea(widget, fg="#CF0000")
             else:
                 self.app.textArea(widget, fg="#000000")
+                self._unsaved_changes = True
 
         elif widget == "PE_Update_Race_Names":
             # Make sure it's all uppercase (just for consistency)
@@ -1656,6 +1722,7 @@ class PartyEditor:
 
         elif widget == "PE_Spin_Races":
             self.selectable_races = int(self.app.getSpinBox("PE_Spin_Races"), 10)
+            self._unsaved_changes = True
 
         elif widget == "PE_Gender_Character":
             try:
@@ -1664,6 +1731,7 @@ class PartyEditor:
                 if 0 < value < 256:
                     self._display_gender(value)
                     self.gender_char[self.selected_index] = value
+                    self._unsaved_changes = True
 
             except ValueError:
                 return
@@ -1672,6 +1740,7 @@ class PartyEditor:
             value = self.app.getEntry(widget)
             try:
                 self.menu_string_id = int(value, 16)
+                self._unsaved_changes = True
             except ValueError:
                 pass
 
@@ -1708,6 +1777,7 @@ class PartyEditor:
             value = self.app.getSpinBox("PE_Spin_Professions")
             try:
                 self.selectable_professions = int(value, 10)
+                self._unsaved_changes = True
             except ValueError:
                 if value == '':
                     pass
@@ -1721,6 +1791,7 @@ class PartyEditor:
                 self.app.textArea(widget, fg="#CF0000")
             else:
                 self.app.textArea(widget, fg="#000000")
+                self._unsaved_changes = True
 
         elif widget == "PE_Update_Profession_Names":
             # Make sure it's all uppercase (just for consistency)
@@ -1747,6 +1818,7 @@ class PartyEditor:
 
         elif widget == "PE_Check_Gender":
             self.gender_by_profession = self.app.getCheckBox("PE_Check_Gender")
+            self._unsaved_changes = True
 
         elif widget == "PE_Profession_Colours":
             if self.selected_index >= 0:
@@ -1755,6 +1827,7 @@ class PartyEditor:
                 self.colour_indices[self.selected_index] = box.options.index(value)
                 # Update canvas
                 self._load_profession_graphics()
+                self._unsaved_changes = True
 
         elif widget == "PE_Sprite_Palette_Top" or widget == "PE_Sprite_Palette_Bottom":
             if self.selected_index >= 0:
@@ -1775,6 +1848,8 @@ class PartyEditor:
                 else:
                     self.sprite_colours[self.selected_index] = 0x80 | ((top_value << 2) | bottom_value)
 
+                self._unsaved_changes = True
+
                 # Update sprite
                 self._load_profession_sprite()
 
@@ -1786,6 +1861,8 @@ class PartyEditor:
 
                 self.primary_attributes[self.selected_index][0] = primary_0
 
+                self._unsaved_changes = True
+
         elif widget == "PE_Primary_1":
             if self.selected_index >= 0:
                 value = self.app.getOptionBox(widget)
@@ -1793,6 +1870,8 @@ class PartyEditor:
                 primary_1 = box.options.index(value)
 
                 self.primary_attributes[self.selected_index][1] = primary_1
+
+                self._unsaved_changes = True
 
         elif widget == "PE_Option_Weapon":
             if self.selected_index >= 0:
@@ -1802,6 +1881,8 @@ class PartyEditor:
 
                 self.best_weapon[self.selected_index] = weapon
 
+                self._unsaved_changes = True
+
         elif widget == "PE_Option_Armour":
             if self.selected_index >= 0:
                 value = self.app.getOptionBox(widget)
@@ -1810,10 +1891,13 @@ class PartyEditor:
 
                 self.best_weapon[self.selected_index] = armour
 
+                self._unsaved_changes = True
+
         elif widget == "PE_HP_Base":
             value = self.app.getEntry(widget)
             try:
                 self.hp_base = int(value, 10)
+                self._unsaved_changes = True
             except ValueError:
                 pass
 
@@ -1822,18 +1906,21 @@ class PartyEditor:
                 value = self.app.getEntry(widget)
                 try:
                     self.hp_bonus[self.selected_index] = int(value, 10)
+                    self._unsaved_changes = True
                 except ValueError:
                     pass
 
         elif widget == "PE_Apply":
             if self.save_professions() is not False:
                 self.app.setStatusbar("Profession data saved.")
+                self._unsaved_changes = False
                 self.close_window()
 
         elif widget == "PE_Menu_String_Id":
             value = self.app.getEntry(widget)
             try:
                 self.menu_string_id = int(value, 16)
+                self._unsaved_changes = True
             except ValueError:
                 pass
 
@@ -1845,13 +1932,16 @@ class PartyEditor:
 
         elif widget == "PE_Check_Caster_0":
             if self.selected_index >= 0:
+                self._unsaved_changes = True
                 self.caster_flags[self.selected_index] = self.caster_flags[self.selected_index] | 1
 
         elif widget == "PE_Check_Caster_1":
             if self.selected_index >= 0:
+                self._unsaved_changes = True
                 self.caster_flags[self.selected_index] = self.caster_flags[self.selected_index] | 2
 
         elif widget == "PE_Overwrite_MP":
+            self._unsaved_changes = True
             if self.app.getCheckBox(widget) is True:
                 self.app.enableOptionBox("PE_Option_MP")
                 self.app.enableEntry("PE_Fixed_MP")
@@ -1874,6 +1964,7 @@ class PartyEditor:
         if widget == "PE_Apply":
             if self.save_pre_made() is not False:
                 self.app.setStatusbar("Pre-made character data saved.")
+                self._unsaved_changes = False
                 self.close_window()
 
         elif widget == "PE_Character_Name":
@@ -1883,6 +1974,7 @@ class PartyEditor:
                 return
             # Truncate string if needed
             self.pre_made[self.selected_index].name = name[:5].upper()
+            self._unsaved_changes = True
 
         elif widget[:12] == "PE_Attribute":
             # Get the index of the attribute we are editing
@@ -1898,6 +1990,8 @@ class PartyEditor:
                 for a in range(4):
                     total = total + self.pre_made[self.selected_index].attributes[a]
                 self.app.label("PE_Total_Points", f"{total}")
+
+                self._unsaved_changes = True
 
             except ValueError:
                 return
@@ -1930,6 +2024,8 @@ class PartyEditor:
                     # Show total attribute points
                     self.app.label("PE_Total_Points", f"{total}")
 
+                    self._unsaved_changes = True
+
             except ValueError:
                 return
 
@@ -1950,16 +2046,11 @@ class PartyEditor:
         if widget == "PE_Apply":
             if self.save_special_abilities() is not False:
                 self.app.setStatusbar("Special Abilities saved.")
+                self._unsaved_changes = False
                 self.close_window()
 
-        elif widget == "PE_Profession_0":
+        elif widget[:14] == "PE_Profession_":
             # Maybe perform sanity checks, not needed in the current implementation
-            pass
-
-        elif widget == "PE_Profession_1":
-            pass
-
-        elif widget == "PE_Profession_2":
             pass
 
         elif widget == "PE_Damage_1":
@@ -1979,6 +2070,7 @@ class PartyEditor:
                 # Allow custom entry
                 try:
                     value = int(self.app.getEntry("PE_Custom_1"), 16)
+                    self._unsaved_changes = True
                 except ValueError:
                     value = 0x7
                 self.app.enableEntry("PE_Custom_1")
@@ -2005,6 +2097,7 @@ class PartyEditor:
                 # Allow custom entry
                 try:
                     value = int(self.app.getEntry("PE_Custom_2"), 16)
+                    self._unsaved_changes = True
                 except ValueError:
                     value = 0x7
                 self.app.enableEntry("PE_Custom_2")
@@ -2019,6 +2112,7 @@ class PartyEditor:
             # Get selection index
             box = self.app.getOptionBoxWidget(widget)
             value = box.options.index(self.app.getOptionBox(widget))
+            self._unsaved_changes = True
             # Only enable input from adjustment value if needed
             if value == 1 or value == 2:
                 self.app.enableEntry("PE_Adjustment_3")
