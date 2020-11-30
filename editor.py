@@ -1056,7 +1056,7 @@ def close_rom() -> None:
     app.hideAllSubWindows(False)
     # Deactivate all tabs
     app.setTabbedFrameDisabledTab("TabbedFrame", "Map", True)
-    app.setTabbedFrameDisabledTab("TabbedFrame", "Party", True)
+    app.setTabbedFrameDisabledTab("TabbedFrame", "Misc", True)
     app.setTabbedFrameDisabledTab("TabbedFrame", "Enemies", True)
     app.setTabbedFrameDisabledTab("TabbedFrame", "Text", True)
     app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", True)
@@ -1217,7 +1217,7 @@ def open_rom(file_name: str) -> None:
 
         # Activate tabs
         app.setTabbedFrameDisabledTab("TabbedFrame", "Map", False)
-        app.setTabbedFrameDisabledTab("TabbedFrame", "Party", False)
+        app.setTabbedFrameDisabledTab("TabbedFrame", "Misc", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Enemies", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Text", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", False)
@@ -2050,19 +2050,27 @@ if __name__ == "__main__":
                               callFunction=True, row=0, column=3)
 
         # PARTY Tab ----------------------------------------------------------------------------------------------------
-        with app.tab("Party"):
+        with app.tab("Misc"):
             # Row 0
-            app.button("PT_Button_Races", name="Races", value=party_editor_press, sticky='NEWS', row=0, column=0)
+            app.button("PT_Button_Races", name="Races", value=party_editor_press, sticky='NEWS',
+                       bg="#E0D7C7", row=0, column=0)
             app.button("PT_Button_Professions", name="Professions", value=party_editor_press,  sticky='NEWS',
-                       row=0, column=1)
+                       bg="#D7C7E0", row=0, column=1)
             # Row 1
             app.button("PT_Button_Pre-Made", name="Pre-Made\nCharacters", value=party_editor_press,  sticky='NEWS',
-                       row=1, column=0)
-            app.button("PT_Button_Items", name="Items", value=party_editor_press,  sticky='NEWS', row=1, column=1)
+                       bg="#C7E0D7", row=1, column=0)
+            app.button("PT_Button_Items", name="Items", value=party_editor_press,  sticky='NEWS',
+                       bg="#E0D7E0", row=1, column=1)
             # Row 2
-            app.button("PT_Button_Magic", name="Magic", value=party_editor_press,  sticky='NEWS', row=2, column=0)
+            app.button("PT_Button_Magic", name="Magic", value=party_editor_press,  sticky='NEWS',
+                       bg="#E0C7D7", row=2, column=0)
             app.button("PT_Button_Special", name="Special\nAbilities", value=party_editor_press, sticky='NEWS',
-                       row=2, column=1)
+                       bg="#D7E0E0", row=2, column=1)
+            # Row 3
+            app.button("PT_Button_Weapons", name="Weapons/Armour", value=party_editor_press, sticky='NEWS',
+                       bg="#C7E0C7", row=3, column=0)
+            app.button("PT_Button_Other", name="Commands", value=party_editor_press, sticky='NEWS',
+                       bg="#C7E0E0", row=3, column=1)
 
         # ENEMIES Tab --------------------------------------------------------------------------------------------------
         with app.tab("Enemies", padding=[0, 0]):
@@ -2229,7 +2237,7 @@ if __name__ == "__main__":
 
         # Deactivate tabs until ROM is loaded
         app.setTabbedFrameDisabledTab("TabbedFrame", "Map", True)
-        app.setTabbedFrameDisabledTab("TabbedFrame", "Party", True)
+        app.setTabbedFrameDisabledTab("TabbedFrame", "Misc", True)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Enemies", True)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Text", True)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", True)
