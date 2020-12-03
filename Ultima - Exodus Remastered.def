@@ -19,7 +19,7 @@ NAME=Intelligence check
 
 
 ; ============================================================================
-;						Spell section keys
+;						Section keys
 ;
 ; MP: 	Offset for reading the actual MP cost of the spell, from the beginning
 ;		of its routine.
@@ -40,7 +40,7 @@ NAME=Intelligence check
 ; TYPE_x:	This determins what kind of widget(s) to show for parameter 'x'.
 ;			Values can be: HEX (or H), DECIMAL (or D), POINTER (or P),
 ;			STRING (or S), ATTRIBUTE (or A), BOOL (or B), CHECK (or C),
-;			MAP (or M)
+;			LOCATION (or L), MARK (or M)
 ; ============================================================================
 
 
@@ -457,7 +457,7 @@ MP=0x1
 
 DESCRIPTION_0=ID of second continent
 OFFSET_0=0x10
-TYPE_0=MAP
+TYPE_0=LOCATION
 
 DESCRIPTION_1=Failure dialogue ID
 OFFSET_1=0x14
@@ -528,6 +528,7 @@ TYPE_0=DECIMAL
 ;			RECALL
 ; ------------------------------------------
 [SPELL_31]
+NOTES=This modifies a 16-bit attribute (for example, HP). If you choose an 8-bit attribute, the next one will be set to 0; for example, if you modify INT (any value), then WIS will be set to 0.
 MP=0xC
 
 DESCRIPTION_0=Set caster's
@@ -568,3 +569,65 @@ ADDRESS=0xD4FD
 DESCRIPTION_0=Hit chance offset
 OFFSET_0=0x21
 TYPE_0=DECIMAL
+
+
+; ============================================================================
+;								TOOLS
+; ============================================================================
+
+; ------------------------------------------
+;				TORCH
+; ------------------------------------------
+[TOOL_0]
+NOTES=Uses the same routine as the "Bright/Star" spell (minus the MP consumption).
+
+
+; ------------------------------------------
+;				KEY
+; ------------------------------------------
+[TOOL_1]
+NOTES=All this does is change the "door tile" into a "replacement tile". The ID of the replacement tile should be ORed with 0x80 in order to make it appear instantly. For example tile 0x0B should be 0x8B.
+
+DESCRIPTION_0=Door tile (0x0 to 0xF)
+OFFSET_0=0x0C
+TYPE_0=HEX
+
+DESCRIPTION_1=Replacement tile (0x80 to 0x8F)
+OFFSET_1=0x10
+TYPE_1=HEX
+
+DESCRIPTION_2=Success dialogue
+OFFSET_2=0x59
+TYPE_2=STRING
+
+DESCRIPTION_3=Failure dialogue
+OFFSET_3=0x67
+TYPE_3=STRING
+
+
+; ------------------------------------------
+;				GEM
+; ------------------------------------------
+[TOOL_2]
+NOTES=Uses the same routine as the "Map" spell.
+
+
+; ------------------------------------------
+;				TIME POWDER
+; ------------------------------------------
+[TOOL_3]
+DESCRIPTION_0=Can't be used in map
+OFFSET_0=0x03
+TYPE_0=LOCATION
+
+DESCRIPTION_1=Sound effect
+OFFSET_1=0x0A
+TYPE_1=HEX
+
+DESCRIPTION_2=Effect duration (0 to 127)
+OFFSET_2=0x0E
+TYPE_2=DECIMAL
+
+DESCRIPTION_3=Success dialogue
+OFFSET_3=0x12
+TYPE_3=STRING

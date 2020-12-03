@@ -31,12 +31,39 @@ class PartyEditor:
 
     # --- PartyEditor.MagicCheck class ---
     @dataclass(init=True, repr=False)
-    class MagicCheck:
+    class AttributeCheck:
         """
         Helper class for the magic system: pointers to subroutines used to roll a Level/INT/WIS check
         """
         name: str = ""
         address: int = 0
+
+    # --- PartyEditor.Parameter class ---
+
+    @dataclass(init=True, repr=False)
+    class Parameter:
+        """
+        A helper sub-class to store spell parameter data
+        """
+        # Bank 0xF if address >= 0xC000; banks 0x0 and 0x6 otherwise
+        address: int = 0
+        # Could be a byte (e.g. for LDA or CMP), or word (e.g. for a JMP or JSR instruction)
+        value: int = 0
+        # Description that will be displayed in the editor
+        description: str = ""
+        # Type is used to choose what kind of UI to build for this parameter, values can be:
+        # 0 = Decimal, 1 = 8-bit Hex, 2 = 16-bit Address, 3 = Attribute index, 4 = Dialogue ID
+        type: int = 0
+        # Constants used for types
+        TYPE_DECIMAL = 0
+        TYPE_HEX = 1
+        TYPE_POINTER = 2
+        TYPE_ATTRIBUTE = 3
+        TYPE_BOOL = 4
+        TYPE_STRING = 5
+        TYPE_CHECK = 6
+        TYPE_LOCATION = 7
+        TYPE_MARK = 8
 
     # --- PartyEditor.Spell class ---
     @dataclass(init=True, repr=False)
@@ -45,32 +72,8 @@ class PartyEditor:
         A helper class used to store magic spell data
         """
 
-        @dataclass(init=True, repr=False)
-        class Parameter:
-            """
-            A helper sub-class to store spell parameter data
-            """
-            # Bank 0xF if address >= 0xC000; banks 0x0 and 0x6 otherwise
-            address: int = 0
-            # Could be a byte (e.g. for LDA or CMP), or word (e.g. for a JMP or JSR instruction)
-            value: int = 0
-            # Description that will be displayed in the editor
-            description: str = ""
-            # Type is used to choose what kind of UI to build for this parameter, values can be:
-            # 0 = Decimal, 1 = 8-bit Hex, 2 = 16-bit Address, 3 = Attribute index, 4 = Dialogue ID
-            type: int = 0
-            # Constants used for types
-            TYPE_DECIMAL = 0
-            TYPE_HEX = 1
-            TYPE_POINTER = 2
-            TYPE_ATTRIBUTE = 3
-            TYPE_BOOL = 4
-            TYPE_STRING = 5
-            TYPE_CHECK = 6
-            TYPE_MAP = 7
-
         # Parameters for each specific spell
-        parameters: List[Parameter] = field(default_factory=list)
+        parameters: List = field(default_factory=list)
         # Ignored for actual spells, used in the UI only by common routines that are unnamed in the game
         name: str = ""
         # Notes will appear in the UI when this spell is selected
@@ -105,13 +108,14 @@ class PartyEditor:
         self.attribute_names: List[str] = ["", "", "", ""]
         self.weapon_names: List[str] = []
         self.armour_names: List[str] = []
+        self.mark_names: List[str] = ["KING", "SNAKE", "FIRE", "FORCE"]
         self.spell_names_0: List[str] = []  # Cleric spells
         self.spell_names_1: List[str] = []  # Wizard spells
-        self.magic_checks: List[PartyEditor.MagicCheck] = []
+        self.attribute_checks: List[PartyEditor.AttributeCheck] = []
         # Spells (0-31) and common routines (32-...)
         self.spells: List[PartyEditor.Spell] = []
         # List of spell definition file names
-        self.spell_definitions: List[str] = []
+        self.routine_definitions: List[str] = []
 
         # Number of selectable races for character creation
         self.selectable_races: int = 5
@@ -200,7 +204,7 @@ class PartyEditor:
         Parameters
         ----------
         window_name: str
-            Valid options: "Races", "Professions", "Pre-Made", "Special Abilities", "Magic"
+            Valid options: "Races", "Professions", "Pre-Made", "Special Abilities", "Magic", "Weapons", "Commands"
         """
         # self.app.emptySubWindow("Party_Editor") Now performed after closing the window
         self.selected_index = -1
@@ -225,6 +229,12 @@ class PartyEditor:
 
         elif window_name == "Magic":
             self._create_magic_window()
+
+        elif window_name == "Items":
+            self._create_items_window()
+
+        elif window_name == "Weapons":
+            self._create_weapons_window()
 
         else:
             self.warning(f"Unimplemented: {window_name}.")
@@ -768,24 +778,7 @@ class PartyEditor:
         self._read_attribute_names()
 
         # Find spell definition files
-        self.spell_definitions.clear()
-        definitions = glob.glob("*.def")
-        definitions_list: List[str] = []
-
-        # Get spell definition files info
-        for d in definitions:
-            parser = configparser.ConfigParser()
-            parser.read(d)
-            if parser.has_section("INFO"):
-                definitions_list.append(parser["INFO"].get("VERSION", d))
-                self.spell_definitions.append(d)
-            del parser
-
-        if len(definitions_list) < 1:
-            self.app.errorBox("Spell Editor", "ERROR: Could not find any spell definitions.\n" +
-                              "Make sure at least one spells_xxx.ini file is present in the editor's directory.",
-                              "Party_Editor")
-            definitions_list.append("- No Spell Definitions Found -")
+        definitions_list = self._read_definitions()
 
         # Find spell string IDs
         spell_strings: List[int] = [5, 3]
@@ -814,17 +807,19 @@ class PartyEditor:
             for m in range(self.map_editor.max_maps()):
                 map_options.append(f"MAP #{m:02}")
 
+        # TODO Read mark names from ROM
+
         # Read other spell data
         definition = 0
-        if len(self.spell_definitions) > 0:
+        if len(self.routine_definitions) > 0:
             # If any definition filename matches the currently loaded ROM filename, then use that one
             rom_name = os.path.basename(self.rom.path).rsplit('.')[0].lower()
-            for d in range(len(self.spell_definitions)):
-                definition_name = os.path.basename(self.spell_definitions[d]).rsplit('.')[0].lower()
+            for d in range(len(self.routine_definitions)):
+                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0].lower()
                 if definition_name == rom_name:
                     definition = d
                     break
-            mp_increment = self._read_spell_data(self.spell_definitions[definition])
+            mp_increment = self._read_spell_data(self.routine_definitions[definition])
         else:
             mp_increment = self._read_spell_data()
 
@@ -1229,6 +1224,94 @@ class PartyEditor:
                     self.app.label("PE_Label_Unsupported_2", "The loaded ROM does not support this feature.",
                                    row=0, column=0, sticky="NEWS", stretch="ROW", font=11)
 
+    # --- PartyEditor._create_weapons_window() ---
+
+    def _create_weapons_window(self) -> None:
+        """
+        Creates a sub-window and widgets for editing weapons and armour properties
+        """
+        self._read_weapon_armour_names()
+
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(400, 360)
+
+            # Buttons
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.button("PE_Apply", name="Apply", value=self._generic_input, image="res/floppy.gif",
+                                tooltip="Apply Changes and Close Window", row=0, column=0)
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=1)
+
+            # Weapons
+            with self.app.labelFrame("Weapons", padding=[2, 2], row=1, column=0, bg="#E0C0A0"):
+                with self.app.frame("Frame_Weapons_Names", padding=[2, 0], row=0, column=0):
+                    self.app.label("PE_Label_Weapons_String", "Names string:", sticky="E", row=0, column=0, font=11)
+                    self.app.entry("PE_Entry_Weapons_String", "", width=4, row=0, column=1, font=10)
+                    self.app.button("PE_Button_Weapons_String", image="res/edit-dlg-small.gif",
+                                    width=16, height=16, row=0, column=2)
+
+                with self.app.frame("Frame_Weapons_Selection", padding=[2, 0], row=1, column=0):
+                    self.app.label("PE_Label_Weapon", "Edit weapon:", row=0, column=0, font=11)
+                    self.app.optionBox("PE_Option_Weapon", self.weapon_names, row=0, column=1, font=10)
+
+    # --- PartyEditor._create_items_window() ---
+
+    def _create_items_window(self) -> None:
+        """
+        Creates a sub-window and widgets for editing "tools" (usable items)
+        """
+        # TODO Get item names string ID
+
+        # TODO Read/parse item names
+
+        # TODO Read mark names from ROM
+
+        # Read routine definitions
+        definitions_list = self._read_definitions()
+
+        # TODO Read item data
+
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(400, 360)
+
+            # Buttons
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.button("PE_Apply", name="Apply", value=self._items_input, image="res/floppy.gif",
+                                tooltip="Apply Changes and Close Window", row=0, column=0)
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=1)
+                self.app.button("PE_Reload", name="Reload", value=self._items_input, image="res/reload.gif",
+                                tooltip="Update Spell Names", row=0, column=3, sticky="E")
+
+            # Item names
+            with self.app.frame("PE_Frame_Names", padding=[2, 0], row=1, column=0):
+                self.app.label("PE_Label_Names", "Names string:", sticky="E", row=0, column=0, font=11)
+                self.app.entry("PE_Names_String", "", change=self._items_input, width=4, row=0, column=1, font=10)
+                self.app.button("PE_Button_Names", image="res/edit-dlg-small.gif", value=self._items_input,
+                                width=16, height=16, row=0, column=2)
+
+            # Definitions file
+            with self.app.frame("PE_Frame_Definitions", padding=[2, 0], row=2, column=0):
+                self.app.label("PE_Label_Definitions", "Definitions file:", sticky="E", row=0, column=0, font=11)
+                self.app.optionBox("PE_Definitions", definitions_list, change=self._items_input,
+                                   width=25, row=0, column=1, font=10)
+
+            # Item selection
+            with self.app.frame("PE_Frame_Selection", padding=[2, 0], row=3, column=0):
+                self.app.label("PE_Label_Item", "Edit item:", sticky="E", row=0, column=0, font=11)
+
+        # Select the definition files that matches the current ROM, if there is one
+        definition = 0
+        if len(self.routine_definitions) > 0:
+            # If any definition filename matches the currently loaded ROM filename, then use that one
+            rom_name = os.path.basename(self.rom.path).rsplit('.')[0].lower()
+            for d in range(len(self.routine_definitions)):
+                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0].lower()
+                if definition_name == rom_name:
+                    definition = d
+                    break
+        self.app.setOptionBox("PE_Definitions", definition, callFunction=False)
+
     # --- PartyEditor.close_window() ---
 
     def close_window(self) -> bool:
@@ -1269,11 +1352,14 @@ class PartyEditor:
 
         elif self.current_window == "Magic":
             self.spells.clear()
-            self.spell_definitions.clear()
+            self.routine_definitions.clear()
             self.spell_names_0.clear()
             self.spell_names_1.clear()
-            self.magic_checks.clear()
+            self.attribute_checks.clear()
             self.attribute_names.clear()
+
+        elif self.current_window == "Items":
+            self.routine_definitions.clear()
 
         self.current_window = ""
         self._unsaved_changes = False
@@ -1495,7 +1581,7 @@ class PartyEditor:
             box = self.app.getOptionBoxWidget(widget)
             selection = box.options.index(value)
             # Get file name
-            definitions = self.spell_definitions[selection]
+            definitions = self.routine_definitions[selection]
             # Re-read spell data
             self._read_spell_data(definitions)
             # Show info for the currently selected spell again
@@ -1634,6 +1720,21 @@ class PartyEditor:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
                 self.app.entry(widget, fg="#D03030")
 
+        elif widget[:8] == "PE_Mark_":
+            parameter_id = int(widget[-2:], 10)
+            spell_id = self._selected_spell_id()
+
+            # Get dictionary of values
+            selection = self.app.getOptionBox(widget)
+            # Each value represents one bit
+            bit = 1
+            value = 0
+            for d in selection:
+                if selection.get(d) is True:
+                    value = value | bit
+                bit = bit << 1
+            self.spells[spell_id].parameters[parameter_id].value = value
+
         elif widget[:9] == "PE_Check_":
             parameter_id = int(widget[-2:], 10)
             spell_id = self._selected_spell_id()
@@ -1644,8 +1745,8 @@ class PartyEditor:
             selection = box.options.index(value)
 
             # The value is the address of the check indexed by the selection
-            if selection < len(self.magic_checks):
-                self.spells[spell_id].parameters[parameter_id].value = self.magic_checks[selection].address
+            if selection < len(self.attribute_checks):
+                self.spells[spell_id].parameters[parameter_id].value = self.attribute_checks[selection].address
                 self._unsaved_changes = True
             else:
                 self.warning(f"Error processing input from widget: '{widget}': {selection} is not a valid check.")
@@ -2122,6 +2223,19 @@ class PartyEditor:
         else:
             self.warning(f"Unimplemented input for widget: {widget}.")
 
+    # --- PartyEditor._items_input() ---
+
+    def _items_input(self, widget) -> None:
+        """
+        Process input for widgets specific to the "Items" sub-window
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget generating the event.
+        """
+        self.warning(f"Unimplemented input for widget: {widget}.")
+
     # --- PartyEditor._read_race_names() ---
 
     def _read_race_names(self) -> None:
@@ -2178,6 +2292,39 @@ class PartyEditor:
             ascii_string = exodus_to_ascii(data)
             self.profession_names.append(ascii_string)
             # profession_names = profession_names + '\n' + ascii_string
+
+    # --- PartyEditor._read_definitions() ---
+
+    def _read_definitions(self) -> List[str]:
+        """
+        Finds and reads definition files (.def), populates PartyEditor's routine_definitions
+
+        Returns
+        -------
+        List[str]:
+            A list of strings containing the version info of each definitions, useful for creating option boxes.
+        """
+        # Find spell definition files
+        self.routine_definitions.clear()
+        definitions = glob.glob("*.def")
+        definitions_list: List[str] = []
+
+        # Get spell definition files info
+        for d in definitions:
+            parser = configparser.ConfigParser()
+            parser.read(d)
+            if parser.has_section("INFO"):
+                definitions_list.append(parser["INFO"].get("VERSION", d))
+                self.routine_definitions.append(d)
+            del parser
+
+        if len(definitions_list) < 1:
+            self.app.errorBox("Spell Editor", "ERROR: Could not find any spell definitions.\n" +
+                              "Make sure at least one spells_xxx.ini file is present in the editor's directory.",
+                              "Party_Editor")
+            definitions_list.append("- No Spell Definitions Found -")
+
+        return definitions_list
 
     # --- PartyEditor._read_spell_data() ---
 
@@ -2323,7 +2470,7 @@ class PartyEditor:
         parser = configparser.ConfigParser()
         parser.read(config_file)
         # Expect a maximum of 8 checks
-        self.magic_checks.clear()
+        self.attribute_checks.clear()
         for c in range(8):
             if parser.has_section(f"CHECK_{c}") is False:
                 break
@@ -2342,10 +2489,10 @@ class PartyEditor:
             self.app.setMeter("PE_Progress_Meter", progress)
             root.update()
 
-            check = PartyEditor.MagicCheck()
+            check = PartyEditor.AttributeCheck()
             check.name = name
             check.address = value
-            self.magic_checks.append(check)
+            self.attribute_checks.append(check)
 
         # Read common code used by various spells (single-hit missiles, multi-hit magic...)
         for s in range(16):
@@ -2458,7 +2605,7 @@ class PartyEditor:
         decoded["Notes"] = section.get("NOTES", "").replace("\\n", "\n")
 
         # Read parameters (allow a maximum of 16)
-        parameters: List[PartyEditor.Spell.Parameter] = []
+        parameters: List[PartyEditor.Parameter] = []
         for p in range(16):
             # Description
             try:
@@ -2472,30 +2619,32 @@ class PartyEditor:
                 # Found last parameter
                 break
 
-            parameter = PartyEditor.Spell.Parameter()
+            parameter = PartyEditor.Parameter()
             parameter.description = description
 
             # Type, if any
             value = section.get(f"TYPE_{p}", "DECIMAL")
             if value[0] == 'D':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_DECIMAL
+                parameter.type = PartyEditor.Parameter.TYPE_DECIMAL
             elif value[0] == 'H':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_HEX
+                parameter.type = PartyEditor.Parameter.TYPE_HEX
             elif value[0] == 'P':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_POINTER
+                parameter.type = PartyEditor.Parameter.TYPE_POINTER
             elif value[0] == 'S':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_STRING
+                parameter.type = PartyEditor.Parameter.TYPE_STRING
             elif value[0] == 'A':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_ATTRIBUTE
+                parameter.type = PartyEditor.Parameter.TYPE_ATTRIBUTE
             elif value[0] == 'B':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_BOOL
+                parameter.type = PartyEditor.Parameter.TYPE_BOOL
             elif value[0] == 'C':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_CHECK
+                parameter.type = PartyEditor.Parameter.TYPE_CHECK
+            elif value[0] == 'L':
+                parameter.type = PartyEditor.Parameter.TYPE_LOCATION
             elif value[0] == 'M':
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_MAP
+                parameter.type = PartyEditor.Parameter.TYPE_MARK
             else:
                 self.warning(f"Invalid type '{value}' for parameter #{p} in spell #{spell_id}. Using defaults.")
-                parameter.type = PartyEditor.Spell.Parameter.TYPE_DECIMAL
+                parameter.type = PartyEditor.Parameter.TYPE_DECIMAL
 
             # Pointer, if any
             value = section.get(f"POINTER_{p}", "none")
@@ -2555,8 +2704,9 @@ class PartyEditor:
                 # Read Word
                 parameter.value = self.rom.read_word(bank, parameter.address)
                 # These must be 8-bit values
-                if (parameter.type == parameter.TYPE_MAP or parameter.type == parameter.TYPE_ATTRIBUTE or
-                        parameter.type == parameter.TYPE_STRING or parameter.type == parameter.TYPE_BOOL):
+                if (parameter.type == parameter.TYPE_LOCATION or parameter.type == parameter.TYPE_ATTRIBUTE or
+                        parameter.type == parameter.TYPE_STRING or parameter.type == parameter.TYPE_BOOL or
+                        parameter.type == parameter.TYPE_MARK):
                     if self._ignore_warnings is False:
                         if self.app.okBox("Decode Spell", f"WARNING: Spell #{spell_id}'s Parameter #{p} must be an " +
                                                           f"8-bit value, but is preceeded by 16-bit value " +
@@ -3390,9 +3540,33 @@ class PartyEditor:
 
         self.app.emptyLabelFrame("PE_Frame_Parameters")
 
+        # Resize the window depending on how many parameter options we need to display
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(480, 580 + (24 * len(self.spells[spell_id].parameters)))
+
+        self._create_parameter_widgets(self.spells[spell_id].notes, self.spells[spell_id].parameters)
+
+    # --- PartyEditor._create_parameter_widgets() ---
+
+    def _create_parameter_widgets(self, notes: str, parameters: List,
+                                  frame: str = "PE_Frame_Parameters") -> None:
+        """
+        Creates widgets for a routine's parameters and shows the appropriate values
+
+        Parameters
+        ----------
+        notes: str
+            Notes field read from definition file
+
+        parameters: List
+            A list of parameters for this routine
+
+        frame: str
+            Name of the Frame widget that will contain the parameter widgets
+        """
         # Build a list of options for attribute checks, one for maps, and one for attribute names
         check_options: List[str] = []
-        for c in self.magic_checks:
+        for c in self.attribute_checks:
             check_options.append(c.name)
         if len(check_options) < 1:
             check_options.append("- No Checks Defined -")
@@ -3406,18 +3580,14 @@ class PartyEditor:
         attribute_options.append("Level")
         attribute_options.append("(Custom)")
 
-        # Resize the window depending on how many parameter options we need to display
-        with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 580 + (24 * len(self.spells[spell_id].parameters)))
-
-        with self.app.labelFrame("PE_Frame_Parameters"):
+        with self.app.labelFrame(frame):
             # Show spell notes, if any
-            self.app.message("PE_Spell_Notes", self.spells[spell_id].notes, width=400,
+            self.app.message("PE_Routine_Notes", notes, width=400,
                              row=0, column=0, colspan=3, sticky="NEWS", fg="#D03030", font=11)
 
             # Add parameter widgets
-            for p in range(len(self.spells[spell_id].parameters)):
-                parameter = self.spells[spell_id].parameters[p]
+            for p in range(len(parameters)):
+                parameter = parameters[p]
                 self.app.label(f"PE_Label_Parameter_{p:02}", parameter.description,
                                sticky="NE", row=1 + p, column=0, font=11)
 
@@ -3440,7 +3610,7 @@ class PartyEditor:
                     self.app.button(f"PE_String_Button_Parameter_{p:02}", image="res/edit-dlg-small.gif",
                                     value=self._magic_input, sticky="NW", width=16, height=16, row=1 + p, column=2)
 
-                elif parameter.type == parameter.TYPE_MAP:
+                elif parameter.type == parameter.TYPE_LOCATION:
                     self.app.optionBox(f"PE_Map_Parameter_{p:02}", map_options, change=self._magic_input,
                                        width=24, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
                     self.app.setOptionBox(f"PE_Map_Parameter_{p:02}", index=parameter.value, callFunction=False)
@@ -3464,11 +3634,23 @@ class PartyEditor:
                     # Select the appropriate option from the list
                     self._magic_input(f"PE_Attribute_Id_Parameter_{p:02}")
 
+                elif parameter.type == parameter.TYPE_MARK:
+                    self.app.optionBox(f"PE_Mark_Parameter_{p:02}", self.mark_names, name="Mark(s)", kind="ticks",
+                                       change=self._magic_input,
+                                       width=12, sticky="NEW", row=1 + p, column=1, colspan=2, font=9)
+                    bit = 1
+                    for b in range(4):
+                        if (parameter.value & bit) != 0:
+                            self.app.setOptionBox(f"PE_Mark_Parameter_{p:02}", b, value=True, callFunction=False)
+                        else:
+                            self.app.setOptionBox(f"PE_Mark_Parameter_{p:02}", b, value=False, callFunction=False)
+                        bit = bit << 1
+
                 elif parameter.type == parameter.TYPE_CHECK:
                     # Find out which check this is
                     check_id = -1
-                    for c in range(len(self.magic_checks)):
-                        if parameter.value == self.magic_checks[c].address:
+                    for c in range(len(self.attribute_checks)):
+                        if parameter.value == self.attribute_checks[c].address:
                             check_id = c
                             break
                     if check_id == -1:
@@ -4249,8 +4431,8 @@ class PartyEditor:
                 # Parameters
                 for p in self.spells[s].parameters:
                     # 16-bit parameter types
-                    if p.type == PartyEditor.Spell.Parameter.TYPE_POINTER or \
-                            p.type == PartyEditor.Spell.Parameter.TYPE_CHECK:
+                    if p.type == PartyEditor.Parameter.TYPE_POINTER or \
+                            p.type == PartyEditor.Parameter.TYPE_CHECK:
                         if p.address >= 0xC000:
                             self.rom.write_word(0xF, p.address, p.value)
                         elif p.address >= 0x8000:

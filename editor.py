@@ -1739,9 +1739,9 @@ def select_portrait(sel: str) -> None:
     text_editor.load_portrait(index)
 
 
-# --- party_editor_press() ---
+# --- party_editor_input() ---
 
-def party_editor_press(button: str) -> bool:
+def party_editor_input(button: str) -> bool:
     if button == "PT_Button_Races":
         party_editor.show_window("Races")
 
@@ -1759,6 +1759,12 @@ def party_editor_press(button: str) -> bool:
 
     elif button == "PT_Button_Items":
         party_editor.show_window("Items")
+
+    elif button == "PT_Button_Weapons":
+        party_editor.show_window("Weapons")
+
+    elif button == "PT_Button_Commands":
+        party_editor.show_window("Commands")
 
     else:
         log(3, "PARTY_EDITOR", f"Unimplemented button '{button}'.")
@@ -2052,24 +2058,24 @@ if __name__ == "__main__":
         # PARTY Tab ----------------------------------------------------------------------------------------------------
         with app.tab("Misc"):
             # Row 0
-            app.button("PT_Button_Races", name="Races", value=party_editor_press, sticky='NEWS',
+            app.button("PT_Button_Races", name="Races", value=party_editor_input, sticky='NEWS',
                        bg="#E0D7C7", row=0, column=0)
-            app.button("PT_Button_Professions", name="Professions", value=party_editor_press,  sticky='NEWS',
+            app.button("PT_Button_Professions", name="Professions", value=party_editor_input, sticky='NEWS',
                        bg="#D7C7E0", row=0, column=1)
             # Row 1
-            app.button("PT_Button_Pre-Made", name="Pre-Made\nCharacters", value=party_editor_press,  sticky='NEWS',
+            app.button("PT_Button_Pre-Made", name="Pre-Made\nCharacters", value=party_editor_input, sticky='NEWS',
                        bg="#C7E0D7", row=1, column=0)
-            app.button("PT_Button_Items", name="Items", value=party_editor_press,  sticky='NEWS',
+            app.button("PT_Button_Items", name="Items", value=party_editor_input, sticky='NEWS',
                        bg="#E0D7E0", row=1, column=1)
             # Row 2
-            app.button("PT_Button_Magic", name="Magic", value=party_editor_press,  sticky='NEWS',
+            app.button("PT_Button_Magic", name="Magic", value=party_editor_input, sticky='NEWS',
                        bg="#E0C7D7", row=2, column=0)
-            app.button("PT_Button_Special", name="Special\nAbilities", value=party_editor_press, sticky='NEWS',
+            app.button("PT_Button_Special", name="Special\nAbilities", value=party_editor_input, sticky='NEWS',
                        bg="#D7E0E0", row=2, column=1)
             # Row 3
-            app.button("PT_Button_Weapons", name="Weapons/Armour", value=party_editor_press, sticky='NEWS',
+            app.button("PT_Button_Weapons", name="Weapons/Armour", value=party_editor_input, sticky='NEWS',
                        bg="#C7E0C7", row=3, column=0)
-            app.button("PT_Button_Other", name="Commands", value=party_editor_press, sticky='NEWS',
+            app.button("PT_Button_Commands", name="Commands", value=party_editor_input, sticky='NEWS',
                        bg="#C7E0E0", row=3, column=1)
 
         # ENEMIES Tab --------------------------------------------------------------------------------------------------
