@@ -382,7 +382,7 @@ MP=0x1
 
 DESCRIPTION_0=New status
 OFFSET_0=0x11
-TYPE=DECIMAL
+TYPE_0=DECIMAL
 
 DESCRIPTION_1=Result dialogue for status 0
 POINTER_1=0x16
@@ -631,3 +631,164 @@ TYPE_2=DECIMAL
 DESCRIPTION_3=Success dialogue
 OFFSET_3=0x12
 TYPE_3=STRING
+
+
+; ------------------------------------------
+;				TENT
+; ------------------------------------------
+[TOOL_4]
+DESCRIPTION_0=Amount healed (0-255)
+OFFSET_0=0x13
+TYPE_0=DECIMAL
+
+
+; ------------------------------------------
+;				GOLD PICK
+; ------------------------------------------
+[TOOL_5]
+DESCRIPTION_0=Map flags
+OFFSET_0=0x03
+TYPE_0=HEX
+
+DESCRIPTION_1=X Coordinate
+OFFSET_1=0x09
+TYPE_1=DECIMAL
+
+DESCRIPTION_2=Y Coordinate
+OFFSET_2=0x0F
+TYPE_2=DECIMAL
+
+DESCRIPTION_3=ID of item found
+OFFSET_3=0x13
+TYPE_3=HEX
+
+DESCRIPTION_4=Quantity found
+OFFSET_4=0x15
+TYPE_4=DECIMAL
+
+DESCRIPTION_5=Success dialogue
+OFFSET_5=0x19
+TYPE_5=STRING
+
+DESCRIPTION_6=Failure dialogue
+OFFSET_6=0x1E
+TYPE_6=STRING
+
+
+; ------------------------------------------
+;				SILVER PICK
+; ------------------------------------------
+[TOOL_6]
+DESCRIPTION_0=Map flags
+OFFSET_0=0x03
+TYPE_0=HEX
+
+DESCRIPTION_1=X Coordinate
+OFFSET_1=0x09
+TYPE_1=DECIMAL
+
+DESCRIPTION_2=Y Coordinate
+OFFSET_2=0x0F
+TYPE_2=DECIMAL
+
+DESCRIPTION_3=ID of item found
+OFFSET_3=0x13
+TYPE_3=HEX
+
+DESCRIPTION_4=Quantity found
+OFFSET_4=0x15
+TYPE_4=DECIMAL
+
+DESCRIPTION_5=Success dialogue
+OFFSET_5=0x19
+TYPE_5=STRING
+
+DESCRIPTION_6=Failure dialogue
+OFFSET_6=0x1E
+TYPE_6=STRING
+
+
+; ------------------------------------------
+;				SILVER HORN
+; ------------------------------------------
+[TOOL_7]
+DESCRIPTION_0=Music
+OFFSET_0=0x01
+TYPE_0=HEX
+
+DESCRIPTION_1=Map flags
+OFFSET_1=0x0C
+TYPE_1=HEX
+
+DESCRIPTION_2=Pause (before)
+OFFSET_2=0x05
+TYPE_2=DECIMAL
+
+DESCRIPTION_3=Required Marks (bit mask)
+OFFSET_3=0x14
+TYPE_3=HEX
+
+DESCRIPTION_4=X Coordinate
+OFFSET_4=0x1A
+TYPE_4=DECIMAL
+
+DESCRIPTION_5=Y Coordinate (bottom tile + 1)
+OFFSET_5=0x20
+TYPE_5=DECIMAL
+
+DESCRIPTION_6=Y Coordinate (top tile - 1)
+OFFSET_6=0x24
+TYPE_6=DECIMAL
+
+DESCRIPTION_7=Change top tiles to
+OFFSET_7=0x3B
+TYPE_7=HEX
+
+DESCRIPTION_8=Change bottom tiles to
+OFFSET_8=0x40
+TYPE_8=HEX
+
+DESCRIPTION_9=Pause (after)
+OFFSET_9=0x36
+TYPE_9=DECIMAL
+
+DESCRIPTION_10=Success dialogue
+OFFSET_10=0x2F
+TYPE_10=STRING
+
+DESCRIPTION_11=Failure dialogue
+OFFSET_11=0x4D
+TYPE_11=STRING
+
+
+; ------------------------------------------
+;				COMPASS HEARTH
+; ------------------------------------------
+[TOOL_8]
+DESCRIPTION_0=Usage dialogue
+OFFSET_0=0x01
+TYPE_0=STRING
+
+DESCRIPTION_1=Destination map's flags
+OFFSET_1=0x08
+TYPE_1=HEX
+
+DESCRIPTION_2=Destination map
+OFFSET_2=0x0C
+TYPE_2=Map
+
+DESCRIPTION_3=Party destination X
+OFFSET_3=0x12
+TYPE_3=DECIMAL
+
+DESCRIPTION_4=Party destination Y
+OFFSET_4=0x18
+TYPE_4=DECIMAL
+
+DESCRIPTION_5=Ship destination X
+OFFSET_5=0x22
+TYPE_5=DECIMAL
+
+DESCRIPTION_6=Ship destination Y
+OFFSET_6=0x29
+TYPE_6=DECIMAL
