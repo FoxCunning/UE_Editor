@@ -3,6 +3,7 @@ __author__ = "Fox Cunning"
 import configparser
 import glob
 import os
+import colour
 from dataclasses import dataclass, field
 from typing import List
 
@@ -42,10 +43,10 @@ class PartyEditor:
         # We store values that can be modified and written back to ROM within this class
         self.race_names: List[str] = []
         self.profession_names: List[str] = []
-        self.attribute_names: List[str] = ["", "", "", ""]
+        self.attribute_names: List[str] = ["STR", "DEX", "INT", "WIS"]
         self.weapon_names: List[str] = []
         self.armour_names: List[str] = []
-        self.mark_names: List[str] = ["KING", "SNAKE", "FIRE", "FORCE"]
+        self.mark_names: List[str] = ["FORCE", "FIRE", "SNAKE", "KING"]
         self.spell_names_0: List[str] = []  # Cleric spells
         self.spell_names_1: List[str] = []  # Wizard spells
         self.attribute_checks: List[AttributeCheck] = []
@@ -260,7 +261,7 @@ class PartyEditor:
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             with self.app.frame("PE_Frame_Races", row=1, column=0, stretch="BOTH", sticky="NEWS", padding=[4, 2],
-                                bg="#F0F0D0"):
+                                bg=colour.PALE_BLUE):
                 # Row 0
                 self.app.label("PE_Label_r0", "Selectable Races:", row=0, column=0, font=10)
                 self.app.spinBox("PE_Spin_Races", list(range(5, 0, -1)), width=3, row=0, column=1,
@@ -301,22 +302,22 @@ class PartyEditor:
                     # Row 1, Col 0
                     self.app.label("PE_Label_Race_Gender", "Gender Chr.:", row=1, column=0, font=10)
                     # Row 1, Col 1
-                    self.app.entry("PE_Gender_Character", "0x00", width=4, fg="#000000", font=10,
+                    self.app.entry("PE_Gender_Character", "0x00", width=4, fg=colour.BLACK, font=10,
                                    change=self._races_input, row=1, column=1)
                     # Row 1, Col 2
-                    self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg="#000000", map=None, sticky="W",
+                    self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg=colour.BLACK, map=None, sticky="W",
                                     row=1, column=2)
 
             # Right Column
             with self.app.frame("PE_Frame_Race_Names", row=1, column=1, padding=[4, 2]):
                 self.app.label("PE_Label_Race_Names", value="Race Names:", row=0, column=0, font=10)
                 self.app.textArea("PE_Race_Names", value=race_text, change=self._races_input, row=1, column=0,
-                                  width=12, height=7, fg="#000000", font=10)
+                                  width=12, height=7, fg=colour.BLACK, font=10)
                 self.app.button("PE_Update_Race_Names", name="Update", value=self._races_input,
                                 row=2, column=0, font=10)
                 # Race names list string index and edit button
                 with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
-                                    bg="#C0D0D0"):
+                                    bg=colour.PALE_TEAL):
                     self.app.button("PE_Edit_Menu_String", value=self._races_input, name="Edit Text",
                                     image="res/edit-dlg-small.gif", sticky="NW", width=16, height=16, row=0, column=0)
                     self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1, font=10)
@@ -439,156 +440,159 @@ class PartyEditor:
         self.menu_string_id = self.rom.read_byte(0xC, 0x8F42)
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(580, 460)
+            self.app.setSize(600, 460)
 
             # Buttons
-            with self.app.frame("PE_Frame_Buttons", row=0, column=0, padding=[4, 2], sticky="NEW", stretch="BOTH"):
+            with self.app.frame("PE_Frame_Buttons", row=0, column=0, colspan=3,
+                                padding=[4, 2], sticky="NEW", stretch="BOTH"):
                 self.app.button("PE_Apply", name="Apply", value=self._professions_input, image="res/floppy.gif",
                                 sticky="NE",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 sticky="NW",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
-                # Left Column
-                with self.app.frame("PE_Frame_Left", row=1, column=0, stretch="BOTH", sticky="NEWS", padding=[4, 2],
-                                    colspan=2):
-                    # --- Profession selection ---
+            # Left Column
+            with self.app.frame("PE_Frame_Left", row=1, column=0, stretch="COLUMN", sticky="NEW", padding=[4, 2],
+                                bg=colour.PALE_BLUE):
+                # --- Profession selection ---
 
-                    # Row 0 Col 0
-                    self.app.label("PE_Label_Professions", "Selectable Professions:", sticky="E",
-                                   row=0, column=0, font=10)
-                    # Row 0 Col 1
-                    self.app.spinBox("PE_Spin_Professions", list(range(11, 0, -1)),
-                                     change=self._professions_input, width=3, sticky="W", row=0, column=1, font=10)
-                    self.app.setSpinBox("PE_Spin_Professions", self.selectable_professions)
-                    # Row 1 Col 0, 1
-                    self.app.optionBox("PE_Option_Profession", professions_list, change=self._professions_input,
-                                       row=1, column=0, colspan=2, font=10)
+                # Row 0 Col 0
+                self.app.label("PE_Label_Professions", "Selectable Professions:", sticky="E",
+                               row=0, column=0, font=10)
+                # Row 0 Col 1
+                self.app.spinBox("PE_Spin_Professions", list(range(11, 0, -1)),
+                                 change=self._professions_input, width=3, sticky="W", row=0, column=1, font=10)
+                self.app.setSpinBox("PE_Spin_Professions", self.selectable_professions)
+                # Row 1 Col 0, 1
+                self.app.optionBox("PE_Option_Profession", professions_list, change=self._professions_input,
+                                   row=1, column=0, colspan=2, font=10)
 
-                    with self.app.frame("PE_Sub_Left", row=2, column=0):
-                        # --- Status / Character creation graphics and map / battle sprite ---
+                with self.app.frame("PE_Sub_Left", row=2, column=0):
+                    # --- Status / Character creation graphics and map / battle sprite ---
 
-                        # Row 2 Col 0, 1
-                        with self.app.frame("PE_Frame_Graphics", row=2, column=0, colspan=2):
-                            # Row 0 Col 0
-                            self.app.canvas("PE_Canvas_Profession", Map=None, width=48, height=48, bg="#000000",
-                                            sticky="W", row=0, column=0)
-                            # Row 0 Col 1
-                            self.app.canvas("PE_Canvas_Sprite", Map=None, width=32, height=32, bg="#C0C0C0",
-                                            sticky="W", row=0, column=1)
-                            # Row 1 Col 0
-                            self.app.label("PE_Label_Colours", "Colours:", row=1, column=0, font=10)
-                            # Row 1 Col 1
-                            self.app.label("PE_Label_Palettes", "Palettes:", row=1, column=1, font=10)
-                            # Row 2 Col 0
-                            self.app.optionBox("PE_Profession_Colours", colours_list, change=self._professions_input,
-                                               sticky="NW", row=2, column=0, font=10)
-                            # Row 2 Col 1
-                            self.app.optionBox("PE_Sprite_Palette_Top", list(range(0, 4)),
-                                               change=self._professions_input,
-                                               sticky="NW", row=2, column=1, font=10)
-                            # Row 3 Col 1
-                            self.app.optionBox("PE_Sprite_Palette_Bottom", list(range(0, 4)),
-                                               change=self._professions_input, sticky="NW", row=3, column=1, font=10)
-
-                        # --- Equipment ---
-
-                        # Row 3 Col 0, 1
-                        with self.app.frame("PE_Frame_Gear", padding=[4, 2], row=3, column=0, colspan=2):
-                            # Row 0
-                            self.app.label("PE_Label_Best_Weapon", "Best Weapon:", row=0, column=0, font=10)
-                            self.app.optionBox("PE_Option_Weapon", self.weapon_names, change=self._professions_input,
-                                               width=10, row=0, column=1, font=10)
-                            # Row 1
-                            self.app.label("PE_Label_Best_Armour", "Best Armour:", row=1, column=0, font=10)
-                            self.app.optionBox("PE_Option_Armour", self.armour_names, change=self._professions_input,
-                                               width=10, row=1, column=1, font=10)
-
-                        # --- Gender ---
-
-                        # Row 4 Col 0, 1
-                        with self.app.frame("PE_Frame_Gender", padding=[4, 2], row=4, column=0, colspan=2):
-                            # Row 0, Col 0, 1, 2
-                            self.app.checkBox("PE_Check_Gender", text="Gender based on Profession",
-                                              value=self.gender_by_profession, change=self._professions_input,
-                                              row=0, column=0, colspan=3, font=10)
-                            # Row 1, Col 0
-                            self.app.label("PE_Label_Gender", "Gender Chr.:", row=1, column=0, font=10)
-                            # Row 1, Col 1
-                            self.app.entry("PE_Gender_Character", "0x00", width=4, fg="#000000", font=9,
-                                           change=self._professions_input, row=1, column=1)
-                            # Row 1, Col 2
-                            self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg="#000000", map=None, sticky="W",
-                                            row=1, column=2)
-
-                        # --- Max MP ---
-
-                        with self.app.frame("PE_Frame_MP", padding=[4, 2], row=5, column=0, colspan=2):
-                            # Max MP / Fixed Value
-                            self.app.label("PE_Label_MP", "Max MP:", sticky="NE", row=0, column=0, font=11)
-                            self.app.optionBox("PE_Option_MP", mp_options, sticky="NW", row=0, column=1, font=10)
-                            self.app.label("PE_Label_Fixed_MP", "Fixed Value:", sticky="NE", row=1, column=0, font=11)
-                            self.app.entry("PE_Fixed_MP", "0", width=4, sticky="NW", row=1, column=1, font=10)
-                            # Custom code / override
-                            self.app.label("PE_Label_Custom", "This ROM uses custom code for Max MP.",
-                                           row=2, column=0, colspan=2, font=11, fg="#F03030")
-                            self.app.checkBox("PE_Overwrite_MP", name="Overwrite custom code",
-                                              change=self._professions_input,
-                                              row=3, column=0, colspan=2, font=10)
-
-                    with self.app.frame("PE_Sub_Right", row=2, column=1):
-                        # --- Primary Attributes ---
-
-                        # Row 5, Col 0, 1
-                        with self.app.frame("PE_Frame_Primary_Attributes", padding=[4, 2], row=0, column=0,
-                                            stretch="ROW", sticky="NEW"):
-                            # Row 0, Col 0, 1
-                            self.app.label("PE_Label_Primary_Attributes", "Primary Attributes:", sticky="SEW",
-                                           row=0, column=0, colspan=2, font=11)
-                            # Row 1, Col 0
-                            self.app.optionBox("PE_Primary_0", self.attribute_names, change=self._professions_input,
-                                               row=1, column=0, sticky="NEW", font=10)
-                            # Row 1, Col 1
-                            self.app.optionBox("PE_Primary_1", self.attribute_names, change=self._professions_input,
-                                               row=1, column=1, sticky="NEW", font=10)
-
-                        # --- HP Gain ---
-
-                        with self.app.frame("PE_Frame_HP", row=1, column=0, stretch="ROW", sticky="NEW",
-                                            padding=[4, 4]):
-                            # Row 0
-                            self.app.label("PE_Label_HP", "HP gain:", row=0, column=0, colspan=4, sticky="SEW", font=10)
-                            # Row 1
-                            self.app.entry("PE_HP_Base", 0, width=3, fg="#000000", font=10,
+                    # Row 2 Col 0, 1
+                    with self.app.frame("PE_Frame_Graphics", row=0, column=0, colspan=2):
+                        # Row 0 Col 0
+                        self.app.canvas("PE_Canvas_Profession", Map=None, width=48, height=48, bg=colour.BLACK,
+                                        sticky="W", row=0, column=0)
+                        # Row 0 Col 1
+                        self.app.canvas("PE_Canvas_Sprite", Map=None, width=32, height=32, bg=colour.MEDIUM_GREY,
+                                        sticky="W", row=0, column=1)
+                        # Row 1 Col 0
+                        self.app.label("PE_Label_Colours", "Colours:", row=1, column=0, font=10)
+                        # Row 1 Col 1
+                        self.app.label("PE_Label_Palettes", "Palettes:", row=1, column=1, font=10)
+                        # Row 2 Col 0
+                        self.app.optionBox("PE_Profession_Colours", colours_list, change=self._professions_input,
+                                           sticky="NW", row=2, column=0, font=10)
+                        # Row 2 Col 1
+                        self.app.optionBox("PE_Sprite_Palette_Top", list(range(0, 4)),
                                            change=self._professions_input,
-                                           row=1, column=0, sticky="NEW")
-                            self.app.label("PE_Label_Plus", "+ (", row=1, column=1, font=10)
-                            self.app.entry("PE_HP_Bonus", 0, width=3, fg="#000000", font=10,
-                                           change=self._professions_input,
-                                           row=1, column=2, sticky="NEW")
-                            self.app.label("PE_Label_Per_Level", "x level)", row=1, column=3, sticky="NEW", font=10)
+                                           sticky="NW", row=2, column=1, font=10)
+                        # Row 3 Col 1
+                        self.app.optionBox("PE_Sprite_Palette_Bottom", list(range(0, 4)),
+                                           change=self._professions_input, sticky="NW", row=3, column=1, font=10)
 
-                        # --- Caster Flags ---
+                    # --- Equipment ---
 
-                        with self.app.frame("PE_Frame_Caster", row=2, column=0, stretch="BOTH", sticky="NEWS"):
-                            self.app.label("PE_Label_Caster", "Caster Flags:", sticky="SEW", row=0, column=0, font=11)
-                            self.app.checkBox("PE_Check_Caster_0", False, name="Spell List 1", sticky="NEW",
-                                              change=self._professions_input, row=1, column=0, font=10)
-                            self.app.checkBox("PE_Check_Caster_1", False, name="Spell List 2", sticky="NEW",
-                                              change=self._professions_input, row=2, column=0, font=10)
+                    # Row 3 Col 0, 1
+                    with self.app.frame("PE_Frame_Gear", padding=[4, 2], row=1, column=0, colspan=2):
+                        # Row 0
+                        self.app.label("PE_Label_Best_Weapon", "Best Weapon:", row=0, column=0, font=10)
+                        self.app.optionBox("PE_Option_Weapon", self.weapon_names, change=self._professions_input,
+                                           width=10, row=0, column=1, font=10)
+                        # Row 1
+                        self.app.label("PE_Label_Best_Armour", "Best Armour:", row=1, column=0, font=10)
+                        self.app.optionBox("PE_Option_Armour", self.armour_names, change=self._professions_input,
+                                           width=10, row=1, column=1, font=10)
+
+                    # --- Gender ---
+
+                    # Row 4 Col 0, 1
+                    with self.app.frame("PE_Frame_Gender", padding=[4, 2], row=2, column=0, colspan=2):
+                        # Row 0, Col 0, 1, 2
+                        self.app.checkBox("PE_Check_Gender", text="Gender based on Profession",
+                                          value=self.gender_by_profession, change=self._professions_input,
+                                          row=0, column=0, colspan=3, font=10)
+                        # Row 1, Col 0
+                        self.app.label("PE_Label_Gender", "Gender Chr.:", row=1, column=0, font=10)
+                        # Row 1, Col 1
+                        self.app.entry("PE_Gender_Character", "0x00", width=4, fg=colour.BLACK, font=9,
+                                       change=self._professions_input, row=1, column=1)
+                        # Row 1, Col 2
+                        self.app.canvas("PE_Canvas_Gender", width=16, height=16, bg=colour.BLACK,
+                                        map=None, sticky="W", row=1, column=2)
+
+                    # --- Max MP ---
+
+                    with self.app.frame("PE_Frame_MP", padding=[4, 2], row=3, column=0, colspan=2):
+                        # Max MP / Fixed Value
+                        self.app.label("PE_Label_MP", "Max MP:", sticky="NE", row=0, column=0, font=11)
+                        self.app.optionBox("PE_Option_MP", mp_options, sticky="NW", row=0, column=1, font=10)
+                        self.app.label("PE_Label_Fixed_MP", "Fixed Value:", sticky="NE", row=1, column=0, font=11)
+                        self.app.entry("PE_Fixed_MP", "0", width=4, sticky="NW", row=1, column=1, font=10)
+                        # Custom code / override
+                        self.app.label("PE_Label_Custom", "This ROM uses custom code for Max MP.",
+                                       row=2, column=0, colspan=2, font=11, fg=colour.MEDIUM_RED)
+                        self.app.checkBox("PE_Overwrite_MP", name="Overwrite custom code",
+                                          change=self._professions_input,
+                                          row=3, column=0, colspan=2, font=10)
+
+            # Middle Column
+            with self.app.frame("PE_Sub_Right", row=1, column=1, padding=[4, 2], sticky="NEW", stretch="COLUMN",
+                                bg=colour.PALE_NAVY):
+                # --- Primary Attributes ---
+
+                # Col 0, 1
+                with self.app.frame("PE_Frame_Primary_Attributes", padding=[4, 2], row=0, column=0,
+                                    stretch="ROW", sticky="NEW"):
+                    # Row 0, Col 0, 1
+                    self.app.label("PE_Label_Primary_Attributes", "Primary Attributes:", sticky="SEW",
+                                   row=0, column=0, colspan=2, font=11)
+                    # Row 1, Col 0
+                    self.app.optionBox("PE_Primary_0", self.attribute_names, change=self._professions_input,
+                                       row=1, column=0, sticky="NEW", font=10)
+                    # Row 1, Col 1
+                    self.app.optionBox("PE_Primary_1", self.attribute_names, change=self._professions_input,
+                                       row=1, column=1, sticky="NEW", font=10)
+
+                # --- HP Gain ---
+
+                with self.app.frame("PE_Frame_HP", row=1, column=0, stretch="ROW", sticky="NEW",
+                                    padding=[4, 4]):
+                    # Row 0
+                    self.app.label("PE_Label_HP", "HP gain:", row=0, column=0, colspan=4, sticky="SEW", font=10)
+                    # Row 1
+                    self.app.entry("PE_HP_Base", 0, width=3, fg=colour.BLACK, font=10,
+                                   change=self._professions_input,
+                                   row=1, column=0, sticky="NEW")
+                    self.app.label("PE_Label_Plus", "+ (", row=1, column=1, font=10)
+                    self.app.entry("PE_HP_Bonus", 0, width=3, fg=colour.BLACK, font=10,
+                                   change=self._professions_input,
+                                   row=1, column=2, sticky="NEW")
+                    self.app.label("PE_Label_Per_Level", "x level)", row=1, column=3, sticky="NEW", font=10)
+
+                # --- Caster Flags ---
+
+                with self.app.frame("PE_Frame_Caster", row=2, column=0, stretch="BOTH", sticky="NEWS"):
+                    self.app.label("PE_Label_Caster", "Caster Flags:", sticky="SEW", row=0, column=0, font=11)
+                    self.app.checkBox("PE_Check_Caster_0", False, name="Spell List 1", sticky="NEW",
+                                      change=self._professions_input, row=1, column=0, font=10)
+                    self.app.checkBox("PE_Check_Caster_1", False, name="Spell List 2", sticky="NEW",
+                                      change=self._professions_input, row=2, column=0, font=10)
 
             # Right Column
-            with self.app.frame("PE_Frame_Right", row=0, column=1, stretch="BOTH", sticky="NEW", padding=[4, 2],
-                                bg="#C0C0D0"):
+            with self.app.frame("PE_Frame_Right", row=1, column=2, stretch="COLUMN", sticky="NEW", padding=[4, 2],
+                                bg=colour.PALE_VIOLET):
                 self.app.label("PE_Label_Names", "Profession Names:", sticky="NEW", row=0, column=0, font=10)
                 self.app.textArea("PE_Profession_Names", value=profession_names, width=11, height=11, font=10,
                                   change=self._professions_input,
-                                  sticky="NEW", fg="#000000", scroll=True, row=1, column=0)
+                                  sticky="NEW", fg=colour.BLACK, scroll=True, row=1, column=0)
                 self.app.button("PE_Update_Profession_Names", value=self._professions_input, name="Update",
                                 sticky="NEW", row=2, column=0, font=10)
                 # Professions list string index and edit button
                 with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
-                                    bg="#C0D0D0"):
+                                    bg=colour.PALE_BLUE):
                     self.app.button("PE_Edit_Menu_String", value=self._professions_input, name="Edit Text", font=10,
                                     image="res/edit-dlg.gif", sticky="NW", width=32, height=32, row=0, column=0)
                     self.app.label("PE_Menu_String_Label", value="ID:", sticky="NEWS", row=0, column=1, font=10)
@@ -779,18 +783,18 @@ class PartyEditor:
 
             # Spell list
             with self.app.frame("PE_Frame_Top", padding=[2, 2], row=1, column=0, stretch="BOTH", sticky="NEW"):
-                with self.app.frame("PE_Frame_Top_Left", padding=[2, 2], row=0, column=0, bg="#D0E0E0"):
+                with self.app.frame("PE_Frame_Top_Left", padding=[2, 2], row=0, column=0, bg=colour.PALE_NAVY):
                     self.app.optionBox("PE_Spell_List", ["Spell List 1", "Spell List 2", "Common Routines"],
                                        change=self._magic_input, row=0, column=0, sticky="NEW", font=10)
                     self.app.label("PE_Label_Magic_Professions", "Available to:", row=1, column=0, sticky="NW", font=11)
                     self.app.message("PE_Magic_Professions", "(None)", width=400, row=2, column=0, sticky="EW", font=10)
 
-                with self.app.frame("PE_Frame_Top_Right", padding=[4, 2], row=0, column=1, bg="#E0D0D0"):
+                with self.app.frame("PE_Frame_Top_Right", padding=[4, 2], row=0, column=1, bg=colour.PALE_VIOLET):
                     # List 1 string ID
                     self.app.label("PE_Label_Spell_Names_1", "List 1 Names String:",
                                    row=0, column=0, sticky="NEW", font=11)
                     self.app.entry("PE_Spell_String_ID_1", f"0x{spell_strings[0]:02X}", change=self._magic_input,
-                                   fg="#000000", width=5, row=0, column=1, sticky="NW", font=10)
+                                   fg=colour.BLACK, width=5, row=0, column=1, sticky="NW", font=10)
                     self.app.button("PE_Button_Spell_String_1_1", image="res/edit-dlg-small.gif", width=16, height=16,
                                     value=self._magic_input, row=0, column=2)
                     self.app.button("PE_Button_Spell_String_1_2", image="res/edit-dlg-small.gif", width=16, height=16,
@@ -799,33 +803,34 @@ class PartyEditor:
                     self.app.label("PE_Label_Spell_Names_2", "List 2 Names String:",
                                    row=1, column=0, sticky="NEW", font=11)
                     self.app.entry("PE_Spell_String_ID_2", f"0x{spell_strings[1]:02X}", change=self._magic_input,
-                                   fg="#000000", width=5, row=1, column=1, sticky="NW", font=10)
+                                   fg=colour.BLACK, width=5, row=1, column=1, sticky="NW", font=10)
                     self.app.button("PE_Button_Spell_String_2_1", image="res/edit-dlg-small.gif", width=16, height=16,
                                     value=self._magic_input, row=1, column=2)
                     self.app.button("PE_Button_Spell_String_2_2", image="res/edit-dlg-small.gif", width=16, height=16,
                                     value=self._magic_input, row=1, column=3)
                     # Message for custom menus
                     self.app.message("PE_Message_Custom_Menus", "This ROM uses a custom routine for spell  menus.",
-                                     fg="#D03030", sticky="NEWS", width=220, row=2, column=0, colspan=3, font=11)
+                                     fg=colour.MEDIUM_RED, sticky="NEWS", width=220,
+                                     row=2, column=0, colspan=3, font=11)
 
             # MP cost routine
             with self.app.frame("PE_Frame_Middle", padding=[2, 2], row=3, column=0, stretch="BOTH", sticky="NEW",
-                                bg="#D0D0E0"):
+                                bg=colour.PALE_BLUE):
                 with self.app.frame("PE_Frame_Mid_Left", padding=[2, 2], row=0, column=0, sticky="NWS"):
                     self.app.radioButton("PE_Radio_MP", "Incremental MP Cost", change=self._magic_input,
                                          row=0, column=0, font=11)
-                    self.app.entry("PE_Incremental_MP", "4", change=self._magic_input, fg="#000000", width=4,
+                    self.app.entry("PE_Incremental_MP", "4", change=self._magic_input, fg=colour.BLACK, width=4,
                                    row=0, column=1, font=10)
                     self.app.radioButton("PE_Radio_MP", "Uneven MP Cost", change=self._magic_input,
                                          row=0, column=2, font=11)
 
                 with self.app.frame("PE_Frame_Mid_Right", row=0, column=1, sticky="NES"):
                     self.app.message("PE_Message_Custom_MP", "This ROM uses custom code for the spell menu.", width=200,
-                                     row=0, column=0, sticky="NEWS", font=10, fg="#F03030")
+                                     row=0, column=0, sticky="NEWS", font=10, fg=colour.MEDIUM_RED)
 
             # Spell editor
             with self.app.frame("PE_Frame_Bottom", padding=[2, 2], row=4, column=0, stretch="BOTH", sticky="NEWS",
-                                bg="#E0D0E0"):
+                                bg=colour.PALE_NAVY):
                 # Spell definitions file
                 self.app.label("PE_Label_Definitions", "Spell definitions file:", sticky="NSE", font=10,
                                row=0, column=0)
@@ -843,7 +848,7 @@ class PartyEditor:
 
                 # Specific usability flags (same used for "tools")
                 with self.app.frame("PE_Specific_Flags", padding=[2, 2], row=3, column=0, colspan=2, sticky="NEW",
-                                    bg="#E0E0D0"):
+                                    bg=colour.PALE_LIME):
                     self.app.label("PE_Label_Specific", "Specific usability flags:", font=11,
                                    sticky="NEW", row=0, column=0, colspan=4)
                     # Left
@@ -878,24 +883,24 @@ class PartyEditor:
                     self.app.label("PE_Label_Spell_Address", "Routine Address:", sticky="NE",
                                    row=0, column=0, font=11)
                     self.app.entry("PE_Spell_Address", "0x0000", change=self._magic_input, width=8, sticky="NW",
-                                   fg="#000000", row=0, column=1, font=10)
+                                   fg=colour.BLACK, row=0, column=1, font=10)
 
                 with self.app.frame("PE_Bottom_Right", padding=[2, 2], row=4, column=1, sticky="NEW"):
                     self.app.label("PE_Label_MP_Display", "MP to display:", sticky="NE", row=0, column=0, font=11)
                     self.app.entry("PE_MP_Display", "0", change=self._magic_input, width=5, sticky="NW",
-                                   fg="#000000", row=0, column=1, font=10)
+                                   fg=colour.BLACK, row=0, column=1, font=10)
 
                     self.app.label("PE_Label_MP_Cast", "MP to cast:", sticky="NE", row=1, column=0, font=11)
                     self.app.entry("PE_MP_Cast", "0", change=self._magic_input, width=5, sticky="NW",
-                                   fg="#000000", row=1, column=1, font=10)
+                                   fg=colour.BLACK, row=1, column=1, font=10)
 
-                    self.app.label("PE_Spell_Custom", "This spell is using a custom routine", fg="#F03030", sticky="NW",
-                                   row=1, column=1, font=11)
+                    self.app.label("PE_Spell_Custom", "This spell is using a custom routine", fg=colour.MEDIUM_RED,
+                                   sticky="NW", row=1, column=1, font=11)
                     self.app.hideLabel("PE_Spell_Custom")
 
                 # Spell parameters
-                with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2], bg="#E0E0E0",
-                                         row=5, column=0, colspan=2, sticky="NEWS"):
+                with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2],
+                                         bg=colour.MEDIUM_GREY, row=5, column=0, colspan=2, sticky="NEWS"):
                     pass
 
         # Spell list string IDs input widgets enable/disable
@@ -978,7 +983,7 @@ class PartyEditor:
 
             # Special 0
             with self.app.labelFrame("MP Regeneration", row=1, column=0, stretch="BOTH", sticky="NEWS",
-                                     padding=[4, 0], bg="#D0D0B0"):
+                                     padding=[4, 0], bg=colour.PALE_TEAL):
                 # Make sure the code we want to modify is actually there, to avoid issues with customised ROMs
                 # Bank 0xD
                 # 8713    LDA $2A
@@ -990,10 +995,10 @@ class PartyEditor:
                                        width=12, row=0, column=1, sticky='SEW', font=10)
                     # Description
                     self.app.label("PE_Description_0", "The selected profession will regenerate double the MP",
-                                   fg="#303070",
+                                   fg=colour.DARK_BLUE,
                                    row=1, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     self.app.label("PE_Description_1", "when moving on the map, compared to other professions.",
-                                   fg="#303070",
+                                   fg=colour.DARK_BLUE,
                                    row=2, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     # Initial value, read from ROM
                     value = self.rom.read_byte(0xD, 0x8716)
@@ -1005,7 +1010,7 @@ class PartyEditor:
 
             # Special 1
             with self.app.labelFrame("Critical Hit", row=2, column=0, stretch="BOTH", sticky="NEWS",
-                                     padding=[4, 0], bg="#D0D0B0"):
+                                     padding=[4, 0], bg=colour.PALE_BLUE):
                 # Code to check (bank 0):
                 # B0C4    LDA ($99),Y
                 # B0C6    CMP #$03
@@ -1028,10 +1033,10 @@ class PartyEditor:
                                    row=2, column=1, sticky='SEW', font=10)
                     # Description
                     self.app.label("PE_Description_2", "This profession will have a chance of scoring",
-                                   fg="#303070",
+                                   fg=colour.DARK_BLUE,
                                    row=3, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     self.app.label("PE_Description_3", "critical hits (chance is based on character level).",
-                                   fg="#303070",
+                                   fg=colour.DARK_BLUE,
                                    row=4, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     # Initial values, read from ROM
                     value = self.rom.read_byte(0x0, 0xB0C7)
@@ -1057,7 +1062,7 @@ class PartyEditor:
 
             # Special 2
             with self.app.labelFrame("Extra Damage", row=3, column=0, stretch="BOTH", sticky="NEWS",
-                                     padding=[4, 0], bg="#D0D0B0"):
+                                     padding=[4, 0], bg=colour.PALE_NAVY):
                 # Code to check (bank 0):
                 # B0E8    CMP #$05  ; #$05 = Barbarian
                 # B0EA    BNE $B0F9
@@ -1087,10 +1092,10 @@ class PartyEditor:
                                    row=4, column=1, sticky='SEW', font=11)
                     # Description
                     self.app.label("PE_Description_4", "This profession will always deal additional",
-                                   fg="#303070",
+                                   fg=colour.DARK_BLUE,
                                    row=5, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
                     self.app.label("PE_Description_5", "damage when hitting an enemy in combat.",
-                                   fg="#303070",
+                                   fg=colour.DARK_BLUE,
                                    row=6, column=0, colspan=2, sticky='WE', stretch="ROW", font=10)
 
                     # Initial values, read from ROM
@@ -1181,7 +1186,7 @@ class PartyEditor:
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Weapons
-            with self.app.labelFrame("Weapons", padding=[2, 2], row=1, column=0, bg="#E0C0A0"):
+            with self.app.labelFrame("Weapons", padding=[2, 2], row=1, column=0, bg=colour.PALE_VIOLET):
                 with self.app.frame("Frame_Weapons_Names", padding=[2, 0], row=0, column=0):
                     self.app.label("PE_Label_Weapons_String", "Names string:", sticky="E", row=0, column=0, font=11)
                     self.app.entry("PE_Entry_Weapons_String", "", width=4, row=0, column=1, font=10)
@@ -1203,19 +1208,23 @@ class PartyEditor:
         # Read item names from the ROM buffer
         tools_list = self._read_item_names()
         if len(tools_list) < 1:
-            self.app.warningBox("Parsing Routines", "WARNING: Item names not found in bank $0D, address $9B08.",
+            self.app.warningBox("Parsing Routines", "WARNING: Item names not found (bank $0D, address $9B08).",
                                 "Party_Editor")
             tools_list = ["- None -"]
 
         # TODO Read mark names from the ROM buffer
 
+        # Get map names
+        map_options: List[str] = [] + self.map_editor.location_names
+        if len(map_options) < 1:
+            for m in range(self.map_editor.max_maps()):
+                map_options.append(f"MAP #{m:02}")
+
         # Read routine definitions
         definitions_list = self._read_definitions()
 
-        # TODO Read item data / routine parameters
-
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(400, 240)
+            self.app.setSize(400, 380)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
@@ -1225,25 +1234,68 @@ class PartyEditor:
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Definitions file
-            with self.app.frame("PE_Frame_Definitions", padding=[2, 0], row=1, column=0):
+            with self.app.frame("PE_Frame_Definitions", padding=[2, 0], row=1, column=0, bg=colour.PALE_BROWN):
                 self.app.label("PE_Label_Definitions", "Definitions file:", sticky="E", row=0, column=0, font=11)
                 self.app.optionBox("PE_Definitions", definitions_list, change=self._items_input,
                                    width=25, row=0, column=1, font=10)
 
             # Item selection
-            with self.app.frame("PE_Frame_Selection", padding=[2, 2], row=2, column=0):
+            with self.app.frame("PE_Frame_Selection", padding=[2, 2], row=2, column=0, bg=colour.PALE_GREEN):
                 # Option
                 self.app.label("PE_Label_Item", "Edit item:", sticky="E", row=0, column=0, font=11)
                 self.app.optionBox("PE_Option_Item", tools_list, change=self._items_input, sticky="W",
-                                   width=16, row=0, column=1, font=10)
+                                   width=16, row=0, column=1, colspan=2, font=10)
                 # Name
                 self.app.label("PE_Label_Name", "Item name:", sticky="E", row=1, column=0, font=11)
                 self.app.entry("PE_Item_Name", "", change=self._items_input, sticky="W",
                                width=16, row=1, column=1, font=10)
+                self.app.button("PE_Update_Names", self._items_input, image="res/reload-small.gif", sticky="W",
+                                tooltip="Update list.",
+                                width=16, height=16, row=1, column=2)
+                # Consumption
+                self.app.label("PE_Label_Consumption", "Consumption on use:", sticky="E", row=2, column=0, font=11)
+                self.app.entry("PE_Item_Consumption", "", change=self._items_input, width=5, sticky="W",
+                               tooltip="A positive value means items will be added on use.\n" +
+                                       "Zero means item is not consumed on use.",
+                               row=2, column=1, colspan=2, font=10)
+
+            # Specific usability flags (same used for spells)
+            with self.app.frame("PE_Specific_Flags", padding=[2, 2], row=3, column=0, sticky="NEW",
+                                bg=colour.PALE_OLIVE):
+                self.app.label("PE_Label_Specific", "Specific usability flags:", font=11,
+                               sticky="NEW", row=0, column=0, colspan=4)
+                # Left
+                self.app.checkBox("PE_Flag_0x01", name="Battle (anywhere)", change=self._magic_input, font=10,
+                                  sticky="NEW", row=1, column=0, colspan=2)
+                self.app.checkBox("PE_Flag_0x04", name="Map:", change=self._magic_input, font=10,
+                                  sticky="NEW", row=2, column=0)
+                self.app.optionBox("PE_Map_Flag_0x04", map_options, change=self._magic_input, font=10, width=16,
+                                   tooltip="This will apply to ALL spells using this flag.",
+                                   sticky="NW", row=2, column=1)
+                self.app.checkBox("PE_Flag_0x10", name="Map:", change=self._magic_input, font=10,
+                                  sticky="NEW", row=3, column=0)
+                self.app.optionBox("PE_Map_Flag_0x10", map_options, change=self._magic_input, font=10, width=16,
+                                   tooltip="This will apply to ALL spells using this flag.",
+                                   sticky="NW", row=3, column=1)
+                self.app.checkBox("PE_Flag_0x40", name="Continents (embarked)", change=self._magic_input,
+                                  font=10, sticky="NEW", row=4, column=0, colspan=2)
+                # Right
+                self.app.checkBox("PE_Flag_0x02", name="Map:", change=self._magic_input, font=10,
+                                  sticky="NEW", row=1, column=2)
+                self.app.optionBox("PE_Map_Flag_0x02", map_options, change=self._magic_input, font=10, width=16,
+                                   tooltip="This will apply to ALL spells using this flag.",
+                                   sticky="NW", row=1, column=3)
+                self.app.checkBox("PE_Flag_0x08", name="Dungeons", change=self._magic_input, font=10,
+                                  sticky="NEW", row=2, column=2, colspan=2)
+                self.app.checkBox("PE_Flag_0x20", name="Towns and Shrines", change=self._magic_input, font=10,
+                                  sticky="NEW", row=3, column=2, colspan=2)
+                self.app.checkBox("PE_Flag_0x80", name="Continents (not embarked)", change=self._magic_input,
+                                  font=10, sticky="NEW", row=4, column=2, colspan=2)
 
             # Routine parameters
-            with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2], row=3, column=0):
-                self.app.label("PE_Label_Parameters", "Placeholder")
+            with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2], row=4, column=0,
+                                     bg=colour.PALE_VIOLET):
+                self.app.label("PE_Label_Parameters", "")
 
         # Select the definition files that matches the current ROM, if there is one
         definition = 0
@@ -1257,7 +1309,11 @@ class PartyEditor:
                     break
         self.app.setOptionBox("PE_Definitions", definition, callFunction=False)
 
-        # TODO Select the first item and show info
+        # Parse the selected definition file
+        self._read_item_data(self.routine_definitions[definition])
+
+        # Select the first item and show info
+        self.app.setOptionBox("PE_Option_Item", 0, callFunction=True)
 
     # --- PartyEditor.close_window() ---
 
@@ -1344,9 +1400,14 @@ class PartyEditor:
         int:
             The index of the currently selected option from an OptionBox widget
         """
-        value = self.app.getOptionBox(widget)
-        box = self.app.getOptionBoxWidget(widget)
-        return box.options.index(value)
+        value = "(nothing)"
+        try:
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            return box.options.index(value)
+        except ValueError as error:
+            self.error(f"ERROR: Getting selection index for '{value}' in '{widget}': {error}.")
+            return 0
 
     # --- PartyEditor._selected_spell_id() ---
 
@@ -1447,9 +1508,9 @@ class PartyEditor:
                 try:
                     value = int(self.app.getEntry(widget), 10)
                     self.routines[spell_id].mp_display = value
-                    self.app.entry(widget, fg="#000000")
+                    self.app.entry(widget, fg=colour.BLACK)
                 except ValueError:
-                    self.app.entry(widget, fg="#D03030")
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget == "PE_MP_Cast":
             # Changing the value of MP deduced after casting a spell
@@ -1459,9 +1520,9 @@ class PartyEditor:
                 try:
                     value = int(self.app.getEntry(widget), 10)
                     self.routines[spell_id].mp_cast = value
-                    self.app.entry(widget, fg="#000000")
+                    self.app.entry(widget, fg=colour.BLACK)
                 except ValueError:
-                    self.app.entry(widget, fg="#D03030")
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget == "PE_Spell_Address":
             self._unsaved_changes = True
@@ -1470,11 +1531,11 @@ class PartyEditor:
                 value = int(self.app.getEntry(widget), 16)
                 if 0x8000 <= value <= 0xFFFF:
                     self.routines[spell_id].address = value
-                    self.app.entry(widget, fg="#000000")
+                    self.app.entry(widget, fg=colour.BLACK)
                 else:
-                    self.app.entry(widget, fg="#D03030")
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
             except ValueError:
-                self.app.entry(widget, fg="#D03030")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget == "PE_Spell_Flags":
             self._unsaved_changes = True
@@ -1558,7 +1619,7 @@ class PartyEditor:
                 parameter_id = int(widget[-2:], 10)
 
                 value = int(self.app.getEntry(widget), 16)
-                self.app.entry(widget, fg="#000000")
+                self.app.entry(widget, fg=colour.BLACK)
                 if 6 < value < 0xB:
                     self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=value - 7,
                                           callFunction=False)
@@ -1573,7 +1634,7 @@ class PartyEditor:
                 self.routines[spell_id].parameters[parameter_id].value = value
 
             except ValueError:
-                self.app.entry(widget, fg="#D03030")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget[:18] == "PE_Attribute_List_":
             self._unsaved_changes = True
@@ -1602,12 +1663,12 @@ class PartyEditor:
             try:
                 value = int(self.app.getEntry(widget), 16)
                 if 0 <= value <= 255:
-                    self.app.entry(widget, fg="#000000")
+                    self.app.entry(widget, fg=colour.BLACK)
                     self._unsaved_changes = True
                 else:
-                    self.app.entry(widget, fg="#D03030")
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
             except ValueError:
-                self.app.entry(widget, fg="#D03030")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget[:23] == "PE_Button_Spell_String_":
             try:
@@ -1638,13 +1699,13 @@ class PartyEditor:
                 value = int(self.app.getEntry(widget), 16)
                 if 0 <= value <= 255:
                     self.routines[spell_id].parameters[parameter_id].value = value
-                    self.app.entry(widget, fg="#000000")
+                    self.app.entry(widget, fg=colour.BLACK)
                     self._unsaved_changes = True
                 else:
-                    self.app.entry(widget, fg="#D03030")
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
-                self.app.entry(widget, fg="#D03030")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget[:7] == "PE_Hex_":
             try:
@@ -1652,11 +1713,11 @@ class PartyEditor:
                 spell_id = self._selected_spell_id()
                 value = int(self.app.getEntry(widget), 16)
                 self.routines[spell_id].parameters[parameter_id].value = value
-                self.app.entry(widget, fg="#000000")
+                self.app.entry(widget, fg=colour.BLACK)
                 self._unsaved_changes = True
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
-                self.app.entry(widget, fg="#D03030")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget[:11] == "PE_Decimal_":
             try:
@@ -1664,11 +1725,11 @@ class PartyEditor:
                 spell_id = self._selected_spell_id()
                 value = int(self.app.getEntry(widget), 10)
                 self.routines[spell_id].parameters[parameter_id].value = value
-                self.app.entry(widget, fg="#000000")
+                self.app.entry(widget, fg=colour.BLACK)
                 self._unsaved_changes = True
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
-                self.app.entry(widget, fg="#D03030")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget[:8] == "PE_Mark_":
             parameter_id = int(widget[-2:], 10)
@@ -1743,9 +1804,9 @@ class PartyEditor:
             value: str = self.app.getTextArea(widget)
             if len(value) > 28:
                 # Make text red to warn user
-                self.app.textArea(widget, fg="#CF0000")
+                self.app.textArea(widget, fg=colour.MEDIUM_RED)
             else:
-                self.app.textArea(widget, fg="#000000")
+                self.app.textArea(widget, fg=colour.BLACK)
                 self._unsaved_changes = True
 
         elif widget == "PE_Update_Race_Names":
@@ -1839,9 +1900,9 @@ class PartyEditor:
             # Make sure the total length including newlines and string terminator is not over 59
             names = self.app.getTextArea(widget)
             if (len(names) + 1) > 59:
-                self.app.textArea(widget, fg="#CF0000")
+                self.app.textArea(widget, fg=colour.MEDIUM_RED)
             else:
-                self.app.textArea(widget, fg="#000000")
+                self.app.textArea(widget, fg=colour.BLACK)
                 self._unsaved_changes = True
 
         elif widget == "PE_Update_Profession_Names":
@@ -2184,7 +2245,12 @@ class PartyEditor:
         widget: str
             Name of the widget generating the event.
         """
-        self.warning(f"Unimplemented input for widget: {widget}.")
+        if widget == "PE_Option_Item":
+            self.selected_index = self._get_selection_index(widget)
+            self.item_info(self.selected_index)
+
+        else:
+            self.warning(f"Unimplemented input for widget: {widget}.")
 
     # --- PartyEditor._read_race_names() ---
 
@@ -2267,8 +2333,9 @@ class PartyEditor:
         for i in range(len(converted)):
             if converted[i] == '~':
                 break
-            self.routines.append(Routine(name=converted[i]))
-            names.append(converted[i])
+            stripped = converted[i].rstrip()
+            self.routines.append(Routine(name=stripped))
+            names.append(stripped)
 
         return names
 
@@ -2317,7 +2384,7 @@ class PartyEditor:
 
         Returns
         -------
-        bool:
+        int:
             -2 if the ROM is using custom code (e.g. spell tables and/or menu calls can't be found).<br/>
             -1 if the ROM uses "uneven MP" code.<br/>
             If the ROM uses the standard "incremental MP" code, the value of the increment will be returned (0-255).
@@ -2405,6 +2472,9 @@ class PartyEditor:
 
         self.app.setStatusbar("Decoding spell data...")
 
+        parser = configparser.ConfigParser()
+        parser.read(config_file)
+
         # Read spell data from the table
         self._ignore_warnings = False
         for s in range(32):
@@ -2428,7 +2498,7 @@ class PartyEditor:
             spell.address = self.rom.read_word(0xF, address + 2)
 
             # Read routine and try to find MP to cast + parameters
-            values = self._decode_routine(s, spell.address, "SPELL", config_file)
+            values = self._decode_routine(s, spell.address, "SPELL", parser)
 
             progress = progress + 5.0
             self.app.setMeter("PE_Progress_Meter", progress)
@@ -2450,8 +2520,6 @@ class PartyEditor:
             address = address + 4
 
         # Read attribute check definitions
-        parser = configparser.ConfigParser()
-        parser.read(config_file)
         # Expect a maximum of 8 checks
         self.attribute_checks.clear()
         for c in range(8):
@@ -2482,7 +2550,7 @@ class PartyEditor:
             if parser.has_section(f"COMMON_{s}") is False:
                 break
             spell = Routine()
-            values = self._decode_routine(s, 0, "COMMON", config_file)
+            values = self._decode_routine(s, 0, "COMMON", parser)
 
             progress = progress + 5.0
             self.app.setMeter("PE_Progress_Meter", progress)
@@ -2509,22 +2577,70 @@ class PartyEditor:
 
         return incremental_mp
 
+    # --- PartyEditor._read_item_data() ---
+
+    def _read_item_data(self, config_file: str = "Ultima - Exodus Remastered.def") -> int:
+        """
+        Reads routine parameters for the items in the "TOOLS" menu.
+
+        Parameters
+        ----------
+        config_file: str
+            Name of the file containing routine definitions.
+
+        Returns
+        -------
+        int:
+            Number of item routine definitions found.
+        """
+        count: int = 0
+
+        # Read addresses and item consumption values from tables in ROM
+        for i in range(len(self.routines)):
+            self.routines[i].address = self.rom.read_word(0xF, 0xDBB1 + (i * 2))
+            self.routines[i].mp_cast = int.from_bytes([self.rom.read_byte(0xF, 0xDBC3 + i)], 'little', signed=True)
+
+        parser = configparser.ConfigParser()
+        parser.read(config_file)
+
+        for i in range(len(self.routines)):
+            if parser.has_section(f"TOOL_{i}"):
+                values = self._decode_routine(i, self.routines[i].address, "TOOL", parser)
+                if values["Custom"] is False:
+                    self.routines[i].custom_code = False
+                    self.routines[i].notes = values["Notes"]
+                    self.routines[i].parameters = values["Parameters"]
+
+                else:
+                    self.routines[i].custom_code = True
+
+                count = count + 1
+            else:
+                break
+
+        return count
+
     # --- PartyEditor._decode_routine() ---
 
-    def _decode_routine(self, routine_id: int, address: int, routine_type: str = "SPELL",
-                        config_file="remastered.def") -> dict:
+    def _decode_routine(self, routine_id: int, address: int, routine_type: str,
+                        parser: configparser.ConfigParser) -> dict:
         """
         Tries to decode a spell's routine to extract its parameters.
 
         Parameters
         ----------
         routine_id: int
-            The index of the spell, so we know what to look for and where.
-            Indices >= 32 are used for common routines, so common routine 0 will have index 32, etc.
+            The index of the routine, so we know what to look for and where.
 
         address: int
             The base address of the routine, so we can also work with relocated (but unchanged) code.
             Common routines take their address from the definitions file instead.
+
+        routine_type: str
+            Base name of the section we want to read: "SPELL", "COMMON", "TOOL", "COMMAND", "SPECIAL".
+
+        parser: ConfigParser
+            A reference to the configuration parser containing the routine definitions.
 
         Returns
         -------
@@ -2540,10 +2656,6 @@ class PartyEditor:
             "Notes": "",
             "Parameters": []
         }
-
-        # Read spell definitions from file
-        parser = configparser.ConfigParser()
-        parser.read(config_file)
 
         if parser.has_section(f"{routine_type}_{routine_id}") is False:
             decoded["Custom"] = True
@@ -3528,13 +3640,41 @@ class PartyEditor:
 
         # Resize the window depending on how many parameter options we need to display
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 580 + (26 * len(self.routines[spell_id].parameters)))
+            self.app.setSize(480, 580 + (28 * len(self.routines[spell_id].parameters)))
 
-        self._create_parameter_widgets(self.routines[spell_id].notes, self.routines[spell_id].parameters)
+        self._create_parameter_widgets(self.routines[spell_id].notes, self.routines[spell_id].parameters,
+                                       self._magic_input)
+
+    # --- PartyEditor.item_info() ---
+
+    def item_info(self, item_id: int) -> None:
+        """
+        Shows names/notes/parameter info for the requested item.
+
+        Parameters
+        ----------
+        item_id: int
+            Index of the item in the PartyEditor.routines list.
+        """
+        self.app.clearEntry("PE_Item_Name", callFunction=False)
+        self.app.setEntry("PE_Item_Name", self.routines[item_id].name, callFunction=False)
+
+        self.app.clearEntry("PE_Item_Consumption", callFunction=False)
+        self.app.setEntry("PE_Item_Consumption", f"{self.routines[item_id].mp_cast}", callFunction=False)
+
+        # Remove previous widgets
+        self.app.emptyLabelFrame("PE_Frame_Parameters")
+
+        # Resize the window depending on how many parameter options we need to display
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(480, 380 + (32 * len(self.routines[item_id].parameters)))
+
+        self._create_parameter_widgets(self.routines[item_id].notes, self.routines[item_id].parameters,
+                                       self._items_input)
 
     # --- PartyEditor._create_parameter_widgets() ---
 
-    def _create_parameter_widgets(self, notes: str, parameters: List,
+    def _create_parameter_widgets(self, notes: str, parameters: List, change_function: any,
                                   frame: str = "PE_Frame_Parameters") -> None:
         """
         Creates widgets for a routine's parameters and shows the appropriate values
@@ -3569,7 +3709,7 @@ class PartyEditor:
         with self.app.labelFrame(frame):
             # Show spell notes, if any
             self.app.message("PE_Routine_Notes", notes, width=400,
-                             row=0, column=0, colspan=3, sticky="NEWS", fg="#D03030", font=11)
+                             row=0, column=0, colspan=3, sticky="NEWS", fg=colour.MEDIUM_RED, font=11)
 
             # Add parameter widgets
             for p in range(len(parameters)):
@@ -3578,58 +3718,60 @@ class PartyEditor:
                                sticky="NE", row=1 + p, column=0, font=11)
 
                 if parameter.type == parameter.TYPE_DECIMAL:
-                    self.app.entry(f"PE_Decimal_Parameter_{p:02}", f"{parameter.value}", change=self._magic_input,
+                    self.app.entry(f"PE_Decimal_Parameter_{p:02}", f"{parameter.value}", change=change_function,
                                    sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
 
                 elif parameter.type == parameter.TYPE_HEX:
-                    self.app.entry(f"PE_Hex_Parameter_{p:02}", f"0x{parameter.value:02X}", change=self._magic_input,
+                    self.app.entry(f"PE_Hex_Parameter_{p:02}", f"0x{parameter.value:02X}", change=change_function,
                                    sticky="NW", width=5, row=1 + p, column=1, colspan=2, font=10)
 
                 elif parameter.type == parameter.TYPE_POINTER:
-                    self.app.entry(f"PE_Pointer_Parameter_{p:02}", f"{parameter.value:04X}", change=self._magic_input,
+                    self.app.entry(f"PE_Pointer_Parameter_{p:02}", f"{parameter.value:04X}", change=change_function,
                                    sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
 
                 elif parameter.type == parameter.TYPE_STRING:
                     self.app.entry(f"PE_String_Id_Parameter_{p:02}", f"0x{parameter.value:02X}",
-                                   change=self._magic_input,
+                                   change=change_function,
                                    sticky="NW", width=8, row=1 + p, column=1, font=10)
                     self.app.button(f"PE_String_Button_Parameter_{p:02}", image="res/edit-dlg-small.gif",
-                                    value=self._magic_input, sticky="NW", width=16, height=16, row=1 + p, column=2)
+                                    value=change_function, sticky="NW", width=16, height=16, row=1 + p, column=2)
 
                 elif parameter.type == parameter.TYPE_LOCATION:
-                    self.app.optionBox(f"PE_Map_Parameter_{p:02}", map_options, change=self._magic_input,
+                    self.app.optionBox(f"PE_Map_Parameter_{p:02}", map_options, change=change_function,
                                        width=24, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
                     self.app.setOptionBox(f"PE_Map_Parameter_{p:02}", index=parameter.value, callFunction=False)
 
                 elif parameter.type == parameter.TYPE_POINTER:
-                    self.app.entry(f"PE_Pointer_Parameter_{p:02}", f"0x{parameter.value:04X}", change=self._magic_input,
+                    self.app.entry(f"PE_Pointer_Parameter_{p:02}", f"0x{parameter.value:04X}", change=change_function,
                                    sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
 
                 elif parameter.type == parameter.TYPE_BOOL:
-                    self.app.checkBox(f"PE_Bool_Parameter_{p:02}", name="", change=self._magic_input, sticky="NW",
+                    self.app.checkBox(f"PE_Bool_Parameter_{p:02}", name="", change=change_function, sticky="NW",
                                       row=1 + p, column=1, colspan=2)
                     self.app.setCheckBox(f"PE_Bool_Parameter_{p:02}", ticked=True if parameter.value != 0 else False,
                                          callFunction=False)
 
                 elif parameter.type == parameter.TYPE_ATTRIBUTE:
                     self.app.entry(f"PE_Attribute_Id_Parameter_{p:02}", f"0x{parameter.value:02X}",
-                                   change=self._magic_input, sticky="NW", width=8, row=1 + p, column=1, font=10)
+                                   change=change_function, sticky="NW", width=8, row=1 + p, column=1, font=10)
                     self.app.optionBox(f"PE_Attribute_List_Parameter_{p:02}", attribute_options,
-                                       change=self._magic_input,
+                                       change=change_function,
                                        width=12, sticky="NW", row=1 + p, column=2, font=9)
                     # Select the appropriate option from the list
-                    self._magic_input(f"PE_Attribute_Id_Parameter_{p:02}")
+                    change_function(f"PE_Attribute_Id_Parameter_{p:02}")
 
                 elif parameter.type == parameter.TYPE_MARK:
-                    self.app.optionBox(f"PE_Mark_Parameter_{p:02}", self.mark_names, name="Mark(s)", kind="ticks",
-                                       change=self._magic_input,
-                                       width=12, sticky="NEW", row=1 + p, column=1, colspan=2, font=9)
+                    self.app.optionBox(f"MARKS Param {p:02}", self.mark_names, kind="ticks",
+                                       change=change_function,
+                                       width=14, sticky="NEW", row=1 + p, column=1, colspan=2, font=9)
                     bit = 1
                     for b in range(4):
                         if (parameter.value & bit) != 0:
-                            self.app.setOptionBox(f"PE_Mark_Parameter_{p:02}", b, value=True, callFunction=False)
+                            self.app.setOptionBox(f"MARKS Param {p:02}", self.mark_names[b],
+                                                  value=True, callFunction=False)
                         else:
-                            self.app.setOptionBox(f"PE_Mark_Parameter_{p:02}", b, value=False, callFunction=False)
+                            self.app.setOptionBox(f"MARKS Param {p:02}", self.mark_names[b],
+                                                  value=False, callFunction=False)
                         bit = bit << 1
 
                 elif parameter.type == parameter.TYPE_CHECK:
@@ -3643,13 +3785,13 @@ class PartyEditor:
                         self.warning(f"Unrecognised Check address '0x{parameter.value:04X}' for parameter #{p}.")
                         check_id = 0
 
-                    self.app.optionBox(f"PE_Check_Parameter_{p:02}", check_options, change=self._magic_input,
+                    self.app.optionBox(f"PE_Check_Parameter_{p:02}", check_options, change=change_function,
                                        sticky="NW", width=20, row=1 + p, column=1, colspan=2, font=10)
                     self.app.setOptionBox(f"PE_Check_Parameter_{p:02}", index=check_id, callFunction=False)
 
                 else:
                     self.warning(f"Unknown type: '{parameter.type}' for parameter #{p}.")
-                    self.app.entry(f"PE_Hex_Parameter_{p:02}", f"0x{parameter.value:02X}", change=self._magic_input,
+                    self.app.entry(f"PE_Hex_Parameter_{p:02}", f"0x{parameter.value:02X}", change=change_function,
                                    sticky="NW", width=8, row=1 + p, column=1, colspan=2, font=10)
 
     # --- PartyEditor.race_info() ---

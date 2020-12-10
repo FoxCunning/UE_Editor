@@ -563,7 +563,7 @@ TYPE_0=ATTRIBUTE
 ; ------------------------------------------
 [COMMON_1]
 NAME=Multi-Target Hit
-NOTES=For each enemy, hit if (Random(0 to parameter 0) + caster's level) >= 40.
+NOTES=For each enemy, hit if (Random(0 to chance offset) + caster's level) >= 40.
 ADDRESS=0xD4FD
 
 DESCRIPTION_0=Hit chance offset
@@ -586,7 +586,7 @@ NOTES=Uses the same routine as the "Bright/Star" spell (minus the MP consumption
 ;				KEY
 ; ------------------------------------------
 [TOOL_1]
-NOTES=All this does is change the "door tile" into a "replacement tile". The ID of the replacement tile should be ORed with 0x80 in order to make it appear instantly. For example tile 0x0B should be 0x8B.
+NOTES=Changes a "door tile" into a "replacement tile". The ID of the replacement tile should be ORed with 0x80 in order to make it appear instantly. For example tile 0x0B should be 0x8B.
 
 DESCRIPTION_0=Door tile (0x0 to 0xF)
 OFFSET_0=0x0C
@@ -616,6 +616,8 @@ NOTES=Uses the same routine as the "Map" spell.
 ;				TIME POWDER
 ; ------------------------------------------
 [TOOL_3]
+NOTES=Prevents enemies moving or attacking for the specified duration.
+
 DESCRIPTION_0=Can't be used in map
 OFFSET_0=0x03
 TYPE_0=LOCATION
@@ -637,6 +639,8 @@ TYPE_3=STRING
 ;				TENT
 ; ------------------------------------------
 [TOOL_4]
+NOTES=Heals the party instantaneously.
+
 DESCRIPTION_0=Amount healed (0-255)
 OFFSET_0=0x13
 TYPE_0=DECIMAL
@@ -646,6 +650,8 @@ TYPE_0=DECIMAL
 ;				GOLD PICK
 ; ------------------------------------------
 [TOOL_5]
+NOTES=Use in the specified location to receive a unique item.
+
 DESCRIPTION_0=Map flags
 OFFSET_0=0x03
 TYPE_0=HEX
@@ -679,6 +685,8 @@ TYPE_6=STRING
 ;				SILVER PICK
 ; ------------------------------------------
 [TOOL_6]
+NOTES=Use in the specified location to receive a unique item.
+
 DESCRIPTION_0=Map flags
 OFFSET_0=0x03
 TYPE_0=HEX
@@ -712,6 +720,8 @@ TYPE_6=STRING
 ;				SILVER HORN
 ; ------------------------------------------
 [TOOL_7]
+NOTES=Changes the tiles in a 2x2 square.
+
 DESCRIPTION_0=Music
 OFFSET_0=0x01
 TYPE_0=HEX
@@ -724,9 +734,9 @@ DESCRIPTION_2=Pause (before)
 OFFSET_2=0x05
 TYPE_2=DECIMAL
 
-DESCRIPTION_3=Required Marks (bit mask)
+DESCRIPTION_3=Required Marks
 OFFSET_3=0x14
-TYPE_3=HEX
+TYPE_3=MARK
 
 DESCRIPTION_4=X Coordinate
 OFFSET_4=0x1A
@@ -765,6 +775,8 @@ TYPE_11=STRING
 ;				COMPASS HEARTH
 ; ------------------------------------------
 [TOOL_8]
+NOTES=Teleports the party to the specified location.
+
 DESCRIPTION_0=Usage dialogue
 OFFSET_0=0x01
 TYPE_0=STRING
@@ -775,7 +787,7 @@ TYPE_1=HEX
 
 DESCRIPTION_2=Destination map
 OFFSET_2=0x0C
-TYPE_2=Map
+TYPE_2=LOCATION
 
 DESCRIPTION_3=Party destination X
 OFFSET_3=0x12

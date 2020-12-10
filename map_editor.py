@@ -284,7 +284,7 @@ class MapEditor:
             colours = self.palette_editor.get_colours([0x0F,
                                                        self.map_colour, self.map_colour - 0x10, self.map_colour - 0x20])
 
-            self.app.enableOptionBox("ME_Option_Map_Colours", callFunc=False)
+            self.app.enableOptionBox("ME_Option_Map_Colours")
 
             # Select this colour from the option box
             colours_list: List[str] = []

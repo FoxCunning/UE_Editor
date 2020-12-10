@@ -3,7 +3,7 @@ VERSION=Original ROM (US)
 
 
 ; ============================================================================
-;						Spell section keys
+;						Section keys
 ;
 ; MP: 	Offset for reading the actual MP cost of the spell, from the beginning
 ;		of its routine.
@@ -24,7 +24,7 @@ VERSION=Original ROM (US)
 ; TYPE_x:	This determins what kind of widget(s) to show for parameter 'x'.
 ;			Values can be: HEX (or H), DECIMAL (or D), POINTER (or P),
 ;			STRING (or S), ATTRIBUTE (or A), BOOL (or B), CHECK (or C),
-;			MAP (or M)
+;			LOCATION (or L), MARK (or M)
 ; ============================================================================
 
 
@@ -400,7 +400,7 @@ MP=0x1
 
 DESCRIPTION_0=ID of second continent
 OFFSET_0=0x10
-TYPE_0=MAP
+TYPE_0=LOCATION
 
 DESCRIPTION_1=Failure dialogue ID
 OFFSET_1=0x14
@@ -551,6 +551,8 @@ NOTES=Uses the same routine as the "Map" spell.
 ;				TIME POWDER
 ; ------------------------------------------
 [TOOL_3]
+NOTES=Prevents enemies moving or attacking for the specified duration.
+
 DESCRIPTION_0=Can't be used in map
 OFFSET_0=0x03
 TYPE_0=LOCATION
@@ -572,6 +574,8 @@ TYPE_3=STRING
 ;				TENT
 ; ------------------------------------------
 [TOOL_4]
+NOTES=Heals the party instantaneously.
+
 DESCRIPTION_0=Amount healed (0-255)
 OFFSET_0=0x13
 TYPE_0=DECIMAL
@@ -581,6 +585,8 @@ TYPE_0=DECIMAL
 ;				GOLD PICK
 ; ------------------------------------------
 [TOOL_5]
+NOTES=Use in the specified location to receive a unique item.
+
 DESCRIPTION_0=Map flags
 OFFSET_0=0x03
 TYPE_0=HEX
@@ -614,6 +620,8 @@ TYPE_6=STRING
 ;				SILVER PICK
 ; ------------------------------------------
 [TOOL_6]
+NOTES=Use in the specified location to receive a unique item.
+
 DESCRIPTION_0=Map flags
 OFFSET_0=0x03
 TYPE_0=HEX
@@ -647,6 +655,8 @@ TYPE_6=STRING
 ;				SILVER HORN
 ; ------------------------------------------
 [TOOL_7]
+NOTES=Changes the tiles in a 2x2 square.
+
 DESCRIPTION_0=Music
 OFFSET_0=0x01
 TYPE_0=HEX
@@ -659,9 +669,9 @@ DESCRIPTION_2=Pause (before)
 OFFSET_2=0x05
 TYPE_2=DECIMAL
 
-DESCRIPTION_3=Required Marks (bit mask)
+DESCRIPTION_3=Required Marks
 OFFSET_3=0x14
-TYPE_3=HEX
+TYPE_3=MARK
 
 DESCRIPTION_4=X Coordinate
 OFFSET_4=0x1A
@@ -700,6 +710,8 @@ TYPE_11=STRING
 ;				COMPASS HEARTH
 ; ------------------------------------------
 [TOOL_8]
+NOTES=Teleports the party to the specified location.
+
 DESCRIPTION_0=Usage dialogue
 OFFSET_0=0x01
 TYPE_0=STRING
@@ -710,7 +722,7 @@ TYPE_1=HEX
 
 DESCRIPTION_2=Destination map
 OFFSET_2=0x0C
-TYPE_2=Map
+TYPE_2=LOCATION
 
 DESCRIPTION_3=Party destination X
 OFFSET_3=0x12

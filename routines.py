@@ -58,7 +58,7 @@ class Routine:
     fine_flags: int = 0
     # MP needed for the spell to appear on the caster's list of available spells
     mp_display: int = 0
-    # MP actually consumed upon casting the spell
+    # MP actually consumed upon casting the spell / number of items consumed on use
     mp_cast: int = 0
     # Address where the MP to cast value is stored in ROM
     mp_address: int = 0

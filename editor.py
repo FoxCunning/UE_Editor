@@ -17,6 +17,8 @@ import ast
 import os
 import shlex
 import subprocess
+import colour
+
 from dataclasses import dataclass
 from typing import List
 
@@ -491,11 +493,11 @@ def map_editor_input(widget: str) -> None:
 
         # Read value
         try:
-            colour = int(app.getOptionBox("ME_Option_Map_Colours"), 16)
+            colour_value = int(app.getOptionBox("ME_Option_Map_Colours"), 16)
         except ValueError:
             return
         # Reload tiles using the new colour
-        map_editor.load_tiles(map_colour=colour)
+        map_editor.load_tiles(map_colour=colour_value)
         # Redraw the map
         map_editor.redraw_map()
 
@@ -913,23 +915,23 @@ def enemy_editor_input(widget: str) -> None:
 
         if len(text) != 6:
             # Not enough digits: mark as invalid
-            app.entry("ET_Sprite_Address", fg="#7F0000")
+            app.entry("ET_Sprite_Address", fg=colour.DARK_RED)
             return
 
         try:
             address = int(text, 16)
             if address < 0x8000 or address > 0xBFFF:
                 # Out of range
-                app.entry("ET_Sprite_Address", fg="#7F0000")
+                app.entry("ET_Sprite_Address", fg=colour.DARK_RED)
                 return
 
             # Valid input: change address and reload sprite
-            app.entry("ET_Sprite_Address", fg="#007F00")
+            app.entry("ET_Sprite_Address", fg=colour.DARK_GREEN)
             enemy_editor.change_sprite(sprite_address=address)
 
         except ValueError:
             # Not a valid hex value
-            app.entry("ET_Sprite_Address", fg="#7F0000")
+            app.entry("ET_Sprite_Address", fg=colour.DARK_RED)
             return
 
     elif widget == "ET_List_Encounters":
@@ -1170,10 +1172,10 @@ def open_rom(file_name: str) -> None:
         map_colours = []  # Portrait map_colours
         for c in range(4, 8):
             colour_index: int = palette_editor.palettes[0][c]
-            colour = bytearray(palette_editor.get_colour(colour_index))
-            map_colours.append(colour[0])  # Red
-            map_colours.append(colour[1])  # Green
-            map_colours.append(colour[2])  # Blue
+            colour_value = bytearray(palette_editor.get_colour(colour_index))
+            map_colours.append(colour_value[0])  # Red
+            map_colours.append(colour_value[1])  # Green
+            map_colours.append(colour_value[2])  # Blue
         map_editor = MapEditor(rom, app, palette_editor)
 
         # This automatically loads text pointer tables and caches dialogue and special strings
@@ -1942,7 +1944,7 @@ if __name__ == "__main__":
 
     # --- GUI Elements ---
 
-    with gui("UE Editor", "492x344", bg='#FFFFF0', resizable=False) as app:
+    with gui("UE Editor", "492x344", bg=colour.WHITE, resizable=False) as app:
         print(app.SHOW_VERSION())
         # noinspection PyArgumentList
         app.setIcon(image="res/app-icon.ico")
@@ -1970,7 +1972,8 @@ if __name__ == "__main__":
 
         # ROM Tab ------------------------------------------------------------------------------------------------------
         with app.tab("ROM"):
-            with app.labelFrame("ROM Info", padding=[2, 0], row=0, column=0, stretch='BOTH', sticky='NEWS'):
+            with app.labelFrame("ROM Info", padding=[2, 0], row=0, column=0, stretch='BOTH', sticky='NEWS',
+                                bg=colour.WHITE):
                 app.label("RomInfo_0", value="Open a ROM file to begin...", row=0)
                 app.label("RomInfo_1", value="", row=1, sticky='W')  # PRG ROM Size
                 app.label("RomInfo_2", value="", row=2, sticky='W')  # CHR ROM Size
@@ -1983,7 +1986,8 @@ if __name__ == "__main__":
 
             with app.labelFrame("Features", row=0, column=1, stretch='BOTH', sticky='NEWS'):
                 for f in range(9):
-                    app.checkBox(f"Feature_{f}", name=feature_names[f], value=False, row=f, column=0, font=9)
+                    app.checkBox(f"Feature_{f}", name=feature_names[f], value=False, row=f, column=0, font=9,
+                                 fg=colour.DARK_BLUE)
                     app.disableCheckBox(f"Feature_{f}")
                     app.hideCheckBox(f"Feature_{f}")
 
@@ -1994,14 +1998,14 @@ if __name__ == "__main__":
             for i in range(0, 0x1A):
                 maps_list.append(f"0x{i:02X}")
 
-            with app.frame("Map_TopFrame", row=0, column=0, sticky='NEW', stretch='BOTH', bg="#DFCFCF"):
+            with app.frame("Map_TopFrame", row=0, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_BROWN):
                 app.label("MapInfo_SelectLabel", value="Map:", row=0, column=0, sticky='E')
                 app.optionBox("MapInfo_Select", maps_list, change=select_map, sticky='WE', width=20,
                               stretch='ROW', row=0, column=1, font=11)
                 app.radioButton("MapInfo_Advanced_Option", "Basic", change=press, row=0, column=2, sticky="E")
                 app.radioButton("MapInfo_Advanced_Option", "Advanced", change=press, row=0, column=3, sticky="W")
 
-            with app.frame("Map_MidFrame", row=1, column=0, sticky='NEW', stretch='BOTH', bg="#CFCFDF"):
+            with app.frame("Map_MidFrame", row=1, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_OLIVE):
 
                 # Basic info
                 with app.frame("MapInfo_Frame_Basic", row=0, column=0, padding=[8, 0], stretch='BOTH'):
@@ -2048,40 +2052,40 @@ if __name__ == "__main__":
             app.hideFrame("MapInfo_Frame_Advanced")
 
             with app.frame("Map_BtmFrame", row=4, column=0, sticky='NEWS', stretch='BOTH', padding=[4, 8],
-                           bg="#CFDFCF"):
+                           bg=colour.PALE_LIME):
                 app.button("Map_Apply", name="Apply Changes", value=press, sticky='NEW', row=0, column=0)
                 app.button("Map_Edit", name="Edit Map", value=press, sticky='NEW', row=0, column=1)
                 app.label("MapInfo_SelectCompression", "Compression:", sticky='NEW', row=0, column=2)
                 app.optionBox("Map_Compression", ["none", "LZSS", "RLE"], change=select_compression, sticky='NEW',
                               callFunction=True, row=0, column=3)
 
-        # PARTY Tab ----------------------------------------------------------------------------------------------------
+        # MISC Tab ----------------------------------------------------------------------------------------------------
         with app.tab("Misc"):
             # Row 0
             app.button("PT_Button_Races", name="Races", value=party_editor_input, sticky='NEWS',
-                       bg="#E0D7C7", row=0, column=0)
+                       bg=colour.PALE_BLUE, row=0, column=0)
             app.button("PT_Button_Professions", name="Professions", value=party_editor_input, sticky='NEWS',
-                       bg="#D7C7E0", row=0, column=1)
+                       bg=colour.PALE_BROWN, row=0, column=1)
             # Row 1
             app.button("PT_Button_Pre-Made", name="Pre-Made\nCharacters", value=party_editor_input, sticky='NEWS',
-                       bg="#C7E0D7", row=1, column=0)
+                       bg=colour.PALE_OLIVE, row=1, column=0)
             app.button("PT_Button_Items", name="Items", value=party_editor_input, sticky='NEWS',
-                       bg="#E0D7E0", row=1, column=1)
+                       bg=colour.PALE_TEAL, row=1, column=1)
             # Row 2
             app.button("PT_Button_Magic", name="Magic", value=party_editor_input, sticky='NEWS',
-                       bg="#E0C7D7", row=2, column=0)
+                       bg=colour.PALE_ORANGE, row=2, column=0)
             app.button("PT_Button_Special", name="Special\nAbilities", value=party_editor_input, sticky='NEWS',
-                       bg="#D7E0E0", row=2, column=1)
+                       bg=colour.PALE_VIOLET, row=2, column=1)
             # Row 3
             app.button("PT_Button_Weapons", name="Weapons/Armour", value=party_editor_input, sticky='NEWS',
-                       bg="#C7E0C7", row=3, column=0)
+                       bg=colour.PALE_MAGENTA, row=3, column=0)
             app.button("PT_Button_Commands", name="Commands", value=party_editor_input, sticky='NEWS',
-                       bg="#C7E0E0", row=3, column=1)
+                       bg=colour.PALE_LIME, row=3, column=1)
 
         # ENEMIES Tab --------------------------------------------------------------------------------------------------
         with app.tab("Enemies", padding=[0, 0]):
             # Left
-            with app.frame("ET_Frame_Left", bg="#F0F7F7", stretch='BOTH', sticky='NWS', row=0, column=0):
+            with app.frame("ET_Frame_Left", bg=colour.PALE_RED, stretch='BOTH', sticky='NWS', row=0, column=0):
                 app.optionBox("ET_Option_Enemies", ["- Select an Enemy -", "0x00"], row=0, column=0,
                               width=22, change=enemy_editor_input, stretch='ROW', sticky='EW')
 
@@ -2097,14 +2101,14 @@ if __name__ == "__main__":
                                row=0, column=1)
 
             # Right - Enemy
-            with app.frame("ET_Frame_Enemy", bg="#F7F7F0", stretch='BOTH', sticky='NEWS', row=0, column=1):
+            with app.frame("ET_Frame_Enemy", bg=colour.PALE_TEAL, stretch='BOTH', sticky='NEWS', row=0, column=1):
                 # Row 0
                 app.label("ET_Label_h1", "Gfx Addr.:", sticky='NEW', row=0, column=0)
                 app.checkBox("ET_Big_Sprite", name="4x4 Sprite", change=enemy_editor_input, row=0, column=1)
                 # Row 1 - sprite
-                app.entry("ET_Sprite_Address", value="0x0000", change=enemy_editor_input, width=5, fg="#007F00",
+                app.entry("ET_Sprite_Address", value="0x0000", change=enemy_editor_input, width=5, fg=colour.DARK_OLIVE,
                           row=1, column=0)
-                app.canvas("ET_Canvas_Sprite", map=None, width=32, height=32, sticky='NEW', bg="#CFCFCF",
+                app.canvas("ET_Canvas_Sprite", map=None, width=32, height=32, sticky='NEW', bg=colour.MEDIUM_GREY,
                            row=1, column=1)
                 # Row 2 - HP
                 app.label("ET_Label_HP", "Base HP:", sticky='NEW', row=2, column=0)
@@ -2146,7 +2150,7 @@ if __name__ == "__main__":
                     app.entry("ET_Special_Y", "0", change=enemy_editor_input, width=4, row=1, column=2)
 
             # Right - Encounter
-            with app.frame("ET_Frame_Encounter", bg="#F0F0F7", stretch='BOTH', sticky='NEWS', row=0, column=2):
+            with app.frame("ET_Frame_Encounter", bg=colour.PALE_TEAL, stretch='BOTH', sticky='NEWS', row=0, column=2):
                 app.label("ET_Label_Level", "Level/Type", row=0, column=0)
                 app.label("ET_Label_h3", "Encounters Table #0", row=1, column=0)
                 with app.frame("ET_Frame_Encounters_List", sticky='NEW', padding=[4, 4], row=2, column=0):
@@ -2172,7 +2176,7 @@ if __name__ == "__main__":
         # TEXT Tab -----------------------------------------------------------------------------------------------------
         with app.tab("Text", padding=[0, 0]):
             with app.frame("TextEditor_Left", row=0, column=0, padding=[2, 2], inPadding=[0, 0],
-                           sticky='NW', bg="#AFBFAF"):
+                           sticky='NW', bg=colour.PALE_OLIVE):
                 app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky='NW', stretch='NONE', font=10)
                 app.textArea("Text_Preview", row=1, column=0, colspan=2, sticky='NEW', stretch='ROW', scroll=True,
                              end=False, height=10, rowspan=2).setFont(family="Consolas", size=11)
@@ -2181,18 +2185,18 @@ if __name__ == "__main__":
                 app.button("Text_More", name="More Actions", value=edit_text, row=3, column=1, sticky='NW',
                            stretch='NONE')
 
-            with app.frame("TextEditor_Right", row=0, column=1, sticky='NE', padding=[2, 2], bg="#BFBFAF"):
+            with app.frame("TextEditor_Right", row=0, column=1, sticky='NE', padding=[2, 2], bg=colour.PALE_BROWN):
                 app.optionBox("Text_Type", ["Choose Type", "Dialogue", "Special", "NPC Names", "Enemy Names",
                                             "Menus / Intro"],
                               change=select_text_type, row=0, column=4, sticky='NW', colspan=2, stretch='NONE',
-                              bg="#CFCFBF")
+                              bg=colour.PALE_ORANGE)
                 app.listBox("Text_Id", value=[], change=select_text_id, row=1, column=4, sticky='NE',
-                            stretch='NONE', bg="#EFEFEF")
+                            stretch='NONE', bg=colour.PALE_PINK)
 
         # PALETTES Tab -------------------------------------------------------------------------------------------------
         with app.tab("Palettes", padding=[4, 2]):
 
-            with app.frame("PE_Frame_List", row=0, column=0, padding=[2, 0], bg="#EFDFDF"):
+            with app.frame("PE_Frame_List", row=0, column=0, padding=[2, 0], bg=colour.PALE_MAGENTA):
                 app.label("PE_Label_Select", "Select a palette set:", row=0, column=0)
                 app.optionBox("PE_List_Palettes", ["Intro / Credits", "Title", "Status Screen", "Flashing",
                                                    "End Sequence", "Map Default", "Ambrosia", "Dungeon",
@@ -2200,7 +2204,7 @@ if __name__ == "__main__":
                               change=select_palette, row=0, column=1)
 
             with app.frame("PE_Frame_Palettes", row=1, column=0, padding=[0, 2], stretch='BOTH', sticky='NEWS',
-                           bg="#DFEFDF"):
+                           bg=colour.PALE_RED):
                 app.button("PE_Palette_Prev", name=" << Prev ", row=0, column=0, stretch='NONE',
                            command=lambda: cycle_palette_sets(0))
                 app.label("PE_Label_0", "Palette 0:", row=0, column=1, stretch='COLUMN')
@@ -2208,28 +2212,29 @@ if __name__ == "__main__":
                            command=lambda: cycle_palette_sets(1))
 
             with app.frame("PE_Frame_Sub_Palette", row=2, column=0, padding=[8, 0], stretch='COLUMN', sticky='NEWS',
-                           bg="#DFEFDF"):
+                           bg=colour.PALE_PINK):
                 app.canvas("PE_Canvas_Palette_0", row=0, column=0, width=65, height=17, stretch='NONE', map=None,
-                           bg="#000000").bind(
+                           bg=colour.BLACK).bind(
                     "<Button-1>", lambda event: edit_colour(event, 0), add="+")
                 app.canvas("PE_Canvas_Palette_1", row=0, column=1, width=65, height=17, stretch='NONE', map=None,
-                           bg="#000000").bind(
+                           bg=colour.BLACK).bind(
                     "<Button-1>", lambda event: edit_colour(event, 1), add="+")
                 app.canvas("PE_Canvas_Palette_2", row=0, column=2, width=65, height=17, stretch='NONE', map=None,
-                           bg="#000000").bind(
+                           bg=colour.BLACK).bind(
                     "<Button-1>", lambda event: edit_colour(event, 2), add="+")
                 app.canvas("PE_Canvas_Palette_3", row=0, column=3, width=65, height=17, stretch='NONE', map=None,
-                           bg="#000000").bind(
+                           bg=colour.BLACK).bind(
                     "<Button-1>", lambda event: edit_colour(event, 3), add="+")
                 app.setCanvasCursor("PE_Canvas_Palette_0", "pencil")
                 app.setCanvasCursor("PE_Canvas_Palette_1", "pencil")
                 app.setCanvasCursor("PE_Canvas_Palette_2", "pencil")
                 app.setCanvasCursor("PE_Canvas_Palette_3", "pencil")
 
-            with app.frame("PE_Frame_Full", row=3, column=0, colspan=2, padding=[2, 0], stretch='BOTH', bg="#DFEFEF"):
+            with app.frame("PE_Frame_Full", row=3, column=0, colspan=2, padding=[2, 0], stretch='BOTH',
+                           bg=colour.PALE_ORANGE):
                 # Full NES palette
                 app.canvas("PE_Canvas_Full", row=0, column=0, width=257, height=65, stretch='NONE', map=None,
-                           bg="#000000",
+                           bg=colour.BLACK,
                            sticky='EW').bind("<Button-1>", pick_colour, add="+")
                 app.setCanvasCursor("PE_Canvas_Full", "hand1")
 
@@ -2258,7 +2263,7 @@ if __name__ == "__main__":
 
         # Party Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Party_Editor", title="Party Editor", size=[360, 240], modal=False, resizable=False,
-                           padding=0, inPadding=0, guiPadding=0, bg="#B0B0C0"):
+                           padding=0, inPadding=0, guiPadding=0, bg=colour.LIGHT_BLUE):
             # noinspection PyArgumentList
             app.setStopFunction(party_editor_stop)
 
@@ -2266,17 +2271,18 @@ if __name__ == "__main__":
 
             # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
             with app.subWindow("PE_Progress", title="Loading", modal=True, size=[300, 100], padding=[4, 4],
-                               bg="#F0E0C0"):
+                               bg=colour.PALE_PINK):
                 # noinspection PyArgumentList
                 app.setStopFunction(no_stop)
 
                 app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE',
                           font=16)
-                app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE', fill="#9090F0")
+                app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
+                          fill=colour.MEDIUM_BLUE)
 
         # Map Editor Sub-Window ----------------------------------------------------------------------------------------
         with app.subWindow("Map_Editor", "Map Editor", size=[512, 480], modal=False, resizable=False, padding=0,
-                           inPadding=0, guiPadding=0, bg="#A0A0A0"):
+                           inPadding=0, guiPadding=0, bg=colour.WHITE):
 
             # noinspection PyArgumentList
             app.setStopFunction(map_editor_stop)
@@ -2295,7 +2301,7 @@ if __name__ == "__main__":
 
             # Tile picker / toolbox
             with app.frame("ME_Frame_Tile_Picker", row=1, column=0, padding=[4, 0], stretch='COLUMN', sticky='EW',
-                           bg="#3F3F3F"):
+                           bg=colour.PALE_BLUE):
 
                 app.button("ME_Button_Draw", map_editor_input, name="Draw", image="res/pencil.gif",
                            tooltip="Draw", height=32, row=0, column=0)
@@ -2310,9 +2316,9 @@ if __name__ == "__main__":
                 app.setCanvasCursor("ME_Canvas_Tiles", "hand2")
 
             # Tile info frame
-            with app.labelFrame("Tile Info", row=2, column=0, bg="#7F7F8F", stretch='BOTH', sticky='EW'):
+            with app.labelFrame("Tile Info", row=2, column=0, bg=colour.PALE_VIOLET, stretch='BOTH', sticky='EW'):
                 app.canvas("ME_Canvas_Selected_Tile", row=0, column=0, width=16, height=16, stretch='NONE', map=None,
-                           bg="#7F7F8F")
+                           bg=colour.PALE_NAVY)
                 app.label("ME_Selected_Tile_Name", "", row=0, column=1)
                 app.label("ME_Selected_Tile_Properties", "", row=0, column=2)
                 app.label("ME_Selected_Tile_Position", "", row=0, column=3)
@@ -2336,7 +2342,7 @@ if __name__ == "__main__":
                 del values
                 # Column 2
                 app.canvas("ME_Canvas_Map_Colours", width=35, height=18, row=0, column=2, stretch='NONE',
-                           map=None, bg="#000000")
+                           map=None, bg=colour.BLACK)
 
             # Map Canvas
             with app.scrollPane("ME_Scroll_Pane", row=4, column=0, stretch='BOTH', padding=[0, 0], sticky='NEWS'):
@@ -2346,7 +2352,7 @@ if __name__ == "__main__":
 
                 # Dungeon tools
                 with app.frame("ME_Frame_Dungeon_Tools", row=0, column=1, padding=[8, 0], sticky='SEWN',
-                               stretch='COLUMN', bg="#9F9F7F"):
+                               stretch='COLUMN', bg=colour.PALE_ORANGE):
                     # Dungeon tools Row #0
                     app.label("ME_Label_Dungeon_Level", "Floor:", row=0, column=0)
                     # Dungeon tools Row #1
@@ -2370,17 +2376,18 @@ if __name__ == "__main__":
 
             # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
             with app.subWindow("Map_Progress", title="Redraw Map", modal=True, size=[300, 100], padding=[4, 4],
-                               bg="#F0E0C0"):
+                               bg=colour.PALE_LIME):
                 # noinspection PyArgumentList
                 app.setStopFunction(no_stop)
 
                 app.label("Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE',
                           font=16)
-                app.meter("ME_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE', fill="#9090F0")
+                app.meter("ME_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
+                          fill=colour.MEDIUM_BLUE)
 
             # Entrance / Moongate Editor Sub-Sub-Window ----------------------------------------------------------------
             with app.subWindow("Entrance_Editor", "Entrances / Moongates", size=[256, 440], modal=False,
-                               resizable=False, bg="#DFD7D0"):
+                               resizable=False, bg=colour.PALE_OLIVE):
                 # noinspection PyArgumentList
                 app.setStopFunction(map_editor_stop)
 
@@ -2420,7 +2427,7 @@ if __name__ == "__main__":
                                     colspan=2, width=10, height=6, font=10)
                         # Row 1
                         app.label("EE_Label_h10", "Dawn tile:", stretch='BOTH', sticky='NEWS', row=1, column=0, font=9)
-                        app.canvas("EE_Canvas_Dawn_Tile", width=16, height=16, bg="#000000", map=None,
+                        app.canvas("EE_Canvas_Dawn_Tile", width=16, height=16, bg=colour.BLACK, map=None,
                                    stretch='BOTH', sticky='W', row=1, column=1)
                         # Row 2
                         app.optionBox("EE_Option_Dawn_Tile", tiles_list, change=entrance_editor_press, row=2, column=0,
@@ -2453,12 +2460,12 @@ if __name__ == "__main__":
                         # Row 3
                         app.label("EE_Label_h7", "Moon Phase:", sticky='EW', row=3, column=0, colspan=2, font=9)
                         # Row 4
-                        app.canvas("EE_Canvas_Moon_Phase", width=16, height=16, bg="#000000", map=None,
+                        app.canvas("EE_Canvas_Moon_Phase", width=16, height=16, bg=colour.BLACK, map=None,
                                    stretch='BOTH', sticky='N', row=4, column=0, colspan=2)
                         # Row 5
                         app.label("EE_Label_h8", "'Ground':", sticky='EW', row=5, column=0, colspan=2, font=9)
                         # Row 6
-                        app.canvas("EE_Canvas_Moongate_Tile", width=16, height=16, bg="#000000", map=None,
+                        app.canvas("EE_Canvas_Moongate_Tile", width=16, height=16, bg=colour.BLACK, map=None,
                                    stretch='BOTH', sticky='N', row=6, column=0, colspan=2)
                         # Row 7
                         app.optionBox("EE_Option_Moongate_Tile", tiles_list, row=7, column=0, colspan=2,
@@ -2494,7 +2501,7 @@ if __name__ == "__main__":
                         app.optionBox("NPCE_Option_Graphics", options, change=npc_select_graphics, row=0, column=1,
                                       font=9)
                         app.canvas("NPCE_Canvas_New_Sprite", row=0, column=2, width=16, height=16, stretch='NONE',
-                                   map=None, bg='#C0C0C0')
+                                   map=None, bg=colour.MEDIUM_GREY)
                         app.checkBox("NPCE_Check_Static", text="Static", change=npc_select_graphics, row=0, column=3,
                                      font=9)
 
@@ -2533,14 +2540,14 @@ if __name__ == "__main__":
                            tooltip="Discard Changes and Close", row=0, column=2, sticky='E')
 
             # Text
-            with app.frame("TE_Frame_Left", row=1, column=0, bg="#FFCFCF", sticky='NEW', stretch='COLUMN',
+            with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.MEDIUM_GREY, sticky='NEW', stretch='COLUMN',
                            padding=[2, 2]):
                 app.label("TE_Label_Text", "Unpacked string:", row=0, column=0)
                 app.textArea("TE_Text", "", width=22, stretch='BOTH', sticky='NEWS', scroll=True,
                              row=1, column=0).setFont(family="Consolas", size=12)
 
             # Address
-            with app.frame("TE_Frame_Right", row=1, column=1, bg="#CFCFFF",
+            with app.frame("TE_Frame_Right", row=1, column=1, bg=colour.PALE_VIOLET,
                            padding=[2, 2]):
                 app.label("TE_Label_Type", "(Text type)")
                 app.label("TE_Label_Address", "Address:")
@@ -2551,7 +2558,7 @@ if __name__ == "__main__":
             with app.frame("TE_Frame_Bottom", row=2, colspan=2, sticky='SEW', stretch='COLUMN',
                            padding=[2, 2]):
                 with app.labelFrame("Dialogue Properties", 0, 0, padding=[4, 4]):
-                    with app.frame("TE_Frame_Dialogue_Left", row=0, column=0, bg="#FFFFFF", sticky='NEW',
+                    with app.frame("TE_Frame_Dialogue_Left", row=0, column=0, bg=colour.WHITE, sticky='NEW',
                                    stretch='COLUMN'):
                         app.label("TE_Label_Name", "NPC Name: ", row=0, column=0)
                         app.optionBox("TE_Option_Name", ["(0xFF) No Name"], row=0, column=1, width=20)
@@ -2561,9 +2568,9 @@ if __name__ == "__main__":
                             portrait_options.append(f"{p:02d}")
                         app.optionBox("TE_Option_Portrait", portrait_options, change=select_portrait, row=1, column=1)
 
-                    with app.frame("TE_Frame_Dialogue_Right", row=0, column=1, bg="#CFCFCF", sticky='NEW',
+                    with app.frame("TE_Frame_Dialogue_Right", row=0, column=1, bg=colour.MEDIUM_GREY, sticky='NEW',
                                    stretch='COLUMN'):
-                        app.canvas("TE_Canvas_Portrait", width=40, height=48, bg='#000000', map=None, sticky='NEW',
+                        app.canvas("TE_Canvas_Portrait", width=40, height=48, bg=colour.BLACK, map=None, sticky='NEW',
                                    stretch='NONE')
 
     del maps_list
