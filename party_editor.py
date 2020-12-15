@@ -24,7 +24,7 @@ class PartyEditor:
     @dataclass(init=True, repr=False)
     class PreMade:
         """
-        A helper class used to store data used for pre-made characters
+        A helper class used to store data used for pre-made characters.
         """
         name: str = ""
         race: int = 0
@@ -138,15 +138,17 @@ class PartyEditor:
 
     def show_window(self, window_name: str) -> None:
         """
-        Show sub-window for a specific editor
+        Shows a sub-window for a specific editor.
 
         Parameters
         ----------
         window_name: str
-            Valid options: "Races", "Professions", "Pre-Made", "Special Abilities", "Magic", "Weapons", "Commands"
+            Valid options: "Races", "Professions", "Pre-Made", "Special Abilities", "Magic", "Weapons", "Commands".
         """
         # self.app.emptySubWindow("Party_Editor") Now performed after closing the window
         self.selected_index = -1
+
+        self._unsaved_changes = False
 
         if window_name == "Races":
             self._create_races_window()
@@ -857,12 +859,12 @@ class PartyEditor:
                     self.app.checkBox("PE_Flag_0x04", name="Map:", change=self._magic_input, font=10,
                                       sticky="NEW", row=2, column=0)
                     self.app.optionBox("PE_Map_Flag_0x04", map_options, change=self._magic_input, font=10, width=16,
-                                       tooltip="This will apply to ALL spells using this flag.",
+                                       tooltip="This will apply to ALL items/spells using this flag.",
                                        sticky="NW", row=2, column=1)
                     self.app.checkBox("PE_Flag_0x10", name="Map:", change=self._magic_input, font=10,
                                       sticky="NEW", row=3, column=0)
                     self.app.optionBox("PE_Map_Flag_0x10", map_options, change=self._magic_input, font=10, width=16,
-                                       tooltip="This will apply to ALL spells using this flag.",
+                                       tooltip="This will apply to ALL items/spells using this flag.",
                                        sticky="NW", row=3, column=1)
                     self.app.checkBox("PE_Flag_0x40", name="Continents (embarked)", change=self._magic_input,
                                       font=10, sticky="NEW", row=4, column=0, colspan=2)
@@ -870,7 +872,7 @@ class PartyEditor:
                     self.app.checkBox("PE_Flag_0x02", name="Map:", change=self._magic_input, font=10,
                                       sticky="NEW", row=1, column=2)
                     self.app.optionBox("PE_Map_Flag_0x02", map_options, change=self._magic_input, font=10, width=16,
-                                       tooltip="This will apply to ALL spells using this flag.",
+                                       tooltip="This will apply to ALL items/spells using this flag.",
                                        sticky="NW", row=1, column=3)
                     self.app.checkBox("PE_Flag_0x08", name="Dungeons", change=self._magic_input, font=10,
                                       sticky="NEW", row=2, column=2, colspan=2)
@@ -1224,7 +1226,7 @@ class PartyEditor:
         definitions_list = self._read_definitions()
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(400, 380)
+            self.app.setSize(400, 408)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
@@ -1234,7 +1236,7 @@ class PartyEditor:
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Definitions file
-            with self.app.frame("PE_Frame_Definitions", padding=[2, 0], row=1, column=0, bg=colour.PALE_BROWN):
+            with self.app.frame("PE_Frame_Definitions", padding=[2, 0], row=1, column=0, bg=colour.PALE_TEAL):
                 self.app.label("PE_Label_Definitions", "Definitions file:", sticky="E", row=0, column=0, font=11)
                 self.app.optionBox("PE_Definitions", definitions_list, change=self._items_input,
                                    width=25, row=0, column=1, font=10)
@@ -1247,9 +1249,9 @@ class PartyEditor:
                                    width=16, row=0, column=1, colspan=2, font=10)
                 # Name
                 self.app.label("PE_Label_Name", "Item name:", sticky="E", row=1, column=0, font=11)
-                self.app.entry("PE_Item_Name", "", change=self._items_input, sticky="W",
-                               width=16, row=1, column=1, font=10)
-                self.app.button("PE_Update_Names", self._items_input, image="res/reload-small.gif", sticky="W",
+                self.app.entry("PE_Item_Name", "", change=self._items_input, submit=self._update_item_names,
+                               sticky="W", width=16, row=1, column=1, font=10)
+                self.app.button("PE_Update_Names", self._update_item_names, image="res/reload-small.gif", sticky="W",
                                 tooltip="Update list.",
                                 width=16, height=16, row=1, column=2)
                 # Consumption
@@ -1258,6 +1260,13 @@ class PartyEditor:
                                tooltip="A positive value means items will be added on use.\n" +
                                        "Zero means item is not consumed on use.",
                                row=2, column=1, colspan=2, font=10)
+                # Address
+                self.app.label("PE_Label_Address", "Address:", sticky="E", row=3, column=0, font=11)
+                self.app.entry("PE_Item_Address", "", change=self._items_input, submit=self._update_item_parameters,
+                               sticky="W", width=16, row=3, column=1, font=10)
+                self.app.button("PE_Update_Parameters", self._update_item_parameters, image="res/reload-small.gif",
+                                tooltip="Re-read parameters from ROM.",
+                                sticky="W", width=16, height=16, row=3, column=2)
 
             # Specific usability flags (same used for spells)
             with self.app.frame("PE_Specific_Flags", padding=[2, 2], row=3, column=0, sticky="NEW",
@@ -1265,37 +1274,50 @@ class PartyEditor:
                 self.app.label("PE_Label_Specific", "Specific usability flags:", font=11,
                                sticky="NEW", row=0, column=0, colspan=4)
                 # Left
-                self.app.checkBox("PE_Flag_0x01", name="Battle (anywhere)", change=self._magic_input, font=10,
+                self.app.checkBox("PE_Flag_0x01", name="Battle (anywhere)", change=self._items_input, font=10,
                                   sticky="NEW", row=1, column=0, colspan=2)
-                self.app.checkBox("PE_Flag_0x04", name="Map:", change=self._magic_input, font=10,
+                self.app.checkBox("PE_Flag_0x04", name="Map:", change=self._items_input, font=10,
                                   sticky="NEW", row=2, column=0)
-                self.app.optionBox("PE_Map_Flag_0x04", map_options, change=self._magic_input, font=10, width=16,
-                                   tooltip="This will apply to ALL spells using this flag.",
+                self.app.optionBox("PE_Map_Flag_0x04", map_options, change=self._items_input, font=10, width=16,
+                                   tooltip="This will apply to ALL items/spells using this flag.",
                                    sticky="NW", row=2, column=1)
-                self.app.checkBox("PE_Flag_0x10", name="Map:", change=self._magic_input, font=10,
+                self.app.checkBox("PE_Flag_0x10", name="Map:", change=self._items_input, font=10,
                                   sticky="NEW", row=3, column=0)
-                self.app.optionBox("PE_Map_Flag_0x10", map_options, change=self._magic_input, font=10, width=16,
-                                   tooltip="This will apply to ALL spells using this flag.",
+                self.app.optionBox("PE_Map_Flag_0x10", map_options, change=self._items_input, font=10, width=16,
+                                   tooltip="This will apply to ALL items/spells using this flag.",
                                    sticky="NW", row=3, column=1)
-                self.app.checkBox("PE_Flag_0x40", name="Continents (embarked)", change=self._magic_input,
+                self.app.checkBox("PE_Flag_0x40", name="Continents (embarked)", change=self._items_input,
                                   font=10, sticky="NEW", row=4, column=0, colspan=2)
                 # Right
-                self.app.checkBox("PE_Flag_0x02", name="Map:", change=self._magic_input, font=10,
+                self.app.checkBox("PE_Flag_0x02", name="Map:", change=self._items_input, font=10,
                                   sticky="NEW", row=1, column=2)
-                self.app.optionBox("PE_Map_Flag_0x02", map_options, change=self._magic_input, font=10, width=16,
-                                   tooltip="This will apply to ALL spells using this flag.",
+                self.app.optionBox("PE_Map_Flag_0x02", map_options, change=self._items_input, font=10, width=16,
+                                   tooltip="This will apply to ALL items/spells using this flag.",
                                    sticky="NW", row=1, column=3)
-                self.app.checkBox("PE_Flag_0x08", name="Dungeons", change=self._magic_input, font=10,
+                self.app.checkBox("PE_Flag_0x08", name="Dungeons", change=self._items_input, font=10,
                                   sticky="NEW", row=2, column=2, colspan=2)
-                self.app.checkBox("PE_Flag_0x20", name="Towns and Shrines", change=self._magic_input, font=10,
+                self.app.checkBox("PE_Flag_0x20", name="Towns and Shrines", change=self._items_input, font=10,
                                   sticky="NEW", row=3, column=2, colspan=2)
-                self.app.checkBox("PE_Flag_0x80", name="Continents (not embarked)", change=self._magic_input,
+                self.app.checkBox("PE_Flag_0x80", name="Continents (not embarked)", change=self._items_input,
                                   font=10, sticky="NEW", row=4, column=2, colspan=2)
 
             # Routine parameters
             with self.app.labelFrame("PE_Frame_Parameters", name="Parameters", padding=[2, 2], row=4, column=0,
-                                     bg=colour.PALE_VIOLET):
+                                     bg=colour.PALE_LIME):
                 self.app.label("PE_Label_Parameters", "")
+
+        # Read map IDs for fine flags from this code (bank $0B):
+        # TODO Check if code has been customised
+        # AF24  $A5 $70        LDA _CurrentMapId
+        # AF26  $C9 $14        CMP #$14                 ;Check if in Castle Death
+        # AF2C  $C9 $0F        CMP #$0F                 ;Check if in Ambrosia
+        # AF32  $C9 $06        CMP #$06                 ;Check if in Castle British
+        value = self.rom.read_byte(0xB, 0xAF27)
+        self.app.setOptionBox("PE_Map_Flag_0x02", index=value, callFunction=False)
+        value = self.rom.read_byte(0xB, 0xAF2D)
+        self.app.setOptionBox("PE_Map_Flag_0x04", index=value, callFunction=False)
+        value = self.rom.read_byte(0xB, 0xAF33)
+        self.app.setOptionBox("PE_Map_Flag_0x10", index=value, callFunction=False)
 
         # Select the definition files that matches the current ROM, if there is one
         definition = 0
@@ -1411,19 +1433,22 @@ class PartyEditor:
 
     # --- PartyEditor._selected_spell_id() ---
 
-    def _selected_spell_id(self) -> int:
+    def _selected_routine_id(self) -> int:
         """
 
         Returns
         -------
         int:
-            The index of the currently selected spell (0-31)
+            The index of the currently selected routine
         """
-        spell_id = self._get_selection_index("PE_Option_Spell")
-        if self.selected_index == 0:
-            spell_id = spell_id + 16
+        if self.current_window == "Magic":
+            routine_id = self._get_selection_index("PE_Option_Spell")
+            if self.selected_index == 0:
+                routine_id = routine_id + 16
+        else:
+            routine_id = self.selected_index
 
-        return spell_id
+        return routine_id
 
     # --- PartyEditor._magic_input() ---
 
@@ -1441,6 +1466,8 @@ class PartyEditor:
                 self.app.setStatusbar("Spell Data saved.")
                 self._unsaved_changes = False
                 self.close_window()
+            else:
+                self.app.setStatusbar("Error(s) encountered.")
 
         elif widget == "PE_Reload":
             self._read_spell_names()
@@ -1493,17 +1520,28 @@ class PartyEditor:
 
         elif widget == "PE_Option_Spell":
             # A spell has been selected
-            spell_id = self._selected_spell_id()
+            spell_id = self._selected_routine_id()
             # Adjust value for common routines
             if self._get_selection_index("PE_Spell_List") == 2:
                 spell_id = spell_id + 32
             # Update widgets for the current selection
             self.magic_info(spell_id)
 
+        elif widget == "PE_Incremental_MP":
+            try:
+                value = int(self.app.getEntry(widget), 10)
+                if 0 < value < 255:
+                    self.app.entry(widget, fg=colour.BLACK)
+                    self._unsaved_changes = True
+                else:
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
+            except ValueError:
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+
         elif widget == "PE_MP_Display":
             # Changing the value of MP needed to make a spell available
             self._unsaved_changes = True
-            spell_id = self._selected_spell_id()
+            spell_id = self._selected_routine_id()
             if spell_id < 32:
                 try:
                     value = int(self.app.getEntry(widget), 10)
@@ -1515,7 +1553,7 @@ class PartyEditor:
         elif widget == "PE_MP_Cast":
             # Changing the value of MP deduced after casting a spell
             self._unsaved_changes = True
-            spell_id = self._selected_spell_id()
+            spell_id = self._selected_routine_id()
             if spell_id < 32:
                 try:
                     value = int(self.app.getEntry(widget), 10)
@@ -1526,7 +1564,7 @@ class PartyEditor:
 
         elif widget == "PE_Spell_Address":
             self._unsaved_changes = True
-            spell_id = self._selected_spell_id()
+            spell_id = self._selected_routine_id()
             try:
                 value = int(self.app.getEntry(widget), 16)
                 if 0x8000 <= value <= 0xFFFF:
@@ -1539,7 +1577,7 @@ class PartyEditor:
 
         elif widget == "PE_Spell_Flags":
             self._unsaved_changes = True
-            spell_id = self._selected_spell_id()
+            spell_id = self._selected_routine_id()
             # Get selection index
             value = self.app.getOptionBox(widget)
             box = self.app.getOptionBoxWidget(widget)
@@ -1578,7 +1616,7 @@ class PartyEditor:
                     value = value | flag
                 flag = flag << 1
             # Save new value for fine flags
-            spell_id = self._selected_spell_id()
+            spell_id = self._selected_routine_id()
             self.routines[spell_id].fine_flags = value
 
         elif widget[:12] == "PE_Map_Flag_":
@@ -1586,7 +1624,7 @@ class PartyEditor:
             pass
 
         elif widget == "PE_Spell_Definitions":
-            spell_id = self._selected_spell_id()
+            spell_id = self._selected_routine_id()
             # Get selection index
             value = self.app.getOptionBox(widget)
             box = self.app.getOptionBoxWidget(widget)
@@ -1597,67 +1635,6 @@ class PartyEditor:
             self._read_spell_data(definitions)
             # Show info for the currently selected spell again
             self.magic_info(spell_id)
-
-        elif widget[:8] == "PE_Bool_":
-            # Changing a boolean spell parameter
-            self._unsaved_changes = True
-            spell_id = self._selected_spell_id()
-            # Get parameter index
-            parameter_id = int(widget[-2:], 10)
-            # Set value
-            value = 1 if self.app.getCheckBox(widget) is True else 0
-            self.routines[spell_id].parameters[parameter_id].value = value
-
-        elif widget[:16] == "PE_Attribute_Id_":
-            self._unsaved_changes = True
-            # Get index of currently selected spell
-            spell_id = self._selected_spell_id()
-
-            # Set option box according to this value
-            try:
-                # Get parameter index
-                parameter_id = int(widget[-2:], 10)
-
-                value = int(self.app.getEntry(widget), 16)
-                self.app.entry(widget, fg=colour.BLACK)
-                if 6 < value < 0xB:
-                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=value - 7,
-                                          callFunction=False)
-                elif value == 0x33:
-                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=4,
-                                          callFunction=False)
-                else:
-                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=5,
-                                          callFunction=False)
-
-                # Set the value for this spell's parameter
-                self.routines[spell_id].parameters[parameter_id].value = value
-
-            except ValueError:
-                self.app.entry(widget, fg=colour.MEDIUM_RED)
-
-        elif widget[:18] == "PE_Attribute_List_":
-            self._unsaved_changes = True
-            spell_id = self._selected_spell_id()
-
-            # Get selection index
-            value = self.app.getOptionBox(widget)
-            box = self.app.getOptionBoxWidget(widget)
-            selection = box.options.index(value)
-
-            parameter_id = int(widget[-2:], 10)
-
-            # Set value according to this selection
-            self.app.clearEntry(f"PE_Attribute_Id_Parameter_{parameter_id:02}", callFunction=False)
-            if 0 <= selection <= 3:
-                value = selection + 7
-            elif selection == 4:
-                value = 0x33
-            else:
-                value = 0
-            # Assign and show value
-            self.routines[spell_id].parameters[parameter_id].value = value
-            self.app.setEntry(f"PE_Attribute_Id_Parameter_{parameter_id:02}", f"0x{value:02X}", callFunction=False)
 
         elif widget[:19] == "PE_Spell_String_ID_":
             try:
@@ -1681,38 +1658,82 @@ class PartyEditor:
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
 
-        elif widget[:17] == "PE_String_Button_":
-            spell_id = self._selected_spell_id()
-            try:
-                parameter_id = int(widget[-2:], 10)
-                string_id = self.routines[spell_id].parameters[parameter_id].value
-                # int(self.app.getEntry(f"PE_String_Id_Parameter_{parameter_id:02}"), 16)
-                if 0 <= string_id <= 255:
-                    self.text_editor.show_window(string_id, "Special")
-            except ValueError:
-                pass
+        else:
+            self.warning(f"Unimplemented Magic Editor widget input: '{widget}'.")
 
-        elif widget[:13] == "PE_String_Id_":
+    # --- PartyEditor._parameter_input() ---
+
+    def _parameter_input(self, widget: str) -> None:
+        """
+        Handles input from a routine "Parameters" frame
+        """
+        if widget[:8] == "PE_Bool_":
+            # Changing a boolean spell parameter
+            self._unsaved_changes = True
+            routine_id = self._selected_routine_id()
+            # Get parameter index
+            parameter_id = int(widget[-2:], 10)
+            # Set value
+            value = 1 if self.app.getCheckBox(widget) is True else 0
+            self.routines[routine_id].parameters[parameter_id].value = value
+
+        elif widget[:16] == "PE_Attribute_Id_":
+            self._unsaved_changes = True
+            # Get index of currently selected routine or spell
+            routine_id = self._selected_routine_id()
+
+            # Set option box according to this value
             try:
+                # Get parameter index
                 parameter_id = int(widget[-2:], 10)
-                spell_id = self._selected_spell_id()
+
                 value = int(self.app.getEntry(widget), 16)
-                if 0 <= value <= 255:
-                    self.routines[spell_id].parameters[parameter_id].value = value
-                    self.app.entry(widget, fg=colour.BLACK)
-                    self._unsaved_changes = True
+                self.app.entry(widget, fg=colour.BLACK)
+                if 6 < value < 0xB:
+                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=value - 7,
+                                          callFunction=False)
+                elif value == 0x33:
+                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=4,
+                                          callFunction=False)
                 else:
-                    self.app.entry(widget, fg=colour.MEDIUM_RED)
-            except ValueError as e:
-                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+                    self.app.setOptionBox(f"PE_Attribute_List_Parameter_{parameter_id:02}", index=5,
+                                          callFunction=False)
+
+                # Set the value for this spell's parameter
+                self.routines[routine_id].parameters[parameter_id].value = value
+
+            except ValueError:
                 self.app.entry(widget, fg=colour.MEDIUM_RED)
+
+        elif widget[:18] == "PE_Attribute_List_":
+            self._unsaved_changes = True
+            routine_id = self._selected_routine_id()
+
+            # Get selection index
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            selection = box.options.index(value)
+
+            parameter_id = int(widget[-2:], 10)
+
+            # Set value according to this selection
+            self.app.clearEntry(f"PE_Attribute_Id_Parameter_{parameter_id:02}", callFunction=False)
+            if 0 <= selection <= 3:
+                value = selection + 7
+            elif selection == 4:
+                value = 0x33
+            else:
+                value = 0
+            # Assign and show value
+            self.routines[routine_id].parameters[parameter_id].value = value
+            self.app.setEntry(f"PE_Attribute_Id_Parameter_{parameter_id:02}", f"0x{value:02X}", callFunction=False)
 
         elif widget[:7] == "PE_Hex_":
             try:
                 parameter_id = int(widget[-2:], 10)
-                spell_id = self._selected_spell_id()
+                routine_id = self._selected_routine_id()
                 value = int(self.app.getEntry(widget), 16)
-                self.routines[spell_id].parameters[parameter_id].value = value
+                self.routines[routine_id].parameters[parameter_id].value = value
                 self.app.entry(widget, fg=colour.BLACK)
                 self._unsaved_changes = True
             except ValueError as e:
@@ -1722,9 +1743,9 @@ class PartyEditor:
         elif widget[:11] == "PE_Decimal_":
             try:
                 parameter_id = int(widget[-2:], 10)
-                spell_id = self._selected_spell_id()
+                routine_id = self._selected_routine_id()
                 value = int(self.app.getEntry(widget), 10)
-                self.routines[spell_id].parameters[parameter_id].value = value
+                self.routines[routine_id].parameters[parameter_id].value = value
                 self.app.entry(widget, fg=colour.BLACK)
                 self._unsaved_changes = True
             except ValueError as e:
@@ -1733,7 +1754,7 @@ class PartyEditor:
 
         elif widget[:8] == "PE_Mark_":
             parameter_id = int(widget[-2:], 10)
-            spell_id = self._selected_spell_id()
+            routine_id = self._selected_routine_id()
 
             # Get dictionary of values
             selection = self.app.getOptionBox(widget)
@@ -1744,11 +1765,11 @@ class PartyEditor:
                 if selection.get(d) is True:
                     value = value | bit
                 bit = bit << 1
-            self.routines[spell_id].parameters[parameter_id].value = value
+            self.routines[routine_id].parameters[parameter_id].value = value
 
         elif widget[:9] == "PE_Check_":
             parameter_id = int(widget[-2:], 10)
-            spell_id = self._selected_spell_id()
+            routine_id = self._selected_routine_id()
 
             # Get selection index
             value = self.app.getOptionBox(widget)
@@ -1757,13 +1778,49 @@ class PartyEditor:
 
             # The value is the address of the check indexed by the selection
             if selection < len(self.attribute_checks):
-                self.routines[spell_id].parameters[parameter_id].value = self.attribute_checks[selection].address
+                self.routines[routine_id].parameters[parameter_id].value = self.attribute_checks[selection].address
                 self._unsaved_changes = True
             else:
                 self.warning(f"Error processing input from widget: '{widget}': {selection} is not a valid check.")
 
+        elif widget[:17] == "PE_String_Button_":
+            routine_id = self._selected_routine_id()
+            try:
+                parameter_id = int(widget[-2:], 10)
+                string_id = self.routines[routine_id].parameters[parameter_id].value
+                # int(self.app.getEntry(f"PE_String_Id_Parameter_{parameter_id:02}"), 16)
+                if 0 <= string_id <= 255:
+                    self.text_editor.show_window(string_id, "Special")
+            except ValueError:
+                pass
+
+        elif widget[:13] == "PE_String_Id_":
+            try:
+                parameter_id = int(widget[-2:], 10)
+                routine_id = self._selected_routine_id()
+                value = int(self.app.getEntry(widget), 16)
+                if 0 <= value <= 255:
+                    self.routines[routine_id].parameters[parameter_id].value = value
+                    self.app.entry(widget, fg=colour.BLACK)
+                    self._unsaved_changes = True
+                else:
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
+            except ValueError as e:
+                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+
+        elif widget[:7] == "PE_Map_":
+            try:
+                parameter_id = int(widget[-2:], 10)
+                routine_id = self._selected_routine_id()
+                value = self._get_selection_index(widget)
+                self.routines[routine_id].parameters[parameter_id] = value
+            except ValueError as e:
+                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+
         else:
-            self.warning(f"Unimplemented Magic Editor widget input: '{widget}'.")
+            self.warning(f"Unimplemented Parameter Editor widget input: '{widget}'.")
 
     # --- PartyEditor._races_input() ---
 
@@ -2245,12 +2302,96 @@ class PartyEditor:
         widget: str
             Name of the widget generating the event.
         """
-        if widget == "PE_Option_Item":
+        if widget == "PE_Apply":
+            if self.save_item_data() is True:
+                self.app.setStatusbar("Item Data saved.")
+                self._unsaved_changes = False
+                self.close_window()
+            else:
+                self.app.setStatusbar("Error(s) encountered.")
+
+        elif widget == "PE_Option_Item":
             self.selected_index = self._get_selection_index(widget)
             self.item_info(self.selected_index)
 
+        elif widget == "PE_Definitions":
+            value = self._get_selection_index(widget)
+            self._read_item_data(self.routine_definitions[value])
+            self.item_info(self.selected_index)
+
+        elif widget == "PE_Item_Name":
+            name = self.app.getEntry(widget)
+            if len(name) > 12:
+                name = name[:12]
+                self.app.clearEntry(widget, callFunction=False, setFocus=False)
+            self.routines[self.selected_index].name = name
+            self._unsaved_changes = True
+
+        elif widget == "PE_Item_Consumption":
+            try:
+                value = int(self.app.getEntry(widget), 10)
+                self.routines[self.selected_index].mp_cast = value
+                self.app.entry(widget, fg=colour.BLACK)
+            except ValueError:
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+                return
+
+        elif widget == "PE_Item_Address":
+            try:
+                value = int(self.app.getEntry(widget), 16)
+                if 0xFFFF >= value >= 0x8000:
+                    self.routines[self.selected_index].address = value
+                    self._unsaved_changes = True
+                    self.app.entry(widget, fg=colour.BLACK)
+                else:
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
+            except ValueError:
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+
+        elif widget[:8] == "PE_Flag_":
+            self._unsaved_changes = True
+            # Re-calculate fine flags
+            flag = 1
+            value = 0
+            for w in range(8):
+                if self.app.getCheckBox(f"PE_Flag_0x{flag:02X}") is True:
+                    value = value | flag
+                flag = flag << 1
+            # Save new value for fine flags
+            self.routines[self.selected_index].fine_flags = value
+
         else:
-            self.warning(f"Unimplemented input for widget: {widget}.")
+            self.warning(f"Unimplemented Item Editor input for widget: {widget}.")
+
+    # --- PartyEditor._update_item_names() ---
+
+    def _update_item_names(self) -> None:
+        names_list: List[str] = []
+        for i in self.routines:
+            names_list.append(i.name)
+        self.app.changeOptionBox("PE_Option_Item", names_list, index=self.selected_index, callFunction=False)
+
+    # --- PartyEditor._update_item_parameters() ---
+
+    def _update_item_parameters(self) -> None:
+        i = self.selected_index
+
+        definition = self._get_selection_index("PE_Definitions")
+
+        parser = configparser.ConfigParser()
+        parser.read(self.routine_definitions[definition])
+
+        if parser.has_section(f"TOOL_{i}"):
+            values = self._decode_routine(i, self.routines[i].address, "TOOL", parser)
+            if values["Custom"] is False:
+                self.routines[i].custom_code = False
+                self.routines[i].notes = values["Notes"]
+                self.routines[i].parameters = values["Parameters"]
+
+            else:
+                self.routines[i].custom_code = True
+
+        self.item_info(self.selected_index)
 
     # --- PartyEditor._read_race_names() ---
 
@@ -2331,7 +2472,7 @@ class PartyEditor:
         converted = exodus_to_ascii(values).split('\n')
 
         for i in range(len(converted)):
-            if converted[i] == '~':
+            if converted[i][0] == '~':
                 break
             stripped = converted[i].rstrip()
             self.routines.append(Routine(name=stripped))
@@ -2595,11 +2736,13 @@ class PartyEditor:
         """
         count: int = 0
 
-        # Read addresses and item consumption values from tables in ROM
+        # Read addresses, item consumption values and usability flags from tables in ROM
         for i in range(len(self.routines)):
             self.routines[i].address = self.rom.read_word(0xF, 0xDBB1 + (i * 2))
             self.routines[i].mp_cast = int.from_bytes([self.rom.read_byte(0xF, 0xDBC3 + i)], 'little', signed=True)
+            self.routines[i].fine_flags = self.rom.read_byte(0xB, 0xAF67 + i)
 
+        # Parse definitions
         parser = configparser.ConfigParser()
         parser.read(config_file)
 
@@ -3640,10 +3783,10 @@ class PartyEditor:
 
         # Resize the window depending on how many parameter options we need to display
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 580 + (28 * len(self.routines[spell_id].parameters)))
+            self.app.setSize(480, 580 + (30 * len(self.routines[spell_id].parameters)))
 
         self._create_parameter_widgets(self.routines[spell_id].notes, self.routines[spell_id].parameters,
-                                       self._magic_input)
+                                       self._parameter_input)
 
     # --- PartyEditor.item_info() ---
 
@@ -3656,39 +3799,51 @@ class PartyEditor:
         item_id: int
             Index of the item in the PartyEditor.routines list.
         """
-        self.app.clearEntry("PE_Item_Name", callFunction=False)
-        self.app.setEntry("PE_Item_Name", self.routines[item_id].name, callFunction=False)
-
         self.app.clearEntry("PE_Item_Consumption", callFunction=False)
         self.app.setEntry("PE_Item_Consumption", f"{self.routines[item_id].mp_cast}", callFunction=False)
+
+        self.app.clearEntry("PE_Item_Address", callFunction=False)
+        self.app.setEntry("PE_Item_Address", f"0x{self.routines[item_id].address:04X}", callFunction=False)
+
+        self.app.clearEntry("PE_Item_Name", callFunction=False, setFocus=True)
+        self.app.setEntry("PE_Item_Name", self.routines[item_id].name, callFunction=False)
+
+        # Usability flags
+        flag = 1
+        for w in range(8):
+            if self.routines[item_id].fine_flags & flag != 0:
+                self.app.setCheckBox(f"PE_Flag_0x{flag:02X}", ticked=True, callFunction=False)
+            else:
+                self.app.setCheckBox(f"PE_Flag_0x{flag:02X}", ticked=False, callFunction=False)
+            flag = flag << 1
 
         # Remove previous widgets
         self.app.emptyLabelFrame("PE_Frame_Parameters")
 
         # Resize the window depending on how many parameter options we need to display
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(480, 380 + (32 * len(self.routines[item_id].parameters)))
+            self.app.setSize(480, 408 + (30 * len(self.routines[item_id].parameters)))
 
         self._create_parameter_widgets(self.routines[item_id].notes, self.routines[item_id].parameters,
-                                       self._items_input)
+                                       self._parameter_input)
 
     # --- PartyEditor._create_parameter_widgets() ---
 
     def _create_parameter_widgets(self, notes: str, parameters: List, change_function: any,
                                   frame: str = "PE_Frame_Parameters") -> None:
         """
-        Creates widgets for a routine's parameters and shows the appropriate values
+        Creates widgets for a routine's parameters and shows the appropriate values.
 
         Parameters
         ----------
         notes: str
-            Notes field read from definition file
+            Notes field read from definition file.
 
         parameters: List
-            A list of parameters for this routine
+            A list of parameters for this routine.
 
         frame: str
-            Name of the Frame widget that will contain the parameter widgets
+            Name of the Frame widget that will contain the parameter widgets.
         """
         # Build a list of options for attribute checks, one for maps, and one for attribute names
         check_options: List[str] = []
@@ -3798,7 +3953,7 @@ class PartyEditor:
 
     def race_info(self) -> None:
         """
-        Show info for the currently selected race
+        Shows info for the currently selected race.
         """
         if self.selected_index < 0:
             return
@@ -3820,7 +3975,7 @@ class PartyEditor:
 
     def profession_info(self) -> None:
         """
-        Shows info for the currently selected profession
+        Shows info for the currently selected profession.
         """
         if self.selected_index < 0:
             return
@@ -3888,12 +4043,12 @@ class PartyEditor:
 
     def _display_gender(self, character_index: int) -> None:
         """
-        Reads gender pattern from ROM and displays it as an image on the gender canvas
+        Reads gender pattern from ROM and displays it as an image on the gender canvas.
 
         Parameters
         ----------
         character_index: int
-            Index of the character to load from character memory
+            Index of the character to load from character memory.
         """
         # We will upscale the pattern 2x, so we need a bigger image
         image_2x = Image.new('P', (16, 16), 0)
@@ -3920,12 +4075,12 @@ class PartyEditor:
 
     def _save_profession_names(self) -> bool:
         """
-        Saves profession names used for the Status screen into the ROM buffer
+        Saves profession names used for the Status screen into the ROM buffer.
 
         Returns
         -------
         bool
-            True if the operation completed successfully, False otherwise
+            True if the operation completed successfully, False otherwise.
         """
         # Read profession names pointer
         address = self.rom.read_word(0xC, 0x0A439)
@@ -3955,12 +4110,12 @@ class PartyEditor:
 
     def _save_race_names(self) -> bool:
         """
-        Saves race names to ROM buffer
+        Saves race names to ROM buffer.
 
         Returns
         -------
         bool
-            True if operation completed successfully, False otherwise
+            True if operation completed successfully, False otherwise.
         """
 
         # Read pointer
@@ -3989,12 +4144,12 @@ class PartyEditor:
 
     def _save_attribute_names(self) -> bool:
         """
-        Saves attribute names (by default "STR", "INT", "DEX", "WIS") to the ROM buffer
+        Saves attribute names (by default "STR", "INT", "DEX", "WIS") to the ROM buffer.
 
         Returns
         -------
         bool
-            True if the operation completed successfully, False otherwise
+            True if the operation completed successfully, False otherwise.
         """
 
         # First, we make sure each name has exactly 4 digits: we crop or add spaces if needed
@@ -4039,7 +4194,7 @@ class PartyEditor:
 
     def _save_race_data(self) -> None:
         """
-        Applies changes to rom buffer, doesn't save to file
+        Applies changes to rom buffer, doesn't save to file.
         """
         # Gender by profession / race (index in character record)
         # A637    LDY #$06                 ;Read character's Profession (#$05 = Race instead)
@@ -4102,7 +4257,7 @@ class PartyEditor:
         Returns
         -------
         bool:
-            True if saved successfully. False on fail (e.g. not enough space for the routine or invalid data)
+            True if saved successfully. False on fail (e.g. not enough space for the routine or invalid data).
         """
         # Detect vanilla game
         vanilla = True
@@ -4324,7 +4479,7 @@ class PartyEditor:
 
     def _save_profession_data(self) -> None:
         """
-        Applies changes to rom buffer, doesn't save to file
+        Applies changes to rom buffer, doesn't save to file.
         """
         if self.rom.has_feature("enhanced party"):  # Remastered ROM
 
@@ -4450,6 +4605,149 @@ class PartyEditor:
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()
 
+    # --- PartyEditor.save_item_data() ---
+
+    def save_item_data(self) -> bool:
+        """
+        Apply changes to ROM buffer.
+
+        Returns
+        -------
+        bool
+            True if everything was successfully saved, False if any of the data was not valid or strings would not fit
+            in allocated ROM space.
+        """
+        success = True
+
+        # Save item names in ROM at 0xD:0x9B09, 81 bytes max including terminator characters
+        # Each name is padded to a minimum of 7 characters, maximum 10, and terminated by 0xFD
+        # The last name is also followed by 0xFF
+        data = bytearray()
+        
+        for i in range(len(self.routines)):
+            # Convert to indices
+            name = ascii_to_exodus(self.routines[i].name)
+            # Add padding if needed
+            while len(name) < 7:
+                name.append(0)
+            # Add termination character
+            name.append(0xFD)
+
+            data = data + name
+
+        data.append(0xFF)
+
+        if len(data) > 81:
+            success = False
+            if self.app.yesNoBox("Save Item Data", "ERROR: Not enough space to save item names.\n\n" +
+                                                   "Do you want to ignore this error and continue?",
+                                 "Party_Editor") is True:
+                data = data[:79]
+                data.append(0xFD)
+                data.append(0xFF)
+            else:
+                return False
+
+        self.rom.write_bytes(0xD, 0x9B09, data)
+
+        # Save usability flags at 0B:AF67
+        for i in range(len(self.routines)):
+            if i > 8:
+                success = False
+                if self.app.yesNoBox("Save Item Data", "ERROR: Too many items defined.\n\n" +
+                                                       "Do you want to ignore this error and continue?\n" +
+                                                       "Note that only the first 9 items will be saved in any case.",
+                                     "Party_Editor") is True:
+                    break
+                else:
+                    return False
+
+            self.rom.write_byte(0xB, 0xAF67 + i, self.routines[i].fine_flags)
+
+        # Save item consumption table at $DBC3
+        for i in range(len(self.routines)):
+            if i > 8:
+                success = False
+                if self.app.yesNoBox("Save Item Data", "ERROR: Too many items defined.\n\n" +
+                                                       "Do you want to ignore this error and continue?\n" +
+                                                       "Note that only the first 9 items will be saved in any case.",
+                                     "Party_Editor") is True:
+                    break
+                else:
+                    return False
+
+            value = int.to_bytes(self.routines[i].mp_cast, 1, "little", signed=True)
+            self.rom.write_byte(0xF, 0xDBC3 + i, value[0])
+
+        # Save routine pointers table at $DBB1
+        for i in range(len(self.routines)):
+            if i > 8:
+                success = False
+                if self.app.yesNoBox("Save Item Data", "ERROR: Too many items defined.\n\n" +
+                                                       "Do you want to ignore this error and continue?\n" +
+                                                       "Note that only the first 9 items will be saved in any case.",
+                                     "Party_Editor") is True:
+                    break
+                else:
+                    return False
+
+            self.rom.write_word(0xF, 0xDBB1 + (2 * i), self.routines[i].address)
+
+        # Save routine parameters
+        self._ignore_warnings = False
+        for i in range(len(self.routines)):
+            for p in self.routines[i].parameters:
+                # 16-bit parameter types
+                if p.type == Parameter.TYPE_POINTER or \
+                        p.type == Parameter.TYPE_CHECK:
+                    if p.address >= 0xC000:
+                        self.rom.write_word(0xF, p.address, p.value)
+                    elif p.address >= 0x8000:
+                        self.rom.write_word(0x0, p.address, p.value)
+                        if p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
+                            self.rom.write_word(0x6, p.address, p.value)
+                    else:
+                        success = False
+
+                        if self._ignore_warnings is False:
+                            if self.app.okBox("Save Item Data",
+                                              f"ERROR: Invalid address 0x{p.address:04X} for Parameter " +
+                                              f"'{p.description}' in Item#{i}." +
+                                              "\n\nClick 'Cancel' to ignore further warnings.",
+                                              "Party_Editor") is False:
+                                self._ignore_warnings = True
+
+                # Everything else is 8-bit
+                else:
+                    if p.value > 255:
+                        if self._ignore_warnings is False:
+                            if self.app.okBox("Save Item Data",
+                                              f"ERROR: Item#{i} invalid data for parameter: " +
+                                              f"'{p.description}': expecting 8-bit value, got {p.value} instead." +
+                                              "\n\nClick 'Cancel' to ignore further warnings.",
+                                              "Party_Editor") is False:
+                                self._ignore_warnings = True
+                        success = False
+                    else:
+                        if p.address >= 0xC000:
+                            self.rom.write_byte(0xF, p.address, p.value)
+                        elif p.address >= 0x8000:
+                            self.rom.write_byte(0x0, p.address, p.value)
+                            if p.address >= 0xBF10:
+                                self.rom.write_byte(0x6, p.address, p.value)
+                        else:
+                            success = False
+
+                            if self._ignore_warnings is False:
+                                if self.app.okBox("Save Item Data",
+                                                  f"ERROR: Invalid address 0x{p.address:04X} for Parameter " +
+                                                  f"'{p.description}' in Item#{i}." +
+                                                  "\n\nClick 'Cancel' to ignore further warnings.",
+                                                  "Party_Editor") is False:
+                                    self._ignore_warnings = True
+
+        return success
+
     # --- PartyEditor.save_magic_data() ---
 
     def save_magic_data(self) -> bool:
@@ -4491,14 +4789,14 @@ class PartyEditor:
             # MP cost is hardcoded here:
             # D449  $E9 $04     SBC  #$04
             try:
-                value = int(self.app.getEntry("PE_MP_Display"))
+                value = int(self.app.getEntry("PE_Incremental_MP"))
             except ValueError:
                 value = 4
                 success = False
                 self.app.warningBox("Save Spell Data", "WARNING: Invalid value for incremental MP cost.\n" +
                                     "The default value '4' will be used.")
-                self.app.clearEntry("PE_MP_Display", callFunction=False, setFocus=False)
-                self.app.setEntry("PE_MP_Display", "4", callFunction=False)
+                self.app.clearEntry("PE_Incremental_MP", callFunction=False, setFocus=False)
+                self.app.setEntry("PE_Incremental_MP", "4", callFunction=False)
 
             data[53] = value
             address = 0xD415

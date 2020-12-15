@@ -577,7 +577,7 @@ TYPE_3=STRING
 NOTES=Heals the party instantaneously.
 
 DESCRIPTION_0=Amount healed (0-255)
-OFFSET_0=0x13
+OFFSET_0=0x2D
 TYPE_0=DECIMAL
 
 
