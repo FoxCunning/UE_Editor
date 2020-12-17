@@ -2191,7 +2191,7 @@ if __name__ == "__main__":
                               change=select_text_type, row=0, column=4, sticky='NW', colspan=2, stretch='NONE',
                               bg=colour.PALE_ORANGE)
                 app.listBox("Text_Id", value=[], change=select_text_id, row=1, column=4, sticky='NE',
-                            stretch='NONE', bg=colour.PALE_PINK)
+                            stretch='NONE', bg=colour.WHITE)
 
         # PALETTES Tab -------------------------------------------------------------------------------------------------
         with app.tab("Palettes", padding=[4, 2]):
