@@ -47,7 +47,7 @@ class Routine:
     A helper class used to store routine data (magic, tools, commands, special dialogue...)
     """
     # Parameters for each specific spell
-    parameters: List = field(default_factory=list)
+    parameters: list = field(default_factory=list)
     # Ignored for actual spells, used in the UI only by common routines that are unnamed in the game
     name: str = ""
     # Notes will appear in the UI when this spell is selected

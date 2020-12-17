@@ -59,6 +59,9 @@ class PartyEditor:
         # Number of selectable races for character creation
         self.selectable_races: int = 5
 
+        # Weapon type table at $D189 (16 entries, 1 byte per entry)
+        self.weapon_type: bytearray = bytearray()
+
         self.best_weapon: List[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.best_armour: List[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
@@ -261,6 +264,8 @@ class PartyEditor:
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
+                self.app.button("PE_Update_Race_Names", name="Reload", value=self._races_input, image="res/reload.gif",
+                                tooltip="Update Race Names", row=0, column=3, sticky="E")
 
             with self.app.frame("PE_Frame_Races", row=1, column=0, stretch="BOTH", sticky="NEWS", padding=[4, 2],
                                 bg=colour.PALE_BLUE):
@@ -268,7 +273,7 @@ class PartyEditor:
                 self.app.label("PE_Label_r0", "Selectable Races:", row=0, column=0, font=10)
                 self.app.spinBox("PE_Spin_Races", list(range(5, 0, -1)), width=3, row=0, column=1,
                                  change=self._races_input, font=10)
-                self.app.setSpinBox("PE_Spin_Races", self.selectable_races)
+                self.app.setSpinBox("PE_Spin_Races", self.selectable_races, callFunction=False)
 
                 # Row 1
                 self.app.label("PE_Label_r1", "Edit Race:", row=1, column=0, font=10)
@@ -315,8 +320,7 @@ class PartyEditor:
                 self.app.label("PE_Label_Race_Names", value="Race Names:", row=0, column=0, font=10)
                 self.app.textArea("PE_Race_Names", value=race_text, change=self._races_input, row=1, column=0,
                                   width=12, height=7, fg=colour.BLACK, font=10)
-                self.app.button("PE_Update_Race_Names", name="Update", value=self._races_input,
-                                row=2, column=0, font=10)
+
                 # Race names list string index and edit button
                 with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
                                     bg=colour.PALE_TEAL):
@@ -453,6 +457,9 @@ class PartyEditor:
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 sticky="NW",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
+                self.app.button("PE_Update_Profession_Names", name="Reload", value=self._professions_input,
+                                image="res/reload.gif", tooltip="Update Profession Names", row=0, column=3, sticky="E")
+
             # Left Column
             with self.app.frame("PE_Frame_Left", row=1, column=0, stretch="COLUMN", sticky="NEW", padding=[4, 2],
                                 bg=colour.PALE_BLUE):
@@ -464,7 +471,7 @@ class PartyEditor:
                 # Row 0 Col 1
                 self.app.spinBox("PE_Spin_Professions", list(range(11, 0, -1)),
                                  change=self._professions_input, width=3, sticky="W", row=0, column=1, font=10)
-                self.app.setSpinBox("PE_Spin_Professions", self.selectable_professions)
+                self.app.setSpinBox("PE_Spin_Professions", self.selectable_professions, callFunction=False)
                 # Row 1 Col 0, 1
                 self.app.optionBox("PE_Option_Profession", professions_list, change=self._professions_input,
                                    row=1, column=0, colspan=2, font=10)
@@ -590,10 +597,9 @@ class PartyEditor:
                 self.app.textArea("PE_Profession_Names", value=profession_names, width=11, height=11, font=10,
                                   change=self._professions_input,
                                   sticky="NEW", fg=colour.BLACK, scroll=True, row=1, column=0)
-                self.app.button("PE_Update_Profession_Names", value=self._professions_input, name="Update",
-                                sticky="NEW", row=2, column=0, font=10)
+
                 # Professions list string index and edit button
-                with self.app.frame("PE_Frame_Menu_String", row=3, column=0, sticky="NEW", padding=[4, 2],
+                with self.app.frame("PE_Frame_Menu_String", row=2, column=0, sticky="NEW", padding=[4, 2],
                                     bg=colour.PALE_BLUE):
                     self.app.button("PE_Edit_Menu_String", value=self._professions_input, name="Edit Text", font=10,
                                     image="res/edit-dlg.gif", sticky="NW", width=32, height=32, row=0, column=0)
@@ -1177,27 +1183,95 @@ class PartyEditor:
         """
         self._read_weapon_armour_names()
 
+        # Weapon type table (0 = melee, 1 = ranged)
+        self.weapon_type = self.rom.read_bytes(0xF, 0xD189, 16)
+
+        # Throwing weapon ID
+        # D112  $A0 $34        LDY #$34
+        # D114  $B1 $99        LDA ($99),Y
+        # D116  $C9 $01        CMP #$01     ; Daggers can be thrown
+        throwing_weapon = self.rom.read_byte(0xF, 0xD117)
+        if throwing_weapon > 15:
+            self.app.warningBox("Reading Weapon Data",
+                                f"WARNING: Invalid ID for throwing weapon ({throwing_weapon}).\nMust be 0-15.",
+                                "Party_Editor")
+            throwing_weapon = 1
+
+        # Armour damage avoidance:
+        # CBD3  $A0 $35        LDY #$35
+        # CBD5  $B1 $99        LDA ($99),Y
+        # CBD7  $18            CLC
+        # CBD8  $69 $0A        ADC #$0A
+        # CBDA  $20 $4E $E6    JSR RNG
+        # CBDD  $C9 $08        CMP #$08
+        # CBDF  $90 $03        BCC MeleeDamage
+        armour_add = self.rom.read_byte(0xF, 0xCBD9)
+        armour_check = self.rom.read_byte(0xF, 0xCBDE)
+
         with self.app.subWindow("Party_Editor"):
             self.app.setSize(400, 360)
 
             # Buttons
-            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
-                self.app.button("PE_Apply", name="Apply", value=self._generic_input, image="res/floppy.gif",
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 2], row=0, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.button("PE_Apply", name="Apply", value=self._weapons_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Weapons
             with self.app.labelFrame("Weapons", padding=[2, 2], row=1, column=0, bg=colour.PALE_VIOLET):
-                with self.app.frame("Frame_Weapons_Names", padding=[2, 0], row=0, column=0):
-                    self.app.label("PE_Label_Weapons_String", "Names string:", sticky="E", row=0, column=0, font=11)
-                    self.app.entry("PE_Entry_Weapons_String", "", width=4, row=0, column=1, font=10)
-                    self.app.button("PE_Button_Weapons_String", image="res/edit-dlg-small.gif",
-                                    width=16, height=16, row=0, column=2)
+                with self.app.frame("PW_Frame_Weapons_Selection", padding=[2, 2], row=0, column=0):
+                    self.app.label("PE_Label_Throwing_Weapon", "Throwing Weapon:", row=0, column=0, font=11)
+                    self.app.optionBox("PE_Option_Throwing_Weapon", self.weapon_names, change=self._weapons_input,
+                                       width=16, row=0, column=1, font=10)
+                    self.app.setOptionBox("PE_Option_Throwing_Weapon", index=throwing_weapon, callFunction=False)
 
-                with self.app.frame("Frame_Weapons_Selection", padding=[2, 0], row=1, column=0):
-                    self.app.label("PE_Label_Weapon", "Edit weapon:", row=0, column=0, font=11)
-                    self.app.optionBox("PE_Option_Weapon", self.weapon_names, row=0, column=1, font=10)
+                    self.app.label("PE_Label_Weapon", "Edit weapon:", row=1, column=0, font=11)
+                    self.app.optionBox("PE_Option_Weapon", self.weapon_names, change=self._weapons_input,
+                                       width=16, row=1, column=1, font=10)
+
+                with self.app.frame("PE_Frame_Weapon_Data", padding=[2, 2], row=1, column=0):
+                    self.app.label("PE_Label_Weapon_Name", "Name:", stretch="COLUMN", sticky="WE",
+                                   row=0, column=0, font=11)
+                    self.app.entry("PE_Weapon_Name", "", change=self._weapons_input, width=16, sticky="WE",
+                                   row=0, column=1, font=10)
+                    self.app.button("PE_Update_Weapon_Names", value=self._weapons_input, sticky="W",
+                                    tooltip="Update names list",
+                                    image="res/reload-small.gif", width=16, height=16, row=0, column=2)
+
+                    self.app.checkBox("PE_Weapon_Ranged", False, name="Ranged", change=self._weapons_input,
+                                      row=1, column=0, font=11)
+                    self.app.label("PE_Label_Weapon_Damage", "Base Damage = 0", row=1, column=1, colspan=2, font=11)
+
+                # Armour
+            with self.app.labelFrame("Armour", padding=[2, 2], row=2, column=0, bg=colour.PALE_RED):
+                with self.app.frame("PW_Frame_Armour_Selection", padding=[2, 2], row=0, column=0):
+                    self.app.label("PE_Label_Armour", "Edit armour:", row=1, column=0, font=11)
+                    self.app.optionBox("PE_Option_Armour", self.armour_names, change=self._weapons_input,
+                                       width=16, row=1, column=1, font=10)
+
+                with self.app.frame("PE_Frame_Armour_Data", padding=[2, 2], row=1, column=0):
+                    self.app.label("PE_Label_Armour_Name", "Name:", row=0, column=0, font=11)
+                    self.app.entry("PE_Armour_Name", "", change=self._weapons_input, width=16, sticky="W",
+                                   row=0, column=1, font=10)
+                    self.app.button("PE_Update_Armour_Names", value=self._weapons_input, sticky="W",
+                                    tooltip="Update names list",
+                                    image="res/reload-small.gif", width=16, height=16, row=0, column=2)
+
+                with self.app.frame("PE_Frame_Armour_Parry", padding=[2, 2], row=2, column=0):
+                    self.app.label("PE_Label_Armour_Parry_0", "Parry Chance: %", sticky="WE",
+                                   row=0, column=0, colspan=4, font=11)
+
+                    self.app.label("PE_Label_Armour_Parry_1", "RANDOM(0 to ID + ", row=1, column=0, font=11)
+                    self.app.entry("PE_Armour_Parry_Add", f"{armour_add}", change=self._weapons_input, width=5,
+                                   row=1, column=1, font=10)
+                    self.app.label("PE_Label_Armour_Parry_2", ") >= ", row=1, column=2, font=11)
+                    self.app.entry("PE_Armour_Parry_Check", f"{armour_check}", change=self._weapons_input, width=5,
+                                   row=1, column=3, font=10)
+
+        # Default selection
+        self.app.setOptionBox("PE_Option_Weapon", 0, callFunction=True)
+        self.app.setOptionBox("PE_Option_Armour", 0, callFunction=True)
 
     # --- PartyEditor._create_items_window() ---
 
@@ -1914,6 +1988,7 @@ class PartyEditor:
                 pass
 
         elif widget == "PE_Edit_Menu_String":
+            self._unsaved_changes = True
             # Update the displayed string ID, in case the box contained an invalid value
             self._update_menu_string_entry()
             # Now we can show the "advanced" text editor
@@ -2289,13 +2364,52 @@ class PartyEditor:
                 self.app.disableEntry("PE_Adjustment_3")
 
         else:
-            self.warning(f"Unimplemented input for widget: {widget}.")
+            self.warning(f"Unimplemented Special Editor input for widget: {widget}.")
+
+    # --- PartyEditor._weapons_input() ---
+
+    def _weapons_input(self, widget: str) -> None:
+        """
+        Processes input for widgets specific to the "Weapons" sub-window.
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget generating the event.
+        """
+        if widget == "PE_Option_Weapon":
+            value = self._get_selection_index(widget)
+            self.weapon_info(value)
+
+        elif widget == "PE_Option_Armour":
+            value = self._get_selection_index(widget)
+            self.armour_info(value)
+
+        elif widget == "PE_Option_Throwing_Weapon":
+            value = self._get_selection_index(widget)
+            # Check that it's a melee weapon
+            if self.weapon_type[value] != 0:
+                if self.app.yesNoBox("Throwing Weapon",
+                                     "For this to work, the weapon needs to be set to 'Melee' type.\n" +
+                                     f"Do you want to change {self.weapon_names[value]}'s type to Melee?",
+                                     "Party_Editor") is True:
+                    self.weapon_type[value] = 0
+                    if self._get_selection_index("PE_Option_Weapon") == value:
+                        self.weapon_info(value)
+
+        elif widget == "PE_Weapon_Ranged":
+            value = self._get_selection_index("PE_Option_Weapon")
+            self.weapon_type[value] = 1 if self.app.getCheckBox(widget) is True else 0
+            # TODO If changing a weapon type to ranged, make sure this isn't the throwing weapon
+
+        else:
+            self.warning(f"Unimplemented Weapons/Armour Editor input for widget: {widget}.")
 
     # --- PartyEditor._items_input() ---
 
-    def _items_input(self, widget) -> None:
+    def _items_input(self, widget: str) -> None:
         """
-        Process input for widgets specific to the "Items" sub-window
+        Processes input for widgets specific to the "Items" sub-window.
 
         Parameters
         ----------
@@ -3432,9 +3546,10 @@ class PartyEditor:
 
     def _read_weapon_armour_names(self) -> None:
         """
-        Reads and decodes weapon/armour names from ROM, caching them as ASCII strings for editing
+        Reads and decodes weapon/armour names from ROM, caching them as ASCII strings for editing.
+        These are the strings used in the STATUS screen.
         """
-        # Read and decode weapon/armour names for "best weapon/armour" stats
+        # Read and decode weapon/armour names
         self.weapon_names: List[str] = [""]
         self.armour_names: List[str] = [""]
 
@@ -3787,6 +3902,59 @@ class PartyEditor:
 
         self._create_parameter_widgets(self.routines[spell_id].notes, self.routines[spell_id].parameters,
                                        self._parameter_input)
+
+    # --- PartyEditor.weapon_info() ---
+
+    def weapon_info(self, weapon_id: int) -> None:
+        """
+        Displays weapon name, type (melee/ranged) and base damage.
+
+        Parameters
+        ----------
+        weapon_id: int
+            Index of the weapon (0 to 15).
+        """
+        # Name
+        self.app.clearEntry("PE_Weapon_Name", callFunction=False)
+        self.app.setEntry("PE_Weapon_Name", self.weapon_names[weapon_id], callFunction=False)
+
+        # Type
+        self.app.setCheckBox("PE_Weapon_Ranged", ticked=True if self.weapon_type[weapon_id] != 0 else False,
+                             callFunction=False)
+
+        # Damage
+        damage = (weapon_id >> 1) + weapon_id
+        self.app.setLabel("PE_Label_Weapon_Damage", f"Base Damage = {damage}")
+
+    # --- PartyEditor.armour_info() ---
+
+    def armour_info(self, armour_id: int) -> None:
+        """
+        Displays armour name and parry chance.
+
+        Parameters
+        ----------
+        armour_id: int
+            Index of the armour (0 to 7).
+        """
+        self.app.clearEntry("PE_Armour_Name", callFunction=False)
+        self.app.setEntry("PE_Armour_Name", self.armour_names[armour_id], callFunction=False)
+
+        self.app.setLabel("PE_Label_Armour_Parry_1", f"RANDOM(0 to {armour_id} + ")
+
+        try:
+            armour_max = int(self.app.getEntry("PE_Armour_Parry_Add"), 10) + armour_id
+            armour_check = int(self.app.getEntry("PE_Armour_Parry_Check"), 10)
+
+        except ValueError:
+            self.app.setLabel("PE_Label_Armour_Parry_0", "Parry Chance:")
+            return
+
+        armour_chance = int((armour_max - armour_check) / armour_max * 100)
+        if armour_chance < 0:
+            armour_chance = 0
+
+        self.app.setLabel("PE_Label_Armour_Parry_0", f"Parry Chance: {armour_chance}%")
 
     # --- PartyEditor.item_info() ---
 
