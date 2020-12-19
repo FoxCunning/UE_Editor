@@ -1233,9 +1233,9 @@ class PartyEditor:
                 with self.app.frame("PE_Frame_Weapon_Data", padding=[2, 2], row=1, column=0):
                     self.app.label("PE_Label_Weapon_Name", "Name:", stretch="COLUMN", sticky="WE",
                                    row=0, column=0, font=11)
-                    self.app.entry("PE_Weapon_Name", "", change=self._weapons_input, width=16, sticky="WE",
+                    self.app.entry("PE_Weapon_Name", "", submit=self._update_weapon_names, width=16, sticky="WE",
                                    row=0, column=1, font=10)
-                    self.app.button("PE_Update_Weapon_Names", value=self._weapons_input, sticky="W",
+                    self.app.button("PE_Update_Weapon_Names", value=self._update_weapon_names, sticky="W",
                                     tooltip="Update names list",
                                     image="res/reload-small.gif", width=16, height=16, row=0, column=2)
 
@@ -1243,7 +1243,7 @@ class PartyEditor:
                                       row=1, column=0, font=11)
                     self.app.label("PE_Label_Weapon_Damage", "Base Damage = 0", row=1, column=1, colspan=2, font=11)
 
-                # Armour
+            # Armour
             with self.app.labelFrame("Armour", padding=[2, 2], row=2, column=0, bg=colour.PALE_RED):
                 with self.app.frame("PW_Frame_Armour_Selection", padding=[2, 2], row=0, column=0):
                     self.app.label("PE_Label_Armour", "Edit armour:", row=1, column=0, font=11)
@@ -1252,9 +1252,9 @@ class PartyEditor:
 
                 with self.app.frame("PE_Frame_Armour_Data", padding=[2, 2], row=1, column=0):
                     self.app.label("PE_Label_Armour_Name", "Name:", row=0, column=0, font=11)
-                    self.app.entry("PE_Armour_Name", "", change=self._weapons_input, width=16, sticky="W",
+                    self.app.entry("PE_Armour_Name", "", submit=self._update_armour_names, width=16, sticky="W",
                                    row=0, column=1, font=10)
-                    self.app.button("PE_Update_Armour_Names", value=self._weapons_input, sticky="W",
+                    self.app.button("PE_Update_Armour_Names", value=self._update_armour_names, sticky="W",
                                     tooltip="Update names list",
                                     image="res/reload-small.gif", width=16, height=16, row=0, column=2)
 
@@ -2377,7 +2377,15 @@ class PartyEditor:
         widget: str
             Name of the widget generating the event.
         """
-        if widget == "PE_Option_Weapon":
+        if widget == "PE_Apply":
+            if self.save_weapon_armour_data() is True:
+                self.app.setStatusbar("Weapon/Armour Data saved.")
+                self._unsaved_changes = False
+                self.close_window()
+            else:
+                self.app.setStatusbar("Error(s) encountered.")
+
+        elif widget == "PE_Option_Weapon":
             value = self._get_selection_index(widget)
             self.weapon_info(value)
 
@@ -2401,6 +2409,17 @@ class PartyEditor:
             value = self._get_selection_index("PE_Option_Weapon")
             self.weapon_type[value] = 1 if self.app.getCheckBox(widget) is True else 0
             # TODO If changing a weapon type to ranged, make sure this isn't the throwing weapon
+
+        elif widget[:16] == "PE_Armour_Parry_":
+            try:
+                value = int(self.app.getEntry(widget), 10)
+                if 255 >= value >= 0:
+                    self.app.entry(widget, fg=colour.BLACK)
+                    self.armour_info(self._get_selection_index("PE_Option_Armour"))
+                else:
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
+            except ValueError:
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         else:
             self.warning(f"Unimplemented Weapons/Armour Editor input for widget: {widget}.")
@@ -2476,6 +2495,34 @@ class PartyEditor:
 
         else:
             self.warning(f"Unimplemented Item Editor input for widget: {widget}.")
+
+    # --- PartyEditor._update_weapon_names() ---
+
+    def _update_weapon_names(self) -> None:
+        """
+        Sets the name of the currently selected weapon and then updates the list for the Option Box widget.
+        """
+        selection = self._get_selection_index("PE_Option_Weapon")
+        name = self.app.getEntry("PE_Weapon_Name")
+        max_length = 12 if selection == 0 else 9
+        if len(name) > 0:
+            self.weapon_names[selection] = name[:max_length].upper()
+            self.app.changeOptionBox("PE_Option_Weapon", options=self.weapon_names, index=selection, callFunction=False)
+            self._unsaved_changes = True
+
+    # --- PartyEditor._update_armour_names() ---
+
+    def _update_armour_names(self) -> None:
+        """
+        Sets the name of the currently selected armour and then updates the list for the Option Box widget.
+        """
+        selection = self._get_selection_index("PE_Option_Armour")
+        name = self.app.getEntry("PE_Armour_Name")
+        max_length = 12 if selection == 0 else 9
+        if len(name) > 0:
+            self.armour_names[selection] = name[:max_length].upper()
+            self.app.changeOptionBox("PE_Option_Armour", options=self.armour_names, index=selection, callFunction=False)
+            self._unsaved_changes = True
 
     # --- PartyEditor._update_item_names() ---
 
@@ -3550,10 +3597,11 @@ class PartyEditor:
         These are the strings used in the STATUS screen.
         """
         # Read and decode weapon/armour names
+        # We start both with one empty entry which will be populated later...
         self.weapon_names: List[str] = [""]
         self.armour_names: List[str] = [""]
 
-        # The actual weapon/armour names come first in ROM, the default HAND/SKIN strings follow
+        # ...this is because the actual weapon/armour names come first in ROM, the default HAND/SKIN strings come last
         address = 0xBB01
         count = 0
         while address < 0xBBF7:
@@ -3574,13 +3622,13 @@ class PartyEditor:
 
             # Convert to ASCII
             ascii_string = exodus_to_ascii(data)
-            if count < 15:
+            if count < 15:      # Weapons 1 - 15
                 self.weapon_names.append(ascii_string.strip(" "))
-            elif count == 22:
+            elif count == 22:   # Weapon 0 ("HAND")
                 self.weapon_names[0] = ascii_string.strip(" ")
-            elif count == 23:
+            elif count == 23:   # Wrmour 0 ("SKIN")
                 self.armour_names[0] = ascii_string.strip(" ")
-            else:
+            else:               # Armour 1 - 15
                 self.armour_names.append(ascii_string.strip(" "))
 
             count = count + 1
@@ -3915,7 +3963,7 @@ class PartyEditor:
             Index of the weapon (0 to 15).
         """
         # Name
-        self.app.clearEntry("PE_Weapon_Name", callFunction=False)
+        self.app.clearEntry("PE_Weapon_Name", callFunction=False, setFocus=False)
         self.app.setEntry("PE_Weapon_Name", self.weapon_names[weapon_id], callFunction=False)
 
         # Type
@@ -3937,7 +3985,7 @@ class PartyEditor:
         armour_id: int
             Index of the armour (0 to 7).
         """
-        self.app.clearEntry("PE_Armour_Name", callFunction=False)
+        self.app.clearEntry("PE_Armour_Name", callFunction=False, setFocus=False)
         self.app.setEntry("PE_Armour_Name", self.armour_names[armour_id], callFunction=False)
 
         self.app.setLabel("PE_Label_Armour_Parry_1", f"RANDOM(0 to {armour_id} + ")
@@ -3950,7 +3998,22 @@ class PartyEditor:
             self.app.setLabel("PE_Label_Armour_Parry_0", "Parry Chance:")
             return
 
-        armour_chance = int((armour_max - armour_check) / armour_max * 100)
+        # *=$CBC3
+        #   LDY #$35
+        #   LDA ($99),Y
+        #   CLC
+        #   ADC #$0A    ; Parry "Add"
+        #   JSR RNG
+        #   CMP #$08    ; Parry "Check"
+        #   BCC $CBE4
+        #   JMP $CD62
+        # 8 >= RANDOM(0 to armour + 10)? hit : not hit
+
+        try:
+            armour_chance = int((armour_max - armour_check) / armour_max * 100)
+        except ZeroDivisionError:
+            armour_chance = 0
+
         if armour_chance < 0:
             armour_chance = 0
 
@@ -4772,6 +4835,131 @@ class PartyEditor:
 
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()
+
+    # --- PartyEditor.save_weapon_armour_data() ---
+
+    def save_weapon_armour_data(self) -> bool:
+        """
+        Saves weapon/armour names and data to the ROM buffer.
+
+        Returns
+        -------
+        bool
+            True if everything was saved successfully. False if errors occurred, e.g. not enough space in ROM to save
+            name strings.
+        """
+        success = True
+
+        # Save weapon names
+        name_data = bytearray()
+        for i in range(1, 16):
+            name = ascii_to_exodus(self.weapon_names[i][:9])
+
+            # Except for the first one (i.e.: hand/skin), all names must be 9 bytes long,
+            # padded with zeroes and followed by 0xFD
+            while len(name) < 9:
+                name.append(0)
+            name.append(0xFD)
+            name_data = name_data + name
+
+        for i in range(1, 8):
+            name = ascii_to_exodus(self.armour_names[i][:9])
+
+            # Except for the first one (i.e.: hand/skin), all names must be 9 bytes long,
+            # padded with zeroes and followed by 0xFD
+            while len(name) < 9:
+                name.append(0)
+            name.append(0xFD)
+            name_data = name_data + name
+
+        # There is a termination character 0xFF before the strings for no weapon/no armour
+        name_data.append(0xFF)
+
+        # No weapon (e.g. "HAND")
+        name = ascii_to_exodus(self.weapon_names[0][:12])
+        name.append(0xFD)
+        name_data = name_data + name
+
+        # No armour (e.g. "SKIN")
+        name = ascii_to_exodus(self.armour_names[0][:12])
+        name.append(0xFD)
+        name_data = name_data + name
+        # Note: there is no termination character here
+
+        # Make sure this fits in ROM
+        if len(name_data) > 247:
+            if self.app.yesNoBox("Saving Weapons/Armour Data",
+                                 "WARNING: Weapon/Armour names won't fit in ROM.\nTruncate strings and continue?",
+                                 "Party_Editor") is True:
+                success = False
+                name_data = name_data[:246]
+                name_data.append(0xFD)
+            else:
+                return False
+
+        self.rom.write_bytes(0xC, 0xBB01, name_data)
+
+        # Save throwing weapon ID
+        # Throwing weapon ID
+        # D112  $A0 $34        LDY #$34
+        # D114  $B1 $99        LDA ($99),Y
+        # D116  $C9 $01        CMP #$01     ; Daggers can be thrown
+        value = self._get_selection_index("PE_Option_Throwing_Weapon")
+        # Warn if this weapon is ranged
+        if self.weapon_type[value] != 0:
+            if self.app.yesNoBox("Saving Weapons/Armour Data",
+                                 "WARNING: The selected throwing weapon has the RANGED flag enable.\n" +
+                                 f"Do you want to clear this flag for '{self.weapon_names[value]}'?",
+                                 "Party_Editor") is True:
+                self.weapon_type[value] = 0
+                if self._get_selection_index("PE_Option_Weapon") == value:
+                    self.weapon_info(value)
+        self.rom.write_byte(0xF, 0xD117, value)
+
+        # Save weapon type table
+        self.rom.write_bytes(0xF, 0xD189, self.weapon_type[:16])
+
+        # Save armour parry "add" and "check" values
+        # CBD3  $A0 $35        LDY #$35
+        # CBD5  $B1 $99        LDA ($99),Y
+        # CBD7  $18            CLC
+        # CBD8  $69 $0A        ADC #$0A         ; "Add"
+        # CBDA  $20 $4E $E6    JSR RNG
+        # CBDD  $C9 $08        CMP #$08         ; "Check"
+        # CBDF  $90 $03        BCC MeleeDamage
+        armour_add = 10
+        try:
+            armour_add = int(self.app.getEntry("PE_Armour_Parry_Add"), 10)
+        except ValueError:
+            if self.app.warningBox("Saving Weapons/Armour Data",
+                                   "WARNING: Invalid value for armour parry 'ADD' value.\n" +
+                                   "Continue using the default value (10)?",
+                                   "Party_Editor") is True:
+                success = False
+                self.app.clearEntry("PE_Armour_Parry_Add", callFunction=False)
+                self.app.setEntry("PE_Armour_Parry_Add", "10")
+            else:
+                return False
+
+        self.rom.write_byte(0xF, 0xCBD9, armour_add)
+
+        armour_check = 8
+        try:
+            armour_check = int(self.app.getEntry("PE_Armour_Parry_Check"), 10)
+        except ValueError:
+            if self.app.warningBox("Saving Weapons/Armour Data",
+                                   "WARNING: Invalid value for armour parry 'ADD' value.\n" +
+                                   "Continue using the default value (8)?",
+                                   "Party_Editor") is True:
+                success = False
+                self.app.clearEntry("PE_Armour_Parry_Check", callFunction=False)
+                self.app.setEntry("PE_Armour_Parry_Check", "8")
+            else:
+                return False
+
+        self.rom.write_byte(0xF, 0xCBDE, armour_check)
+
+        return success
 
     # --- PartyEditor.save_item_data() ---
 
