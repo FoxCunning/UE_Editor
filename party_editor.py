@@ -1208,11 +1208,30 @@ class PartyEditor:
         armour_add = self.rom.read_byte(0xF, 0xCBD9)
         armour_check = self.rom.read_byte(0xF, 0xCBDE)
 
+        # One special map can be set to only accept specific weapon(s):
+        # BattleAttack:
+        # D0B3  $A5 $70        LDA _CurrentMapId
+        # D0B5  $C9 $14        CMP #$14                 ; Map $14 = Castle Exodus
+        # D0B7  $D0 $12        BNE $D0CB
+        # D0B9  $A0 $34        LDY #$34                 ; Read current weapon...
+        # D0BB  $B1 $99        LDA ($99),Y
+        # D0BD  $C9 $0F        CMP #$0F                 ; Only Mystic Weapons work in this map
+        # D0BF  $F0 $0A        BEQ $D0CB
+        # D0C1  $A9 $F5        LDA #$F5                 ; "CAN`T USE IT."
+        # D0C3  $85 $30        STA $30
+        # D0C5  $20 $27 $D2    JSR $D227                ; Battle Info Text
+        # D0C8  $4C $D0 $CA    JMP __EndBattleTurn
+        special_map = self.rom.read_byte(0xF, 0xD0B6)
+        special_weapon = self.rom.read_byte(0xF, 0xD0BE)
+        special_condition = self.rom.read_byte(0xF, 0xD0BF)
+        special_dialogue = self.rom.read_byte(0xF, 0xD0C2)
+
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(400, 360)
+            self.app.setSize(520, 360)
 
             # Buttons
-            with self.app.frame("PE_Frame_Buttons", padding=[4, 2], row=0, column=0, stretch="BOTH", sticky="NEWS"):
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 2], row=0, column=0, colspan=2,
+                                stretch="BOTH", sticky="NEWS"):
                 self.app.button("PE_Apply", name="Apply", value=self._weapons_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
@@ -1268,6 +1287,53 @@ class PartyEditor:
                     self.app.label("PE_Label_Armour_Parry_2", ") >= ", row=1, column=2, font=11)
                     self.app.entry("PE_Armour_Parry_Check", f"{armour_check}", change=self._weapons_input, width=5,
                                    row=1, column=3, font=10)
+
+            # Special
+            with self.app.labelFrame("Special", padding=[2, 2], row=1, column=1, rowspan=2,
+                                     bg=colour.PALE_BROWN):
+                self.app.label("PE_Label_Special_0", "On this map:", row=0, column=0, colspan=3, font=11)
+                self.app.optionBox("PE_Special_Map", self.map_editor.location_names,
+                                   index=special_map, colspan=3, sticky="EW",
+                                   row=1, column=0, font=10)
+                self.app.label("PE_Label_Special_1", "Limit possible weapons to:", row=2, column=0, colspan=3, font=11)
+                self.app.optionBox("PE_Special_Condition",
+                                   ["Exactly", "Anything except", "At least (including)", "Up to (excluding)"],
+                                   colspan=3, sticky="EW",
+                                   row=3, column=0, font=10)
+                self.app.optionBox("PE_Special_Weapon", self.weapon_names,
+                                   colspan=3, sticky="EW",
+                                   row=4, column=0, font=10)
+                self.app.label("PE_Label_Special_2", "Failure dialogue:", row=5, column=0, font=11)
+                self.app.entry("PE_Special_Dialogue", f"0x{special_dialogue:02X}", fg=colour.BLACK, width=5,
+                               change=self._weapons_input,
+                               row=5, column=1, font=10)
+                self.app.button("PE_Button_Special_Dialogue", self._weapons_input, image="res/edit-dlg-small.gif",
+                                width=16, height=16, row=5, column=2)
+
+        self.app.setOptionBox("PE_Special_Map", index=special_map, callFunction=False)
+        self.app.setOptionBox("PE_Special_Weapon", index=special_weapon, callFunction=False)
+        # Special condition
+        selection = -1
+        if special_condition == 0xF0:           # BEQ
+            selection = 0
+        elif special_condition == 0xD0:         # BNE
+            selection = 1
+        elif (special_condition == 0xB0         # BCS
+              or special_condition == 0x10):    # BPL
+            selection = 2
+        elif (special_condition == 0x90         # BCC
+              or special_condition == 0x30):    # BMI
+            selection = 3
+
+        if selection >= 0:
+            self.app.setOptionBox("PE_Special_Condition", index=selection, callFunction=False)
+        else:
+            self.app.changeOptionBox("PE_Special_Condition", ["- CUSTOM CODE -"])
+            self.app.disableEntry("PE_Special_Dialogue")
+            self.app.disableButton("PE_Button_Special_Dialogue")
+            self.app.disableOptionBox("PE_Special_Map")
+            self.app.disableOptionBox("PE_Special_Weapon")
+            self.app.disableOptionBox("PE_Special_Condition")
 
         # Default selection
         self.app.setOptionBox("PE_Option_Weapon", 0, callFunction=True)
@@ -1587,7 +1653,7 @@ class PartyEditor:
         elif widget == "PE_Radio_MP":
             value = self.app.getRadioButton(widget)
             self._unsaved_changes = True
-            if value[:1] == 'I':        # Incremental
+            if value[:1] == 'I':  # Incremental
                 self.app.disableEntry("PE_MP_Display")
             else:
                 self.app.enableEntry("PE_MP_Display")
@@ -2420,6 +2486,24 @@ class PartyEditor:
                     self.app.entry(widget, fg=colour.MEDIUM_RED)
             except ValueError:
                 self.app.entry(widget, fg=colour.MEDIUM_RED)
+
+        elif widget == "PE_Special_Dialogue":
+            try:
+                value = int(self.app.getEntry(widget), 16)
+                if value > 0xFF:
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
+                else:
+                    self.app.entry(widget, fg=colour.BLACK)
+            except ValueError:
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+
+        elif widget == "PE_Button_Special_Dialogue":
+            try:
+                value = int(self.app.getEntry("PE_Special_Dialogue"), 16)
+                if value <= 0xFF:
+                    self.text_editor.show_window(value, "Special")
+            except ValueError:
+                self.app.warningBox("Special", f"Invalid string ID: '{self.app.getEntry('PE_Special_Dialogue')}'.")
 
         else:
             self.warning(f"Unimplemented Weapons/Armour Editor input for widget: {widget}.")
@@ -3622,13 +3706,13 @@ class PartyEditor:
 
             # Convert to ASCII
             ascii_string = exodus_to_ascii(data)
-            if count < 15:      # Weapons 1 - 15
+            if count < 15:  # Weapons 1 - 15
                 self.weapon_names.append(ascii_string.strip(" "))
-            elif count == 22:   # Weapon 0 ("HAND")
+            elif count == 22:  # Weapon 0 ("HAND")
                 self.weapon_names[0] = ascii_string.strip(" ")
-            elif count == 23:   # Wrmour 0 ("SKIN")
+            elif count == 23:  # Wrmour 0 ("SKIN")
                 self.armour_names[0] = ascii_string.strip(" ")
-            else:               # Armour 1 - 15
+            else:  # Armour 1 - 15
                 self.armour_names.append(ascii_string.strip(" "))
 
             count = count + 1
@@ -4959,6 +5043,46 @@ class PartyEditor:
 
         self.rom.write_byte(0xF, 0xCBDE, armour_check)
 
+        # One special map can be set to only accept specific weapon(s):
+        #         # BattleAttack:
+        #         # D0B3  $A5 $70        LDA _CurrentMapId
+        #         # D0B5  $C9 $14        CMP #$14                 ; Map $14 = Castle Exodus
+        #         # D0B7  $D0 $12        BNE $D0CB
+        #         # D0B9  $A0 $34        LDY #$34                 ; Read current weapon...
+        #         # D0BB  $B1 $99        LDA ($99),Y
+        #         # D0BD  $C9 $0F        CMP #$0F                 ; Only Mystic Weapons work in this map
+        #         # D0BF  $F0 $0A        BEQ $D0CB
+        #         # D0C1  $A9 $F5        LDA #$F5                 ; "CAN`T USE IT."
+        #         # D0C3  $85 $30        STA $30
+        #         # D0C5  $20 $27 $D2    JSR $D227                ; Battle Info Text
+        #         # D0C8  $4C $D0 $CA    JMP __EndBattleTurn
+        special_map = self._get_selection_index("PE_Special_Map")
+        special_weapon = self._get_selection_index("PE_Special_Weapon")
+        try:
+            special_dialogue = int(self.app.getEntry("PE_Special_Dialogue"), 16)
+        except ValueError:
+            special_dialogue = 0xF5     # Default value
+            self.app.clearEntry("PE_Special_Dialogue", callFunction=False, setFocus=False)
+            self.app.entry("PE_Special_Dialogue", "0xF5", fg=colour.BLACK)
+        special_condition = self.app.getOptionBox("PE_Special_Condition")
+
+        # Only do this if no custom code was detected
+        if special_condition[0] != '-':
+            self.rom.write_byte(0xF, 0xD0B6, special_map)
+            self.rom.write_byte(0xF, 0xD0BE, special_weapon)
+            self.rom.write_byte(0xF, 0xD0C2, special_dialogue)
+
+            selection = self._get_selection_index("PE_Special_Condition")
+            if selection == 1:      # Anything but the specified weapon
+                value = 0xD0    # BNE
+            elif selection == 2:    # Specified weapon or better
+                value = 0xB0    # BCS
+            elif selection == 3:    # Up to and excluding the specified weapon
+                value = 0x90    # BCC
+            else:                   # Default: exactly and only the specified weapon
+                value = 0xF0  # BEQ
+            self.rom.write_byte(0xF, 0xD0BD, value)
+
         return success
 
     # --- PartyEditor.save_item_data() ---
@@ -4979,7 +5103,7 @@ class PartyEditor:
         # Each name is padded to a minimum of 7 characters, maximum 10, and terminated by 0xFD
         # The last name is also followed by 0xFF
         data = bytearray()
-        
+
         for i in range(len(self.routines)):
             # Convert to indices
             name = ascii_to_exodus(self.routines[i].name)
@@ -5219,7 +5343,7 @@ class PartyEditor:
                             self.rom.write_word(0xF, p.address, p.value)
                         elif p.address >= 0x8000:
                             self.rom.write_word(0x0, p.address, p.value)
-                            if p.address >= 0xBF10:     # A few subroutines must also be mirrored in bank 6
+                            if p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
                                 self.rom.write_word(0x6, p.address, p.value)
                         else:
                             success = False
@@ -5236,7 +5360,8 @@ class PartyEditor:
                     else:
                         if p.value > 255:
                             if self._ignore_warnings is False:
-                                if self.app.okBox("Save Spell Data", f"ERROR: Spell#{s} invalid data for parameter: " +
+                                if self.app.okBox("Save Spell Data",
+                                                  f"ERROR: Spell#{s} invalid data for parameter: " +
                                                   f"'{p.description}': expecting 8-bit value, got {p.value} instead." +
                                                   "\n\nClick 'Cancel' to ignore further warnings.",
                                                   "Party_Editor") is False:
