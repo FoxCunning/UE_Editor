@@ -65,6 +65,8 @@ class PartyEditor:
         self.best_weapon: List[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.best_armour: List[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
+        self.thief_bonus: bytearray = bytearray()
+
         self.hp_base: int = 75
         self.hp_bonus: List[int] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         # Gender will be determined either by Profession or by Race
@@ -434,6 +436,9 @@ class PartyEditor:
             mp_options = [_wis, _int, f"{_wis} / 2", f"{_int} / 2", f"MAX({_wis} / 2, {_int} / 2)",
                           f"MIN({_wis} / 2, {_int} / 2)", "Fixed Value"]
 
+        # Read "thieving" bonus table
+        self.thief_bonus = self.rom.read_bytes(0xF, 0xDEAA, 11)
+
         # Read number of selectable professions
         # We use the routine at 0C:8D76 which creates the race/profession menu for character creation
         # This value is the 0-based index of the last possible selection, so we add 1
@@ -589,6 +594,19 @@ class PartyEditor:
                                       change=self._professions_input, row=1, column=0, font=10)
                     self.app.checkBox("PE_Check_Caster_1", False, name="Spell List 2", sticky="NEW",
                                       change=self._professions_input, row=2, column=0, font=10)
+
+                # --- Thieving Bonus ---
+
+                with self.app.frame("PE_Frame_Thieving", row=3, column=0, stretch="BOTH", sticky="NEWS"):
+                    self.app.label("PE_Label_Thieving_0", "Thieving Bonus:", sticky="SE", row=0, column=0, font=11)
+                    self.app.entry("PE_Thieving_Bonus", "0", change=self._professions_input, fg=colour.BLACK,
+                                   tooltip="This value should be between 0 and 156.",
+                                   width=5, sticky="SW", row=0, column=1, font=10)
+                    self.app.label("PE_Label_Thieving_1", "Success Chance:", sticky="SEW",
+                                   tooltip="The chance to successfully avoid a trap or steal a chest without alerting" +
+                                   " the guards.\nThe minimum value is for a DEX of 0, the maximum is for a DEX of 99.",
+                                   row=1, column=0, colspan=2, font=11)
+                    self.app.label("PE_Thieving_Chance", "", sticky="SEW", row=2, column=0, colspan=2, font=11)
 
             # Right Column
             with self.app.frame("PE_Frame_Right", row=1, column=2, stretch="COLUMN", sticky="NEW", padding=[4, 2],
@@ -2219,6 +2237,21 @@ class PartyEditor:
                     self._unsaved_changes = True
                 except ValueError:
                     pass
+
+        elif widget == "PE_Thieving_Bonus":
+            if self.selected_index >= 0:
+                value = self.app.getEntry(widget)
+                try:
+                    bonus = int(value, 10)
+                    if 156 >= bonus >= 0:
+                        self.thief_bonus[self.selected_index] = bonus
+                        self.app.entry(widget, fg=colour.BLACK)
+                        self._unsaved_changes = True
+                        self._thieving_chance(bonus)
+                    else:
+                        self.app.entry(widget, fg=colour.MEDIUM_RED)
+                except ValueError:
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget == "PE_Apply":
             if self.save_professions() is not False:
@@ -4286,6 +4319,25 @@ class PartyEditor:
             self.app.setEntry(f"PE_Start_Attribute_{i}", starting_values[i], callFunction=False)
             self.app.setEntry(f"PE_Max_Attribute_{i}", max_values[i], callFunction=False)
 
+    # --- PartyEditor._thieving_chance() ---
+
+    def _thieving_chance(self, bonus) -> None:
+        """
+        Calculates the min and max success chances and updates the thieving bonus widgets accordingly.
+        """
+        self.app.clearEntry("PE_Thieving_Bonus", callFunction=False, setFocus=False)
+        self.app.setEntry("PE_Thieving_Bonus", f"{bonus}", callFunction=False)
+        # Calculate success chance
+        if bonus < 256:
+            min_chance = bonus / 255 * 100
+        else:
+            min_chance = 100
+        if (bonus + 99) < 256:
+            max_chance = (bonus + 99) / 255 * 100
+        else:
+            max_chance = 100
+        self.app.setLabel("PE_Thieving_Chance", f"{min_chance:.2f}% to {max_chance:.2f}%")
+
     # --- PartyEditor.profession_info() ---
 
     def profession_info(self) -> None:
@@ -4340,6 +4392,10 @@ class PartyEditor:
         self.app.clearEntry("PE_HP_Bonus", callFunction=False, setFocus=False)
         self.app.setEntry("PE_HP_Base", self.hp_base, callFunction=False)
         self.app.setEntry("PE_HP_Bonus", self.hp_bonus[self.selected_index], callFunction=False)
+
+        # Thieving bonus
+        bonus = self.thief_bonus[self.selected_index]
+        self._thieving_chance(bonus)
 
         # Best weapon/armour
         self.app.setOptionBox("PE_Option_Weapon", self.best_weapon[self.selected_index], callFunction=False)
@@ -4867,6 +4923,9 @@ class PartyEditor:
 
             self.rom.write_byte(0xC, 0xA246 + i, self.best_armour[i])
             self.rom.write_byte(0xD, 0x97BD + i, self.best_armour[i])
+
+        # Save thief bonus table
+        self.rom.write_bytes(0xF, 0xDEAA, self.thief_bonus[:11])
 
         # Save number of selectable professions
         # Modify the routine at 0C:8D76 which creates the menu
