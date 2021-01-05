@@ -40,7 +40,7 @@ NAME=Intelligence check
 ; TYPE_x:	This determins what kind of widget(s) to show for parameter 'x'.
 ;			Values can be: HEX (or H), DECIMAL (or D), POINTER (or P),
 ;			STRING (or S), ATTRIBUTE (or A), BOOL (or B), CHECK (or C),
-;			LOCATION (or L), MARK (or M)
+;			LOCATION (or L), MARK (or M), NPC (or N)
 ; ============================================================================
 
 
@@ -804,3 +804,311 @@ TYPE_5=DECIMAL
 DESCRIPTION_6=Ship destination Y
 OFFSET_6=0x29
 TYPE_6=DECIMAL
+
+
+
+; ============================================================================
+;								COMMANDS
+; ============================================================================
+
+
+; ------------------------------------------
+;					TALK
+; ------------------------------------------
+[COMMAND_0]
+NOTES=Initiate dialogue with an NPC.
+
+DESCRIPTION_0=Ignore NPC ID
+OFFSET_0=0x0F
+TYPE_0=NPC
+
+DESCRIPTION_1=Ignore NPC ID
+OFFSET_1=0x1D
+TYPE_1=NPC
+
+
+; ------------------------------------------
+;					MAGIC
+; ------------------------------------------
+[COMMAND_1]
+NOTES=Opens the MAGIC menu. No parameters.
+
+
+; ------------------------------------------
+;					FIGHT
+; ------------------------------------------
+[COMMAND_2]
+NOTES=Initiate combat with an enemy or NPC.
+
+DESCRIPTION_0=Ignore NPC ID
+OFFSET_0=0x26
+TYPE_0=NPC
+
+DESCRIPTION_1=Ignore NPC ID
+OFFSET_1=0x2A
+TYPE_1=NPC
+
+
+; ------------------------------------------
+;					STATUS
+; ------------------------------------------
+[COMMAND_3]
+NOTES=Shows the STATUS screen. No parameters.
+
+
+; ------------------------------------------
+;					TOOLS
+; ------------------------------------------
+[COMMAND_4]
+NOTES=Opens the TOOLS menu. No parameters.
+
+
+; ------------------------------------------
+;					GIVE
+; ------------------------------------------
+[COMMAND_5]
+NOTES=Allows transferring items between characters. No parameters.
+
+
+; ------------------------------------------
+;					GET
+; ------------------------------------------
+[COMMAND_6]
+NOTES=Used to open/steal chests or pick the flower from Ambrosia.
+
+DESCRIPTION_0=Flower location
+OFFSET_0=0x3A
+TYPE_0=LOCATION
+
+DESCRIPTION_1=Flower tile ID (0x00-0x0F)
+OFFSET_1=0x43
+TYPE_1=TILE
+
+DESCRIPTION_2=Flower item ID
+POINTER_2=0x47
+OFFSET_2=0xA
+TYPE_2=HEX
+
+DESCRIPTION_3=Already have flower dialogue
+POINTER_3=0x47
+OFFSET_3=0x8
+TYPE_3=STRING
+
+DESCRIPTION_4=Pick flower dialogue
+POINTER_4=0x47
+OFFSET_4=0xE
+
+DESCRIPTION_5=Nothing to get dialogue
+OFFSET_5=0x4F
+TYPE_5=STRING
+
+DESCRIPTION_6=Caugh by guards dialogue
+OFFSET_6=0x6F
+TYPE_6=STRING
+
+DESCRIPTION_7=Gold Pick location
+OFFSET_7=0x76
+TYPE_7=LOCATION
+
+DESCRIPTION_8=Gold Pick party location X
+OFFSET_8=0x7E
+TYPE_8=HEX
+
+DESCRIPTION_9=Gold Pick party location Y
+OFFSET_9=0x84
+TYPE_9=HEX
+
+DESCRIPTION_10=Gold Pick item ID
+OFFSET_10=0x8C
+TYPE_10=HEX
+
+DESCRIPTION_11=Gold Pick found dialogue
+OFFSET_11=0x9E
+
+DESCRIPTION_12=Silver Pick location
+OFFSET_12=0xAE
+TYPE_12=LOCATION
+
+DESCRIPTION_13=Chest at dungeon level
+OFFSET_13=0xB4
+TYPE_13=HEX
+
+DESCRIPTION_14=Silver Pick location X
+OFFSET_14=0xBA
+TYPE_14=HEX
+
+DESCRIPTION_15=Silver Pick location Y
+OFFSET_15=0xC0
+TYPE_15=HEX
+
+DESCRIPTION_16=Silver Pick item ID
+OFFSET_16=0xC6
+TYPE_16=HEX
+
+DESCRIPTION_17=Silver Pick found dialogue
+OFFSET_17=0xC4
+TYPE_17=STRING
+
+DESCRIPTION_18=Gold found dialogue
+OFFSET_18=0x112
+TYPE_18=STRING
+
+DESCRIPTION_20=Trap chance (%)
+OFFSET_20=0x11E
+TYPE_20=DECIMAL
+
+
+; ------------------------------------------
+;					CLIMB
+; ------------------------------------------
+[COMMAND_7]
+NOTES=Used to go up or down ladders in dungeons.
+
+DESCRIPTION_0=Moving up dialogue
+OFFSET_0=0x48
+TYPE_0=STRING
+
+DESCRIPTION_1=Moving down dialogue
+OFFSET_1=0x6D
+TYPE_1=STRING
+
+DESCRIPTION_2=No ladder dialogue
+OFFSET_2=0x53
+TYPE_2=STRING
+
+DESCRIPTION_3=Failure dialogue
+OFFSET_3=0x5F
+
+
+; ------------------------------------------
+;					FOOD
+; ------------------------------------------
+[COMMAND_8]
+NOTES=Allows sharing food within the party. No parameters.
+
+
+; ------------------------------------------
+;					GOLD
+; ------------------------------------------
+[COMMAND_9]
+NOTES=Allows moving gold from one character to another. No parameters.
+
+
+; ------------------------------------------
+;					HORSE
+; ------------------------------------------
+[COMMAND_10]
+NOTES=Mount/dismount command.
+
+DESCRIPTION_0=Mount dialogue
+OFFSET_0=0x9
+TYPE_0=STRING
+
+DESCRIPTION_1=Dismount dialogue
+OFFSET_1=0x1B
+TYPE_1=STRING
+
+DESCRIPTION_2=No horse dialogue
+OFFSET_2=0x7E
+TYPE_2=STRING
+
+
+; ------------------------------------------
+;					ORDER
+; ------------------------------------------
+[COMMAND_11]
+NOTES=Allows altering the marching order.
+
+DESCRIPTION_0=Success dialogue.
+OFFSET_0=0x1C
+TYPE_0=STRING
+
+
+; ------------------------------------------
+;					BRIBE
+; ------------------------------------------
+[COMMAND_12]
+NOTES=Makes a specific guard NPC disappear (in exchange for gold). Other NPCs will just take the money.
+
+DESCRIPTION_0=No NPC failure dialogue
+OFFSET_0=0xA
+TYPE_0=STRING
+
+DESCRIPTION_1=No money failure dialogue
+OFFSET_1=0x3D
+TYPE_1=STRING
+
+DESCRIPTION_2=Success dialogue
+OFFSET_2=0x51
+TYPE_2=STRING
+
+DESCRIPTION_3=Bribery cost (low byte)
+OFFSET_3=0x2F
+TYPE_3=HEX
+
+DESCRIPTION_4=Bribery cost (high byte)
+OFFSET_4=0x36
+TYPE_4=HEX
+
+DESCRIPTION_5=Bribed guard NPC ID
+OFFSET_5=0x55
+TYPE_5=NPC
+
+
+; ------------------------------------------
+;					PRAY
+; ------------------------------------------
+[COMMAND_13]
+NOTES=This command has a different effect depending on where it's used. Ambrosian shrines currently not supported.
+
+DESCRIPTION_0=Final Altar map
+OFFSET_0=0x3
+TYPE_0=LOCATION
+
+DESCRIPTION_1=Altar's leftmost coordinate
+OFFSET_1=0x45
+TYPE_1=DECIMAL
+
+DESCRIPTION_2=Altar's rightmost coordinate
+OFFSET_2=0x49
+TYPE_2=DECIMAL
+
+DESCRIPTION_3=Altar's Y coordinate
+OFFSET_3=0x3F
+TYPE_3=DECIMAL
+
+DESCRIPTION_4=Altar prayer start music
+OFFSET_4=0x63
+TYPE_4=HEX
+
+DESCRIPTION_5=Altar prayer success music
+OFFSET_5=0x83
+TYPE_5=HEX
+
+DESCRIPTION_6=Circle of Light map
+OFFSET_6=0x1D
+TYPE_6=LOCATION
+
+DESCRIPTION_7=Circle of Light X
+OFFSET_7=0x22
+TYPE_7=DECIMAL
+
+DESCRIPTION_8=Circle of Light Y
+OFFSET_8=0x28
+TYPE_8=DECIMAL
+
+DESCRIPTION_9=Item to give
+OFFSET_9=0x2C
+TYPE_9=HEX
+
+DESCRIPTION_10=Quantity (will replace previous value)
+OFFSET_10=0x2E
+TYPE_10=DECIMAL
+
+DESCRIPTION_11=Circle of Light dialogue
+OFFSET_11=0x32
+TYPE_11=STRING
+
+DESCRIPTION_12=Failure dialogue
+OFFSET_12=0xCF
+TYPE_12=STRING

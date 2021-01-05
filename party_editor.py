@@ -614,7 +614,7 @@ class PartyEditor:
                 self.app.label("PE_Label_Names", "Profession Names:", sticky="NEW", row=0, column=0, font=10)
                 self.app.textArea("PE_Profession_Names", value=profession_names, width=11, height=11, font=10,
                                   change=self._professions_input,
-                                  sticky="NEW", fg=colour.BLACK, scroll=True, row=1, column=0)
+                                  sticky="NEW", fg=colour.BLACK, scroll=True, row=1, column=0).clearModifiedFlag()
 
                 # Professions list string index and edit button
                 with self.app.frame("PE_Frame_Menu_String", row=2, column=0, sticky="NEW", padding=[4, 2],
@@ -2119,7 +2119,6 @@ class PartyEditor:
                 self.app.textArea(widget, fg=colour.MEDIUM_RED)
             else:
                 self.app.textArea(widget, fg=colour.BLACK)
-                self._unsaved_changes = True
 
         elif widget == "PE_Update_Profession_Names":
             # Make sure it's all uppercase (just for consistency)
@@ -3451,7 +3450,7 @@ class PartyEditor:
                     # Calculate profession index for this value
                     value = value - 0x31
                     self.max_mp[value] = 8  # 8: MAX MP = Fixed Value
-                    self.info(f"{self.profession_names[value]} MAX MP = Fixed Value.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = Fixed Value.")
 
                 else:
                     self.error("Unexpected parameter for STA instruction found while " +
@@ -3489,7 +3488,7 @@ class PartyEditor:
                     # Calculate profession index for this value
                     value = value - 0x31
                     self.max_mp[value] = 0  # 0: MAX MP = WIS
-                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}.")
 
                 else:
                     self.error("Unexpected parameter for STA instruction found while " +
@@ -3505,7 +3504,7 @@ class PartyEditor:
                     # Calculate profession index
                     value = value - 0x31
                     self.max_mp[value] = 1  # 1: MAX MP = WIS / 2
-                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}/2.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}/2.")
 
             elif value == 0x0A:  # ASL
                 break
@@ -3540,7 +3539,7 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 2  # 2: MAX MP = WIS*3/4
-                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}*3/4.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[3]}*3/4.")
                 else:
                     self.error("Unexpected parameter for STA instruction found while " +
                                f"reading Max MP data: 0x{value:02X} @0D:{address - 1:04X}.")
@@ -3570,7 +3569,7 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 3  # 3: MAX MP = INT
-                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}.")
 
                 else:
                     self.error("Unexpected parameter for STA instruction found while " +
@@ -3585,7 +3584,7 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 4  # 4: MAX MP = INT/2
-                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}/2.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}/2.")
 
                 else:
                     self.error("Unexpected parameter for STA instruction found while " +
@@ -3628,7 +3627,7 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 5  # 5: MAX MP = INT*3/4
-                    self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}*3/4.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = {self.attribute_names[2]}*3/4.")
 
                 else:
                     self.error("Unexpected parameter for STA instruction found while " +
@@ -3660,8 +3659,8 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 6  # 6: MAX MP = (INT+WIS)/2
-                    self.info(f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
-                              f"{self.attribute_names[3]})/2.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
+                    #          f"{self.attribute_names[3]})/2.")
 
             elif value == 0x4A:  # $4A = LSR
                 break
@@ -3684,8 +3683,8 @@ class PartyEditor:
                 if 0x31 <= value <= 0x3B:
                     value = value - 0x31
                     self.max_mp[value] = 7  # 7: MAX MP = (INT+WIS) / 4
-                    self.info(f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
-                              f"{self.attribute_names[3]})/4.")
+                    # self.info(f"{self.profession_names[value]} MAX MP = ({self.attribute_names[2]} + " +
+                    #          f"{self.attribute_names[3]})/4.")
 
                 else:
                     self.error("Unexpected parameter for STA instruction found while " +
