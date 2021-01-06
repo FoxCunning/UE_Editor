@@ -38,6 +38,7 @@ class Parameter:
     TYPE_CHECK = 6
     TYPE_LOCATION = 7
     TYPE_MARK = 8
+    TYPE_NPC = 9
 
 
 # --- PartyEditor.Routine class ---

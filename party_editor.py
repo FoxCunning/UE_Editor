@@ -1977,6 +1977,17 @@ class PartyEditor:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
                 self.app.entry(widget, fg=colour.MEDIUM_RED)
 
+        elif widget[:7] == "PE_NPC_":
+            try:
+                parameter_id = int(widget[-2:], 10)
+                routine_id = self._selected_routine_id()
+                value = self._get_selection_index(widget)
+                self.routines[routine_id].parameters[parameter_id] = value
+                self._show_npc_sprite(value, f"PE_NPC_Sprite_{parameter_id:02}")
+            except ValueError as e:
+                self.warning(f"Error processing input from widget: '{widget}': {e}.")
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+
         else:
             self.warning(f"Unimplemented Parameter Editor widget input: '{widget}'.")
 
@@ -2178,7 +2189,7 @@ class PartyEditor:
                 self._unsaved_changes = True
 
                 # Update sprite
-                self._load_profession_sprite()
+                self._show_profession_sprite()
 
         elif widget == "PE_Primary_0":
             if self.selected_index >= 0:
@@ -3223,7 +3234,7 @@ class PartyEditor:
                 # These must be 8-bit values
                 if (parameter.type == parameter.TYPE_LOCATION or parameter.type == parameter.TYPE_ATTRIBUTE or
                         parameter.type == parameter.TYPE_STRING or parameter.type == parameter.TYPE_BOOL or
-                        parameter.type == parameter.TYPE_MARK):
+                        parameter.type == parameter.TYPE_MARK or parameter.type == parameter.TYPE_NPC):
                     if self._ignore_warnings is False:
                         if self.app.okBox("Decode Routine",
                                           f"WARNING: {routine_type} #{routine_id}'s Parameter #{p} must be an 8-bit " +
@@ -3907,9 +3918,9 @@ class PartyEditor:
             # Put the graphics on the canvas
             self.app.addCanvasImage("PE_Canvas_Profession", 24, 24, ImageTk.PhotoImage(graphics))
 
-    # --- PartyEditor._load_profession_sprite() ---
+    # --- PartyEditor._show_profession_sprite() ---
 
-    def _load_profession_sprite(self) -> None:
+    def _show_profession_sprite(self) -> None:
         """
         Loads and displays the map/combat sprite for the currently selected profession
         """
@@ -3957,6 +3968,50 @@ class PartyEditor:
 
         # Put the image on the canvas
         self.app.addCanvasImage("PE_Canvas_Sprite", 16, 16, ImageTk.PhotoImage(sprite))
+
+    # --- PartyEditor._show_npc_sprite() ---
+
+    def _show_npc_sprite(self, npc_id: int, canvas: str) -> None:
+        """
+        Loads and shows the sprite used for an NPC/enemy on town/overworld maps.
+
+        Parameters
+        ----------
+        npc_id: int
+            Index of the NPC whose sprite we want to show (0x0-0x1E)
+
+        canvas: str
+            Name of the canvas widget where the sprite will be shown
+        """
+        self.app.clearCanvas(canvas)
+
+        # Get address of the first pattern for this profession's sprite
+        address = 0x8000 + (0x200 * npc_id)
+
+        # Create an up-scaled image with transparency that will contain all the patterns
+        sprite = Image.new('RGBA', (32, 32), 0)
+
+        # Get colours
+        palette_value = self.rom.read_byte(0xC, 0xBA08 + npc_id)
+
+        if self.rom.has_feature("2-colour sprites"):
+            top_colours = self.palette_editor.sub_palette(1, (palette_value >> 2) & 0x3)
+            bottom_colours = self.palette_editor.sub_palette(1, palette_value & 0x3)
+
+        else:
+            top_colours = self.palette_editor.sub_palette(1, palette_value)
+            bottom_colours = top_colours
+
+        # Load 2x2 patterns, they are stored in the order: top-left, bottom-left, top-right, bottom-right
+        for x in range(2):
+            for y in range(2):
+                colours = top_colours if y == 0 else bottom_colours
+                image = self.rom.read_sprite(0x7, address, list(colours))
+                address = address + 0x10
+                sprite.paste(image.convert('RGBA').resize((16, 16), Image.NONE), (x << 4, y << 4))
+
+        # Put the image on the canvas
+        self.app.addCanvasImage(canvas, 8, 8, ImageTk.PhotoImage(sprite))
 
     # --- PartyEditor.magic_info() ---
 
@@ -4204,6 +4259,10 @@ class PartyEditor:
             for m in range(self.map_editor.max_maps()):
                 map_options.append(f"MAP #{m:02}")
 
+        npc_options: List[str] = []
+        for n in range(0x1F):
+            npc_options.append(f"0x{n:02X}")
+
         attribute_options: List[str] = [] + self.attribute_names
         attribute_options.append("Level")
         attribute_options.append("(Custom)")
@@ -4291,6 +4350,16 @@ class PartyEditor:
                                        sticky="NW", width=20, row=1 + p, column=1, colspan=2, font=10)
                     self.app.setOptionBox(f"PE_Check_Parameter_{p:02}", index=check_id, callFunction=False)
 
+                elif parameter.type == parameter.TYPE_NPC:
+                    self.app.optionBox(f"PE_NPC_Parameter_{p:02}", npc_options, change=change_function,
+                                       width=24, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
+                    self.app.setOptionBox(f"PE_NPC_Parameter_{p:02}", index=parameter.value, callFunction=False)
+                    self.app.canvas(f"PE_NPC_Sprite_{p:02}", sticky="NW", width=16, height=16, bg=colour.MEDIUM_GREY,
+                                    row=1 + p, column=2)
+
+                    if 0 <= parameter.value <= 0x1E:
+                        self._show_npc_sprite(parameter.value, f"PE_NPC_Sprite_{p:02}")
+
                 else:
                     self.warning(f"Unknown type: '{parameter.type}' for parameter #{p}.")
                     self.app.entry(f"PE_Hex_Parameter_{p:02}", f"0x{parameter.value:02X}", change=change_function,
@@ -4357,7 +4426,7 @@ class PartyEditor:
         self._load_profession_graphics()
 
         # Show on-map sprite as well
-        self._load_profession_sprite()
+        self._show_profession_sprite()
 
         # Gender widgets
         if self.app.getCheckBox("PE_Check_Gender"):
