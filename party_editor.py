@@ -1554,8 +1554,9 @@ class PartyEditor:
             with self.app.frame("PE_Frame_Address", padding=[2, 0], row=3, column=0, stretch="BOTH", sticky="NEWS"):
                 self.app.label("PE_Label_Address", "Routine address:", sticky="E", row=0, column=0, font=11)
                 self.app.entry("PE_Command_Address", "", change=self._commands_input,
+                               submit=self._update_command_address,
                                width=8, sticky="W", fg=colour.BLACK, row=0, column=1, font=10)
-                self.app.button("PE_Update_Addres", self._commands_input, image="res/reload-small.gif", sticky="W",
+                self.app.button("PE_Update_Address", self._commands_input, image="res/reload-small.gif", sticky="W",
                                 width=16, height=16, row=0, column=2)
 
             # Parameters
@@ -1563,7 +1564,8 @@ class PartyEditor:
                                      disabled="horizontal", sticky="NEWS", bg=colour.PALE_BLUE):
                 with self.app.labelFrame("PE_Frame_Parameters", name="", padding=[4, 4], row=0, column=0,
                                          stretch="BOTH", sticky="NEWS"):
-                    self.app.note("PE_Note_Command", "", fg=colour.MEDIUM_RED, row=0, column=0, font=10)
+                    self.app.note("PE_Note_Placeholder", "", width=400, fg=colour.MEDIUM_RED, sticky="NEW",
+                                  row=0, column=0, font=10)
 
         # Resize the scroll pane to fill the window
         self.app.getScrollPaneWidget("PE_Pane_Parameters").canvas.configure(width=474)
@@ -2726,12 +2728,69 @@ class PartyEditor:
             Name of the widget generating the event
         """
 
-        if widget == "PE_Option_Command":
+        if widget == "PE_Apply":
+            if self.save_command_data() is True:
+                self.close_window()
+
+        elif widget == "PE_Option_Command":
             self.selected_index = self._get_selection_index(widget)
             self.command_info(self.selected_index)
 
+        elif widget == "PE_Command_Address":
+            try:
+                value = int(self.app.getEntry(widget), 16)
+                if 0xC000 <= value <= 0xFFFF:
+                    self.app.entry(widget, fg=colour.BLACK)
+                    self._unsaved_changes = True
+                else:
+                    self.app.entry(widget, fg=colour.MEDIUM_RED)
+            except ValueError:
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+
+        elif widget == "PE_Update_Address" or widget == "PE_Definitions":
+            self._update_command_address("PE_Command_Address")
+
         else:
             self.warning(f"Unimplemented Command Editor input for widget: {widget}.")
+
+    # --- PartyEditor._update_command_address() ---
+
+    def _update_command_address(self, widget: str) -> None:
+        """
+        Called when pressing Enter on the address entry widget, or pressing the reload button.
+        Validates the entry, updates the address and reloads the parameters.
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget generating the event
+        """
+        try:
+            value = int(self.app.getEntry(widget), 16)
+            if 0xC000 <= value <= 0xFFFF:
+                self.app.entry(widget, fg=colour.BLACK)
+                self.routines[self.selected_index].address = value
+
+                parser = configparser.ConfigParser()
+                d = self._get_selection_index("PE_Definitions")
+                parser.read(self.routine_definitions[d])
+                if parser.has_section(f"COMMAND_{self.selected_index}"):
+
+                    values = self._decode_routine(self.selected_index, self.routines[self.selected_index].address,
+                                                  "COMMAND", parser)
+
+                    if values["Custom"] is False:
+                        self.routines[self.selected_index].custom_code = False
+                        self.routines[self.selected_index].notes = values["Notes"]
+                        self.routines[self.selected_index].parameters = values["Parameters"]
+                    else:
+                        self.routines[self.selected_index].custom_code = True
+
+                self.command_info(self.selected_index)
+            else:
+                self.app.entry(widget, fg=colour.MEDIUM_RED)
+        except ValueError:
+            self.app.entry(widget, fg=colour.MEDIUM_RED)
 
     # --- PartyEditor._update_weapon_names() ---
 
@@ -5210,6 +5269,77 @@ class PartyEditor:
 
         # Update the entry box, in case it contained an invalid value (the variable is only updated if entry is valid)
         self._update_menu_string_entry()
+
+    # --- PartyEditor.save_command_data() ---
+
+    def save_command_data(self) -> bool:
+        """
+        Saves player command routine addresses and parameters to the ROM buffer.
+
+        Returns
+        -------
+        bool
+            True if everything was saved successfully. False if errors occurred, e.g. wrong address, bad parameter.
+        """
+        success = True
+
+        self._ignore_warnings = False
+        for i in range(min([len(self.routines), 14])):
+            # Save address
+            self.rom.write_word(0xF, 0xC611 + (2 * i), self.routines[i].address)
+
+            # Save parameter values
+            for p in self.routines[i].parameters:
+                # 16-bit parameter types
+                if p.type == Parameter.TYPE_POINTER or \
+                        p.type == Parameter.TYPE_CHECK:
+                    if p.address >= 0xC000:
+                        self.rom.write_word(0xF, p.address, p.value)
+                    elif p.address >= 0x8000:
+                        self.rom.write_word(0x0, p.address, p.value)
+                        if p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
+                            self.rom.write_word(0x6, p.address, p.value)
+                    else:
+                        success = False
+
+                        if self._ignore_warnings is False:
+                            if self.app.okBox("Save Command Data",
+                                              f"ERROR: Invalid address 0x{p.address:04X} for Parameter " +
+                                              f"'{p.description}' in Command #{i}." +
+                                              "\n\nClick 'Cancel' to ignore further warnings.",
+                                              "Party_Editor") is False:
+                                self._ignore_warnings = True
+
+                # Everything else is 8-bit
+                else:
+                    if p.value > 255:
+                        if self._ignore_warnings is False:
+                            if self.app.okBox("Save Command Data",
+                                              f"ERROR: Command #{i} invalid data for parameter: " +
+                                              f"'{p.description}': expecting 8-bit value, got {p.value} instead." +
+                                              "\n\nClick 'Cancel' to ignore further warnings.",
+                                              "Party_Editor") is False:
+                                self._ignore_warnings = True
+                        success = False
+                    else:
+                        if p.address >= 0xC000:
+                            self.rom.write_byte(0xF, p.address, p.value)
+                        elif p.address >= 0x8000:
+                            self.rom.write_byte(0x0, p.address, p.value)
+                            if p.address >= 0xBF10:
+                                self.rom.write_byte(0x6, p.address, p.value)
+                        else:
+                            success = False
+
+                            if self._ignore_warnings is False:
+                                if self.app.okBox("Save Command Data",
+                                                  f"ERROR: Invalid address 0x{p.address:04X} for Parameter " +
+                                                  f"'{p.description}' in Command #{i}." +
+                                                  "\n\nClick 'Cancel' to ignore further warnings.",
+                                                  "Party_Editor") is False:
+                                    self._ignore_warnings = True
+
+        return success
 
     # --- PartyEditor.save_weapon_armour_data() ---
 

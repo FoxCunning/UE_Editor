@@ -816,7 +816,7 @@ TYPE_6=DECIMAL
 ;					TALK
 ; ------------------------------------------
 [COMMAND_0]
-NOTES=Initiate dialogue with an NPC.
+NOTES=Initiates dialogue with an NPC.
 
 DESCRIPTION_0=Ignore NPC ID
 OFFSET_0=0x0F
@@ -838,7 +838,7 @@ NOTES=Opens the MAGIC menu. No parameters.
 ;					FIGHT
 ; ------------------------------------------
 [COMMAND_2]
-NOTES=Initiate combat with an enemy or NPC.
+NOTES=Initiates combat with an enemy or NPC.
 
 DESCRIPTION_0=Ignore NPC ID
 OFFSET_0=0x26
