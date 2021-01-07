@@ -182,6 +182,9 @@ class PartyEditor:
         elif window_name == "Weapons":
             self._create_weapons_window()
 
+        elif window_name == "Commands":
+            self._create_commands_window()
+
         else:
             self.warning(f"Unimplemented: {window_name}.")
             return
@@ -604,7 +607,8 @@ class PartyEditor:
                                    width=5, sticky="SW", row=0, column=1, font=10)
                     self.app.label("PE_Label_Thieving_1", "Success Chance:", sticky="SEW",
                                    tooltip="The chance to successfully avoid a trap or steal a chest without alerting" +
-                                   " the guards.\nThe minimum value is for a DEX of 0, the maximum is for a DEX of 99.",
+                                           "the guards.\nThe minimum value is for a DEX of 0, the maximum is for a "
+                                           "DEX of 99.",
                                    row=1, column=0, colspan=2, font=11)
                     self.app.label("PE_Thieving_Chance", "", sticky="SEW", row=2, column=0, colspan=2, font=11)
 
@@ -1332,15 +1336,15 @@ class PartyEditor:
         self.app.setOptionBox("PE_Special_Weapon", index=special_weapon, callFunction=False)
         # Special condition
         selection = -1
-        if special_condition == 0xF0:           # BEQ
+        if special_condition == 0xF0:  # BEQ
             selection = 0
-        elif special_condition == 0xD0:         # BNE
+        elif special_condition == 0xD0:  # BNE
             selection = 1
-        elif (special_condition == 0xB0         # BCS
-              or special_condition == 0x10):    # BPL
+        elif (special_condition == 0xB0  # BCS
+              or special_condition == 0x10):  # BPL
             selection = 2
-        elif (special_condition == 0x90         # BCC
-              or special_condition == 0x30):    # BMI
+        elif (special_condition == 0x90  # BCC
+              or special_condition == 0x30):  # BMI
             selection = 3
 
         if selection >= 0:
@@ -1361,7 +1365,7 @@ class PartyEditor:
 
     def _create_items_window(self) -> None:
         """
-        Creates a sub-window and widgets for editing "tools" (usable items)
+        Creates a sub-window and widgets for editing "tools" (usable items).
         """
         self.routines.clear()
 
@@ -1494,6 +1498,93 @@ class PartyEditor:
 
         # Select the first item and show info
         self.app.setOptionBox("PE_Option_Item", 0, callFunction=True)
+
+    # --- PartyEditor._create_commands_window() ---
+
+    def _create_commands_window(self) -> None:
+        """
+        Creates and shows widgets used to edit player command routines.
+        """
+        # Read routine definitions
+        definitions_list = self._read_definitions()
+
+        # Get command names from packed string
+        command_names = self.text_editor.special_text[0xDF].strip('~') + '\n' + self.text_editor.special_text[0x01].\
+            strip('~')
+
+        command_options: List[str] = []
+        for c in command_names.splitlines(False):
+            command_options.append(c)
+
+        # Create empty routines and assign address and name to each
+        self.routines.clear()
+        for c in range(14):
+            routine = Routine()
+            try:
+                routine.name = command_options[c]
+            except IndexError:
+                routine.name = "(Unnamed)"
+            routine.address = self.rom.read_word(0xF, 0xC611 + (c * 2))
+            self.routines.append(routine)
+
+        # Create widgets
+        with self.app.subWindow("Party_Editor"):
+            self.app.setSize(480, 420)
+
+            # Buttons
+            with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.button("PE_Apply", name="Apply", value=self._commands_input, image="res/floppy.gif",
+                                tooltip="Apply Changes and Close Window", row=0, column=0)
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=1)
+
+            # Definitions file
+            with self.app.frame("PE_Frame_Definitions", padding=[2, 0], row=1, column=0, bg=colour.MEDIUM_GREY):
+                self.app.label("PE_Label_Definitions", "Definitions file:", sticky="E", row=0, column=0, font=11)
+                self.app.optionBox("PE_Definitions", definitions_list, change=self._items_input,
+                                   width=25, row=0, column=1, font=10)
+
+            # Command selection
+            with self.app.frame("PE_Frame_Selection", padding=[2, 0], row=2, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.label("PE_Label_Command", "Edit command:", sticky="WE", row=0, column=0, font=11)
+                self.app.optionBox("PE_Option_Command", command_options, change=self._commands_input,
+                                   sticky="WE", row=0, column=1, font=10)
+
+            # Address
+            with self.app.frame("PE_Frame_Address", padding=[2, 0], row=3, column=0, stretch="BOTH", sticky="NEWS"):
+                self.app.label("PE_Label_Address", "Routine address:", sticky="E", row=0, column=0, font=11)
+                self.app.entry("PE_Command_Address", "", change=self._commands_input,
+                               width=8, sticky="W", fg=colour.BLACK, row=0, column=1, font=10)
+                self.app.button("PE_Update_Addres", self._commands_input, image="res/reload-small.gif", sticky="W",
+                                width=16, height=16, row=0, column=2)
+
+            # Parameters
+            with self.app.scrollPane("PE_Pane_Parameters", row=4, column=0, stretch="BOTH", expand="BOTH",
+                                     disabled="horizontal", sticky="NEWS", bg=colour.PALE_BLUE):
+                with self.app.labelFrame("PE_Frame_Parameters", name="", padding=[4, 4], row=0, column=0,
+                                         stretch="BOTH", sticky="NEWS"):
+                    self.app.note("PE_Note_Command", "", fg=colour.MEDIUM_RED, row=0, column=0, font=10)
+
+        # Resize the scroll pane to fill the window
+        self.app.getScrollPaneWidget("PE_Pane_Parameters").canvas.configure(width=474)
+
+        # Select the definition files that matches the current ROM, if there is one
+        definition = 0
+        if len(self.routine_definitions) > 0:
+            # If any definition filename matches the currently loaded ROM filename, then use that one
+            rom_name = os.path.basename(self.rom.path).rsplit('.')[0].lower()
+            for d in range(len(self.routine_definitions)):
+                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0].lower()
+                if definition_name == rom_name:
+                    definition = d
+                    break
+        self.app.setOptionBox("PE_Definitions", definition, callFunction=False)
+
+        # Parse the selected definition file
+        self._read_command_data(self.routine_definitions[definition])
+
+        # Select first command
+        self.app.setOptionBox("PE_Option_Command", 0, callFunction=True)
 
     # --- PartyEditor.close_window() ---
 
@@ -2623,6 +2714,25 @@ class PartyEditor:
         else:
             self.warning(f"Unimplemented Item Editor input for widget: {widget}.")
 
+    # --- PartyEditor._commands_input() ---
+
+    def _commands_input(self, widget: str) -> None:
+        """
+        Processes input for widgets specifid to the Command editor.
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget generating the event
+        """
+
+        if widget == "PE_Option_Command":
+            self.selected_index = self._get_selection_index(widget)
+            self.command_info(self.selected_index)
+
+        else:
+            self.warning(f"Unimplemented Command Editor input for widget: {widget}.")
+
     # --- PartyEditor._update_weapon_names() ---
 
     def _update_weapon_names(self) -> None:
@@ -3051,6 +3161,36 @@ class PartyEditor:
 
         return count
 
+    # --- PartyEditor._read_command_data() ---
+
+    def _read_command_data(self, config_file: str = "Ultima - Exodus Remastered.def") -> None:
+        """
+        Reads routine parameters for player commands.
+
+        Parameters
+        ----------
+        config_file: str
+            Name of the file containing routine definitions.
+        """
+        # Parse definitions
+        parser = configparser.ConfigParser()
+        parser.read(config_file)
+
+        for i in range(len(self.routines)):
+            if parser.has_section(f"COMMAND_{i}"):
+
+                values = self._decode_routine(i, self.routines[i].address, "COMMAND", parser)
+
+                if values["Custom"] is False:
+                    self.routines[i].custom_code = False
+                    self.routines[i].notes = values["Notes"]
+                    self.routines[i].parameters = values["Parameters"]
+                else:
+                    self.routines[i].custom_code = True
+
+            else:
+                break
+
     # --- PartyEditor._decode_routine() ---
 
     def _decode_routine(self, routine_id: int, address: int, routine_type: str,
@@ -3167,6 +3307,8 @@ class PartyEditor:
                 parameter.type = Parameter.TYPE_LOCATION
             elif value[0] == 'M':
                 parameter.type = Parameter.TYPE_MARK
+            elif value[0] == 'N':
+                parameter.type = Parameter.TYPE_NPC
             else:
                 self.warning(f"Invalid type '{value}' for parameter #{p} in {routine_type} #{routine_id}.\n" +
                              "Using defaults.")
@@ -4006,12 +4148,12 @@ class PartyEditor:
         for x in range(2):
             for y in range(2):
                 colours = top_colours if y == 0 else bottom_colours
-                image = self.rom.read_sprite(0x7, address, list(colours))
+                image = self.rom.read_sprite(0x3, address, list(colours))
                 address = address + 0x10
                 sprite.paste(image.convert('RGBA').resize((16, 16), Image.NONE), (x << 4, y << 4))
 
         # Put the image on the canvas
-        self.app.addCanvasImage(canvas, 8, 8, ImageTk.PhotoImage(sprite))
+        self.app.addCanvasImage(canvas, 16, 16, ImageTk.PhotoImage(sprite))
 
     # --- PartyEditor.magic_info() ---
 
@@ -4229,6 +4371,28 @@ class PartyEditor:
         self._create_parameter_widgets(self.routines[item_id].notes, self.routines[item_id].parameters,
                                        self._parameter_input)
 
+    # --- PartyEditor.command_info() ---
+
+    def command_info(self, command_id: int) -> None:
+        """
+        Shows a player command's address and parameters for editing.
+
+        Parameters
+        ----------
+        command_id: int
+            Index of the command to edit.
+        """
+        # Remove previous widgets
+        self.app.emptyLabelFrame("PE_Frame_Parameters")
+
+        # Address
+        self.app.clearEntry("PE_Command_Address", callFunction=False, setFocus=False)
+        self.app.setEntry("PE_Command_Address", f"0x{self.routines[command_id].address:04X}", callFunction=False)
+
+        # Parameters
+        self._create_parameter_widgets(self.routines[command_id].notes, self.routines[command_id].parameters,
+                                       self._parameter_input)
+
     # --- PartyEditor._create_parameter_widgets() ---
 
     def _create_parameter_widgets(self, notes: str, parameters: List, change_function: any,
@@ -4299,7 +4463,7 @@ class PartyEditor:
 
                 elif parameter.type == parameter.TYPE_LOCATION:
                     self.app.optionBox(f"PE_Map_Parameter_{p:02}", map_options, change=change_function,
-                                       width=24, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
+                                       width=22, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
                     self.app.setOptionBox(f"PE_Map_Parameter_{p:02}", index=parameter.value, callFunction=False)
 
                 elif parameter.type == parameter.TYPE_POINTER:
@@ -4352,9 +4516,9 @@ class PartyEditor:
 
                 elif parameter.type == parameter.TYPE_NPC:
                     self.app.optionBox(f"PE_NPC_Parameter_{p:02}", npc_options, change=change_function,
-                                       width=24, sticky="NW", row=1 + p, column=1, colspan=2, font=10)
+                                       width=12, sticky="NW", row=1 + p, column=1, font=10)
                     self.app.setOptionBox(f"PE_NPC_Parameter_{p:02}", index=parameter.value, callFunction=False)
-                    self.app.canvas(f"PE_NPC_Sprite_{p:02}", sticky="NW", width=16, height=16, bg=colour.MEDIUM_GREY,
+                    self.app.canvas(f"PE_NPC_Sprite_{p:02}", sticky="NE", width=32, height=32, bg=colour.MEDIUM_GREY,
                                     row=1 + p, column=2)
 
                     if 0 <= parameter.value <= 0x1E:
@@ -5188,7 +5352,7 @@ class PartyEditor:
         try:
             special_dialogue = int(self.app.getEntry("PE_Special_Dialogue"), 16)
         except ValueError:
-            special_dialogue = 0xF5     # Default value
+            special_dialogue = 0xF5  # Default value
             self.app.clearEntry("PE_Special_Dialogue", callFunction=False, setFocus=False)
             self.app.entry("PE_Special_Dialogue", "0xF5", fg=colour.BLACK)
         special_condition = self.app.getOptionBox("PE_Special_Condition")
@@ -5200,13 +5364,13 @@ class PartyEditor:
             self.rom.write_byte(0xF, 0xD0C2, special_dialogue)
 
             selection = self._get_selection_index("PE_Special_Condition")
-            if selection == 1:      # Anything but the specified weapon
-                value = 0xD0    # BNE
-            elif selection == 2:    # Specified weapon or better
-                value = 0xB0    # BCS
-            elif selection == 3:    # Up to and excluding the specified weapon
-                value = 0x90    # BCC
-            else:                   # Default: exactly and only the specified weapon
+            if selection == 1:  # Anything but the specified weapon
+                value = 0xD0  # BNE
+            elif selection == 2:  # Specified weapon or better
+                value = 0xB0  # BCS
+            elif selection == 3:  # Up to and excluding the specified weapon
+                value = 0x90  # BCC
+            else:  # Default: exactly and only the specified weapon
                 value = 0xF0  # BEQ
             self.rom.write_byte(0xF, 0xD0BD, value)
 

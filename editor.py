@@ -307,6 +307,7 @@ def edit_map() -> None:
         pane.vscrollbar.set(0.1, 0.9)
         pane.canvas.xview_moveto(0)
         pane.canvas.yview_moveto(0)
+        pane.canvas.configure(width=448)
     else:
         map_editor.load_npc_data()
         # Move the map editor and the NPC editor relatively to the main window
@@ -325,6 +326,8 @@ def edit_map() -> None:
         # Show entrances and Moongates
         map_editor.load_entrances()
         map_editor.load_moongates()
+
+        app.getScrollPaneWidget("ME_Scroll_Pane").canvas.configure(width=508)
 
 
 # --- select_dungeon_level() ---
