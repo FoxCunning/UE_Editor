@@ -493,13 +493,13 @@ class PaletteEditor:
 
         # Highlight selected colour
         canvas_text = canvas.find_all()[(colour_index << 1) + 1]  # (colour_index + 1) << 1
-        print(f"*DEBUG* Canvas Text item {canvas_text}")
+        # print(f"*DEBUG* Canvas Text item {canvas_text}")
         canvas.itemconfig(canvas_text, fill="#FF0000")
 
         self.selected_colour = colour_index
         self.selected_palette = palette_index
-        old_colour = self.selected_colour + (self.selected_palette * 4)
-        print(f"*DEBUG* Editing colour {old_colour:02X}")
+        # old_colour = self.selected_colour + (self.selected_palette * 4)
+        # print(f"*DEBUG* Editing colour {old_colour:02X}")
 
     # --- PaletteEditor.change_colour() ---
 
@@ -516,7 +516,8 @@ class PaletteEditor:
             log(3, "PALETTE EDITOR", "Requested to change colour without a selection.")
             return
 
-        print(f"*DEBUG* Assigning {new_colour:02X} to colour {self.selected_colour} in palette {self.selected_palette}")
+        # print(f"*DEBUG* Assigning {new_colour:02X} to colour {self.selected_colour} in palette {
+        # self.selected_palette}")
         palette = self.palettes[self.selected_palette_set]
         palette[self.selected_colour + (self.selected_palette * 4)] = new_colour
 
