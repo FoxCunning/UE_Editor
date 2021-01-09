@@ -288,6 +288,10 @@ class PaletteEditor:
         self.palettes.append(self._read_palette(0xF, 0xFFD0))   # BG
         self.palettes.append(self._read_palette(0xF, 0xFFE0))   # Sprites
 
+        # palettes[38] and palettes[39] = Cutscene
+        self.palettes.append(self._read_palette(0xC, 0x835F))   # BG
+        self.palettes.append(self._read_palette(0xC, 0x836F))   # Sprites
+
         # Select Intro palettes by default
         self.app.setOptionBox("PE_List_Palettes", 0)
 
@@ -323,11 +327,11 @@ class PaletteEditor:
                          "Map Sprites",
                          "Ambrosia Backgrounds",
                          "Ambrosia Sprites",
-                         "Intro (Dark)",
-                         "Intro (Fading 1)",
-                         "Intro (Fading 2)",
-                         "Intro (Fading 3)",
-                         "Intro (Text)",
+                         "Start (Dark)",
+                         "Start (Fading 1)",
+                         "Start (Fading 2)",
+                         "Start (Fading 3)",
+                         "Start (Text)",
                          "Title Screen, Fade 0",
                          "Title Screen, Fade 1",
                          "Title Screen, Fade 2",
@@ -356,7 +360,9 @@ class PaletteEditor:
                          "Menu / Status Screen BG",
                          "Menu / Status Screen Sprites",
                          "Continent Map View BG",
-                         "Continent Map View Sprites"]
+                         "Continent Map View Sprites",
+                         "Cutscene BG",
+                         "Cutscene Sprites"]
 
         # TODO Notify of unused dungeon palettes for recent hack versions
 
@@ -428,7 +434,7 @@ class PaletteEditor:
 
     def choose_palette_set(self, palette_set: str) -> None:
         """
-        Select a palette set to edit, and show the first palette in this set
+        Select a palette set to edit, and show the first palette in this set.
 
         Parameters
         ----------
@@ -436,7 +442,7 @@ class PaletteEditor:
             One of: "Intro / Credits", "Title", "Status Screen", "Flashing", "End Sequence", "Map Default",
             "Ambrosia", "Dungeon", "Continent View"
         """
-        if palette_set == "Intro / Credits":
+        if palette_set == "Start / Credits":
             self.show_palette_set(4)
         elif palette_set == "Map Default":
             self.show_palette_set(0)
@@ -454,6 +460,8 @@ class PaletteEditor:
             self.show_palette_set(34)
         elif palette_set == "Continent View":
             self.show_palette_set(36)
+        elif palette_set == "Cutscene":
+            self.show_palette_set(38)
         else:
             log(3, "PALETTE EDITOR", f"Invalid palette set '{palette_set}' selected!")
 
@@ -523,7 +531,7 @@ class PaletteEditor:
         """
         Shows the next palette in the current set
         """
-        last_palettes = [1, 3, 8, 13, 29, 31, 33, 35, 37]
+        last_palettes = [1, 3, 8, 13, 29, 31, 33, 35, 37, 39]
         # Make sure we have not reached the last palette in the current set
         try:
             last_palettes.index(self.selected_palette_set)
@@ -537,7 +545,7 @@ class PaletteEditor:
         """
         Shows the previous palette in the current set
         """
-        last_palettes = [0, 2, 4, 9, 14, 30, 32, 34, 36]
+        last_palettes = [0, 2, 4, 9, 14, 30, 32, 34, 36, 38]
         # Make sure we have not reached the last palette in the current set
         try:
             last_palettes.index(self.selected_palette_set)
@@ -615,4 +623,6 @@ class PaletteEditor:
         self.rom.write_bytes(0xF, 0xFFD0, bytes(self.palettes[36]))
         self.rom.write_bytes(0xF, 0xFFE0, bytes(self.palettes[37]))
 
-        # TODO Save other palettes (e.g. continent map view)
+        # palettes[38] and palette[39] = Cutscene (Lord British)
+        self.rom.write_bytes(0xC, 0x835F, bytes(self.palettes[38]))
+        self.rom.write_bytes(0xC, 0x836F, bytes(self.palettes[39]))
