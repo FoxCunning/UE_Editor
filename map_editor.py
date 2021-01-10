@@ -9,6 +9,7 @@ from appJar import gui
 from debug import log
 import lzss as lzss
 import rle as rle
+from helpers import Point2D
 from palette_editor import PaletteEditor
 import text_editor
 from rom import ROM
@@ -63,14 +64,6 @@ class DungeonData:
     # Map0_marks_ptr, Map0_fount_ptr, Map1_marks_ptr... etc.
     mark_pointer: int = 0x0000  # Default: 0xB95D + (Dungeon ID * 4)
     fountain_pointer: int = 0x0000  # Default: 0xB95D + 2 + (Dungeon ID * 4)
-
-
-# --- Point2D ---
-
-@dataclass(init=True, repr=False)
-class Point2D:
-    x: int = 0xFF
-    y: int = 0xFF
 
 
 # --- MapEditor ---

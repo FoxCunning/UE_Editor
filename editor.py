@@ -1758,7 +1758,10 @@ def select_portrait(sel: str) -> None:
 def cutscene_input(widget: str) -> None:
     global cutscene_editor
 
-    if widget == "CE_Option_Cutscene":
+    if widget == "CE_Cutscene_Close":
+        cutscene_editor.close_window()
+
+    elif widget == "CE_Option_Cutscene":
         scene = get_option_index(widget, app.getOptionBox(widget))
         app.selectFrame("Cutscenes", scene, callFunction=True)
 
@@ -2456,12 +2459,16 @@ if __name__ == "__main__":
             with app.frame("CE_Cutscene_Buttons", row=0, column=0, padding=[2, 0]):
                 app.button("CE_Cutscene_Save", cutscene_input, image="res/floppy.gif", sticky="W", width=32, height=32,
                            row=0, column=0)
+                app.button("CE_Cutscene_Import", cutscene_input, image="res/import.gif", sticky="W", width=32,
+                           height=32, row=0, column=1)
+                app.button("CE_Cutscene_Export", cutscene_input, image="res/export.gif", sticky="W", width=32,
+                           height=32, row=0, column=2)
                 app.button("CE_Cutscene_Close", cutscene_input, image="res/close.gif", sticky="W", width=32, height=32,
-                           row=0, column=1)
+                           row=0, column=3)
                 app.button("CE_Cutscene_1x1", cutscene_input, image="res/1x1.gif", sticky="E", width=32, height=32,
-                           row=0, column=2, bg=colour.WHITE)
+                           row=0, column=4, bg=colour.WHITE)
                 app.button("CE_Cutscene_2x2", cutscene_input, image="res/2x2.gif", sticky="E", width=32, height=32,
-                           row=0, column=3, bg=colour.MEDIUM_GREY)
+                           row=0, column=5, bg=colour.MEDIUM_GREY)
 
             # Info
             app.label("CE_Info_Cutscene", "Info here...", fg=colour.WHITE, sticky="W", font=11, row=0, column=1)
@@ -2476,8 +2483,8 @@ if __name__ == "__main__":
             app.setCanvasCursor("CE_Canvas_Patterns", "hand1")
 
             # Palette
-            app.canvas("CE_Canvas_Palette", row=2, column=0, width=256, height=18, bg=colour.MEDIUM_MAGENTA)
-            app.setCanvasCursor("CE_Canvas_Palette", "hand1")
+            app.canvas("CE_Canvas_Palettes", row=2, column=0, width=256, height=18, bg=colour.MEDIUM_MAGENTA)
+            app.setCanvasCursor("CE_Canvas_Palettes", "hand1")
 
         # Party Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Party_Editor", title="Party Editor", size=[360, 240], modal=False, resizable=False,
