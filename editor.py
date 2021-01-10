@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import List
 
 from appJar import gui
+from cutscene_editor import CutsceneEditor
 from debug import log
 from enemy_editor import EnemyEditor
 from map_editor import MapEditor, MapTableEntry
@@ -240,6 +241,7 @@ text_editor: TextEditor
 palette_editor: PaletteEditor
 enemy_editor: EnemyEditor
 party_editor: PartyEditor
+cutscene_editor: CutsceneEditor
 
 # These will be save when clicking on the map
 last_tile = {
@@ -1065,6 +1067,8 @@ def close_rom() -> None:
     app.setTabbedFrameDisabledTab("TabbedFrame", "Enemies", True)
     app.setTabbedFrameDisabledTab("TabbedFrame", "Text", True)
     app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", True)
+    app.setTabbedFrameDisabledTab("TabbedFrame", "Cutscenes", True)
+    app.setTabbedFrameDisabledTab("TabbedFrame", "\u266B", True)
     app.setStatusbar("ROM file closed.", field=0)
     app.setTitle("UE Editor")
 
@@ -1111,6 +1115,7 @@ def open_rom(file_name: str) -> None:
     global map_editor
     global enemy_editor
     global party_editor
+    global cutscene_editor
 
     app.setStatusbar(f"Opening ROM file '{file_name}'", field=0)
     val = rom.open(file_name)
@@ -1220,12 +1225,17 @@ def open_rom(file_name: str) -> None:
         # Party editor
         party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
 
+        # Cutscene editor
+        cutscene_editor = CutsceneEditor(app, rom, palette_editor)
+
         # Activate tabs
         app.setTabbedFrameDisabledTab("TabbedFrame", "Map", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Misc", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Enemies", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Text", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", False)
+        app.setTabbedFrameDisabledTab("TabbedFrame", "Cutscenes", False)
+        app.setTabbedFrameDisabledTab("TabbedFrame", "\u266B", False)
 
         # Add file name to the window's title
         app.setTitle(f"UE Editor - {os.path.basename(file_name)}")
@@ -1413,11 +1423,11 @@ def text_editor_stop() -> bool:
     return True
 
 
-# --- text_editor_press() ---
+# --- text_editor_input() ---
 
-def text_editor_press(widget: str) -> None:
+def text_editor_input(widget: str) -> None:
     """
-    Button press callback for the Text Editor sub-window
+    Button main_input callback for the Text Editor sub-window
 
     Parameters
     ----------
@@ -1537,7 +1547,7 @@ def text_editor_press(widget: str) -> None:
         app.hideSubWindow("Text_Editor", useStopFunction=False)
 
         # Save changes to ROM
-        text_editor_press("Text_Apply")
+        text_editor_input("Text_Apply")
         # Refresh current string if the text tab is active
         # if app.getTabbedFrameSelectedTab("TabbedFrame") == "Text":
         #    app.selectListItemAtPos("Text_Id", text_editor.index, callFunction=True)
@@ -1744,6 +1754,25 @@ def select_portrait(sel: str) -> None:
     text_editor.load_portrait(index)
 
 
+# --- cutscene_input() ---
+def cutscene_input(widget: str) -> None:
+    global cutscene_editor
+
+    if widget == "CE_Option_Cutscene":
+        scene = get_option_index(widget, app.getOptionBox(widget))
+        app.selectFrame("Cutscenes", scene, callFunction=True)
+
+    elif widget[:17] == "CE_Edit_Graphics_":
+        cutscene_editor.load_palette(38)
+        cutscene_editor.load_patterns(0xA, 0x8000, 0xA4, 0x00)
+        cutscene_editor.load_patterns(0x7, 0xA100, 20, 0x0A)
+        cutscene_editor.load_patterns(0xC, 0xAF01, 92, 0xA4)
+        cutscene_editor.show_window(0xC, 0x9B1B, 0x9EEB, 256, 240)
+
+    else:
+        log(3, "CUTSCENE_EDITOR", f"Unimplemented input from widget '{widget}'.")
+
+
 # --- party_editor_input() ---
 
 def party_editor_input(button: str) -> bool:
@@ -1777,17 +1806,22 @@ def party_editor_input(button: str) -> bool:
     return True
 
 
+# --- cutscene_editor_stop() ---
+def cutscene_editor_stop() -> bool:
+    return cutscene_editor.close_window()
+
+
 # --- party_editor_stop() ---
 def party_editor_stop() -> bool:
     return party_editor.close_window()
 
 
-# --- press() ---
+# --- main_input() ---
 
 # noinspection PyArgumentList
-def press(widget: str) -> bool:
+def main_input(widget: str) -> bool:
     """
-    Generic button press callback for the main window
+    Generic button main_input callback for the main window
 
     Parameters
     ----------
@@ -1958,7 +1992,7 @@ if __name__ == "__main__":
         #       ##### Toolbar #####
 
         tools = ["Open ROM", "Close ROM", "Save ROM", "Save ROM As...", "Start Emulator", "Settings", "About", "Exit"]
-        app.addToolbar(tools, press, True)
+        app.addToolbar(tools, main_input, True)
         app.setToolbarImage("Open ROM", "res/folder_open.gif")
         app.setToolbarImage("Close ROM", "res/cart_close.gif")
         app.setToolbarImage("Save ROM", "res/cart_save.gif")
@@ -2005,8 +2039,8 @@ if __name__ == "__main__":
                 app.label("MapInfo_SelectLabel", value="Map:", row=0, column=0, sticky='E')
                 app.optionBox("MapInfo_Select", maps_list, change=select_map, sticky='WE', width=20,
                               stretch='ROW', row=0, column=1, font=11)
-                app.radioButton("MapInfo_Advanced_Option", "Basic", change=press, row=0, column=2, sticky="E")
-                app.radioButton("MapInfo_Advanced_Option", "Advanced", change=press, row=0, column=3, sticky="W")
+                app.radioButton("MapInfo_Advanced_Option", "Basic", change=main_input, row=0, column=2, sticky="E")
+                app.radioButton("MapInfo_Advanced_Option", "Advanced", change=main_input, row=0, column=3, sticky="W")
 
             with app.frame("Map_MidFrame", row=1, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_OLIVE):
 
@@ -2016,18 +2050,18 @@ if __name__ == "__main__":
                     app.optionBox("MapInfo_Basic_Type", ["6: Continent (No Guards)", "2: Continent (w/Guards)",
                                                          "4: Town / Castle (No Guards)", "0: Town / Castle (w/Guards)",
                                                          "8: Dungeon"], width=26, sticky='W', row=0, column=2,
-                                  colspan=2, change=press, font=11)
+                                  colspan=2, change=main_input, font=11)
 
                     app.label("MapInfo_Basic_h1", "Bank: ", sticky='E', row=1, column=0)
                     banks_list = []
                     for i in range(0, 16):
                         banks_list.append(f"{i}")
                     app.optionBox("MapInfo_Basic_Bank", banks_list, sticky='W', row=1, column=1,
-                                  change=press)
+                                  change=main_input)
                     del banks_list
 
                     app.label("MapInfo_Basic_h2", "ID: ", sticky='E', row=1, column=2)
-                    app.spinBox("MapInfo_Basic_ID", list(range(31, -1, -1)), change=press, row=1, column=3)
+                    app.spinBox("MapInfo_Basic_ID", list(range(31, -1, -1)), change=main_input, row=1, column=3)
 
                 # Advanced info
                 with app.frame("MapInfo_Frame_Advanced", row=1, column=0, padding=[8, 0], stretch='BOTH'):
@@ -2056,8 +2090,8 @@ if __name__ == "__main__":
 
             with app.frame("Map_BtmFrame", row=4, column=0, sticky='NEWS', stretch='BOTH', padding=[4, 8],
                            bg=colour.PALE_LIME):
-                app.button("Map_Apply", name="Apply Changes", value=press, sticky='NEW', row=0, column=0)
-                app.button("Map_Edit", name="Edit Map", value=press, sticky='NEW', row=0, column=1)
+                app.button("Map_Apply", name="Apply Changes", value=main_input, sticky='NEW', row=0, column=0)
+                app.button("Map_Edit", name="Edit Map", value=main_input, sticky='NEW', row=0, column=1)
                 app.label("MapInfo_SelectCompression", "Compression:", sticky='NEW', row=0, column=2)
                 app.optionBox("Map_Compression", ["none", "LZSS", "RLE"], change=select_compression, sticky='NEW',
                               callFunction=True, row=0, column=3)
@@ -2183,7 +2217,7 @@ if __name__ == "__main__":
                 app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky='NW', stretch='NONE', font=10)
                 app.textArea("Text_Preview", row=1, column=0, colspan=2, sticky='NEW', stretch='ROW', scroll=True,
                              end=False, height=10, rowspan=2).setFont(family="Consolas", size=11)
-                app.button("Text_Apply", name="Apply Changes", value=text_editor_press, row=3, column=0,
+                app.button("Text_Apply", name="Apply Changes", value=text_editor_input, row=3, column=0,
                            sticky='NW', stretch='NONE')
                 app.button("Text_More", name="More Actions", value=edit_text, row=3, column=1, sticky='NW',
                            stretch='NONE')
@@ -2201,9 +2235,9 @@ if __name__ == "__main__":
 
             with app.frame("PE_Frame_List", row=0, column=0, padding=[2, 0], bg=colour.PALE_MAGENTA):
                 app.label("PE_Label_Select", "Select a palette set:", row=0, column=0)
-                app.optionBox("PE_List_Palettes", ["Intro / Credits", "Title", "Status Screen", "Flashing",
+                app.optionBox("PE_List_Palettes", ["Start / Credits", "Title", "Status Screen", "Flashing",
                                                    "End Sequence", "Map Default", "Ambrosia", "Dungeon",
-                                                   "Continent View"],
+                                                   "Continent View", "Cutscene"],
                               change=select_palette, row=0, column=1)
 
             with app.frame("PE_Frame_Palettes", row=1, column=0, padding=[0, 2], stretch='BOTH', sticky='NEWS',
@@ -2241,8 +2275,155 @@ if __name__ == "__main__":
                            sticky='EW').bind("<Button-1>", pick_colour, add="+")
                 app.setCanvasCursor("PE_Canvas_Full", "hand1")
 
+        # CUTSCENES Tab ------------------------------------------------------------------------------------------------
+        with app.tab("Cutscenes", padding=[4, 2]):
+            app.label("CE_Label_Selection", "Edit scene", sticky="NE", row=0, column=0, font=11)
+            # TODO Add option for title screen
+            app.optionBox("CE_Option_Cutscene", ["Lord British", "Time Lord"], change=cutscene_input, sticky="NW",
+                          row=0, column=1, font=10)
+
+            with app.frameStack("Cutscenes", start=0, sticky="NW", row=1, column=0, colspan=3):
+
+                # Cutscene 0 parameters
+                with app.frame("CE_Frame_Cutscene_0", bg=colour.PALE_NAVY):
+                    # with app.frame("CE_Frame_Parameters_0", padding=[4, 2], sticky="NEW", row=0, column=0):
+                    with app.scrollPane("CE_Pane_Parameters_0", padding=[4, 1],
+                                        row=0, column=0, disabled="horizontal", sticky="NEW"):
+                        app.label("CE_Label_0_00", "Party sprites facing", sticky="E", colspan=2,
+                                  row=1, column=0, font=11)
+                        app.optionBox("CE_Param_0_00", ["None", "East", "West", "South", "North"],
+                                      change=cutscene_input,
+                                      sticky="W", width=10, colspan=2, row=1, column=2, font=10)
+
+                        app.label("CE_Label_0_01", "Show party sprite 1", sticky="WE",
+                                  row=2, column=0, font=11)
+                        app.checkBox("CE_Param_0_01", True, name="", change=cutscene_input, sticky="W",
+                                     row=2, column=1)
+                        app.label("CE_Label_0_02", "Show party sprite 2", sticky="WE",
+                                  row=3, column=0, font=11)
+                        app.checkBox("CE_Param_0_02", True, name="", change=cutscene_input, sticky="W",
+                                     row=3, column=1)
+                        app.label("CE_Label_0_03", "Show party sprite 3", sticky="WE",
+                                  row=4, column=0, font=11)
+                        app.checkBox("CE_Param_0_03", True, name="", change=cutscene_input, sticky="W",
+                                     row=4, column=1)
+                        app.label("CE_Label_0_04", "Show party sprite 4", sticky="WE",
+                                  row=5, column=0, font=11)
+                        app.checkBox("CE_Param_0_04", True, name="", change=cutscene_input, sticky="W",
+                                     row=5, column=1)
+
+                        app.label("CE_Label_0_05", "Movement offset (X)", sticky="WE",
+                                  row=2, column=2, font=11)
+                        app.entry("CE_Param_0_05", "-1", change=cutscene_input, sticky="W", width=3,
+                                  row=2, column=3, font=10)
+                        app.label("CE_Label_0_06", "Movement offset (X)", sticky="WE",
+                                  row=3, column=2, font=11)
+                        app.entry("CE_Param_0_06", "-1", change=cutscene_input, sticky="W", width=3,
+                                  row=3, column=3, font=10)
+                        app.label("CE_Label_0_07", "Movement offset (X)", sticky="WE",
+                                  row=4, column=2, font=11)
+                        app.entry("CE_Param_0_07", "1", change=cutscene_input, sticky="W", width=3,
+                                  row=4, column=3, font=10)
+                        app.label("CE_Label_0_08", "Movement offset (X)", sticky="WE",
+                                  row=5, column=2, font=11)
+                        app.entry("CE_Param_0_08", "1", change=cutscene_input, sticky="W", width=3,
+                                  row=5, column=3, font=10)
+
+                        app.label("CE_Label_0_09", "Delay", sticky="WE",
+                                  row=2, column=4, font=11)
+                        app.entry("CE_Param_0_09", "1", change=cutscene_input, sticky="W", width=3,
+                                  row=2, column=5, font=10)
+                        app.label("CE_Label_0_10", "Delay", sticky="WE",
+                                  row=3, column=4, font=11)
+                        app.entry("CE_Param_0_10", "3", change=cutscene_input, sticky="W", width=3,
+                                  row=3, column=5, font=10)
+                        app.label("CE_Label_0_11", "Delay", sticky="WE",
+                                  row=4, column=4, font=11)
+                        app.entry("CE_Param_0_11", "3", change=cutscene_input, sticky="W", width=3,
+                                  row=4, column=5, font=10)
+                        app.label("CE_Label_0_12", "Delay", sticky="WE",
+                                  row=5, column=4, font=11)
+                        app.entry("CE_Param_0_12", "1", change=cutscene_input, sticky="W", width=3,
+                                  row=5, column=5, font=10)
+
+                        app.label("CE_Label_0_13", "Global movement", sticky="E", colspan=2,
+                                  row=6, column=0, font=11)
+                        app.optionBox("CE_Param_0_13", ["None", "Up", "Down", "Left", "Right"], change=cutscene_input,
+                                      sticky="W", row=6, column=2, font=10)
+
+                        app.label("CE_Label_0_14", "Starting X", sticky="E",
+                                  row=7, column=0, font=11)
+                        app.entry("CE_Param_0_14", "0", change=cutscene_input, sticky="W", width=3,
+                                  row=7, column=1, font=10)
+                        app.label("CE_Label_0_15", "Starting Y", sticky="E",
+                                  row=7, column=2, font=11)
+                        app.entry("CE_Param_0_15", "0", change=cutscene_input, sticky="W", width=3,
+                                  row=7, column=3, font=10)
+
+                        app.label("CE_Label_0_16", "Target position", sticky="E", colspan=2,
+                                  row=8, column=0, font=11)
+                        app.optionBox("CE_Param_0_16", ["X >=", "Y >=", "X <", "Y <"], change=cutscene_input,
+                                      row=8, column=2, sticky="WE", font=10)
+                        app.entry("CE_Param_0_17", "0", change=cutscene_input, sticky="W", width=4,
+                                  row=8, column=3, font=10)
+
+                        app.label("CE_Label_0_18", "First dialogue ID", sticky="E",
+                                  row=9, column=0, font=11)
+                        app.entry("CE_Param_0_18", "32", change=cutscene_input, sticky="W", width=3,
+                                  row=9, column=1, font=10)
+                        app.label("CE_Label_0_19", "Last dialogue ID", sticky="E",
+                                  row=9, column=2, font=11)
+                        app.entry("CE_Param_0_19", "37", change=cutscene_input, sticky="W", width=3,
+                                  row=9, column=3, font=10)
+
+                        app.label("CE_Label_0_20", "Dialogue X", sticky="E",
+                                  row=10, column=0, font=11)
+                        app.entry("CE_Param_0_20", "0", change=cutscene_input, sticky="W", width=3,
+                                  row=10, column=1, font=10)
+                        app.label("CE_Label_0_21", "Dialogue Y", sticky="E",
+                                  row=11, column=0, font=11)
+                        app.entry("CE_Param_0_21", "0", change=cutscene_input, sticky="W", width=3,
+                                  row=11, column=1, font=10)
+
+                        app.label("CE_Label_0_22", "Dialogue Width", sticky="E",
+                                  row=10, column=2, font=11)
+                        app.entry("CE_Param_0_22", "0", change=cutscene_input, sticky="W", width=3,
+                                  row=10, column=3, font=10)
+                        app.label("CE_Label_0_23", "Dialogue Height", sticky="E",
+                                  row=11, column=2, font=11)
+                        app.entry("CE_Param_0_23", "0", change=cutscene_input, sticky="W", width=3,
+                                  row=11, column=3, font=10)
+
+                    # Resize scrollable pane
+                    canvas = app.getScrollPaneWidget("CE_Pane_Parameters_0").canvas
+                    canvas.configure(width=492 - 8, height=344 - 132)
+
+                    # Buttons
+                    with app.frame("CE_Frame_Buttons_0", padding=[4, 4], sticky="WE", row=1, column=0):
+                        app.button("CE_Save_Parameters_0", cutscene_input, image="res/floppy.gif", sticky="E",
+                                   width=32, height=32, row=0, column=0)
+                        app.button("CE_Reload_Parameters_0", cutscene_input, image="res/reload.gif", sticky="W",
+                                   width=32, height=32, row=0, column=2)
+                        app.button("CE_Edit_Graphics_0", cutscene_input, image="res/brush.gif", sticky="WE",
+                                   width=32, height=32, row=0, column=3)
+
+                # Cutscene 1 parameters
+                with app.frame("CE_Frame_Cutscene_1", bg=colour.PALE_BLUE):
+                    # Parameters
+                    with app.frame("CE_Frame_Parameters_1", padding=[4, 1], sticky="NEW"):
+                        app.label("CE_Label_Cutscene_1", "Parameters...", sticky="WE", row=0, column=0, colspan=2)
+
+                    # Buttons
+                    with app.frame("CE_Frame_Buttons_1", padding=[4, 4], sticky="WE", row=1, column=0):
+                        app.button("CE_Save_Parameters_1", cutscene_input, image="res/floppy.gif", sticky="E",
+                                   width=32, height=32, row=0, column=0)
+                        app.button("CE_Reload_Parameters_1", cutscene_input, image="res/reload.gif", sticky="W",
+                                   width=32, height=32, row=0, column=2)
+                        app.button("CE_Edit_Graphics_1", cutscene_input, image="res/brush.gif", sticky="WE",
+                                   width=32, height=32, row=0, column=3)
+
         # SFX / MUSIC Tab ----------------------------------------------------------------------------------------------
-        with app.tab("SFX/Music", padding=[4, 2]):
+        with app.tab("\u266B", padding=[4, 2]):
             app.button("SFX", row=0, column=0)
             app.button("Music", row=1, column=0)
 
@@ -2255,7 +2436,8 @@ if __name__ == "__main__":
         app.setTabbedFrameDisabledTab("TabbedFrame", "Enemies", True)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Text", True)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Palettes", True)
-        app.setTabbedFrameDisabledTab("TabbedFrame", "SFX/Music", True)
+        app.setTabbedFrameDisabledTab("TabbedFrame", "Cutscenes", True)
+        app.setTabbedFrameDisabledTab("TabbedFrame", "\u266B", True)
 
         # Status bar
         app.statusFont = 9
@@ -2263,6 +2445,39 @@ if __name__ == "__main__":
         app.setStatusbar("Open a ROM file to begin...", field=0)
 
         #       ##### Sub-Windows #####
+
+        # Cutscene Editor Sub-Window -----------------------------------------------------------------------------------
+        with app.subWindow("Cutscene_Editor", title="Cutscene Editor", size=[800, 380], padding=[2, 0], modal=False,
+                           resizable=False, inPadding=0, guiPadding=0, bg=colour.DARK_GREY):
+            # noinspection PyArgumentList
+            app.setStopFunction(cutscene_editor_stop)
+
+            # Buttons
+            with app.frame("CE_Cutscene_Buttons", row=0, column=0, padding=[2, 0]):
+                app.button("CE_Cutscene_Save", cutscene_input, image="res/floppy.gif", sticky="W", width=32, height=32,
+                           row=0, column=0)
+                app.button("CE_Cutscene_Close", cutscene_input, image="res/close.gif", sticky="W", width=32, height=32,
+                           row=0, column=1)
+                app.button("CE_Cutscene_1x1", cutscene_input, image="res/1x1.gif", sticky="E", width=32, height=32,
+                           row=0, column=2, bg=colour.WHITE)
+                app.button("CE_Cutscene_2x2", cutscene_input, image="res/2x2.gif", sticky="E", width=32, height=32,
+                           row=0, column=3, bg=colour.MEDIUM_GREY)
+
+            # Info
+            app.label("CE_Info_Cutscene", "Info here...", fg=colour.WHITE, sticky="W", font=11, row=0, column=1)
+
+            # Drawing area
+            with app.scrollPane("CE_Pane_Cutscene", row=1, column=1, rowspan=3):
+                app.canvas("CE_Canvas_Cutscene", row=0, column=0, width=512, height=480, bg=colour.MEDIUM_GREY)
+                app.setCanvasCursor("CE_Canvas_Cutscene", "pencil")
+
+            # Tiles
+            app.canvas("CE_Canvas_Patterns", sticky="N", row=1, column=0, width=256, height=256, bg=colour.BLACK)
+            app.setCanvasCursor("CE_Canvas_Patterns", "hand1")
+
+            # Palette
+            app.canvas("CE_Canvas_Palette", row=2, column=0, width=256, height=18, bg=colour.MEDIUM_MAGENTA)
+            app.setCanvasCursor("CE_Canvas_Palette", "hand1")
 
         # Party Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Party_Editor", title="Party Editor", size=[360, 240], modal=False, resizable=False,
@@ -2537,9 +2752,9 @@ if __name__ == "__main__":
 
             # Buttons
             with app.frame("TE_Frame_Top", row=0, colspan=2, sticky='NEW', stretch='ROW', padding=[8, 2]):
-                app.button("TE_Button_Accept", text_editor_press, name="Accept and Close", image="res/floppy.gif",
+                app.button("TE_Button_Accept", text_editor_input, name="Accept and Close", image="res/floppy.gif",
                            tooltip="Apply Changes and Close", row=0, column=0, sticky='W')
-                app.button("TE_Button_Close", text_editor_press, name=" Cancel ", image="res/close.gif",
+                app.button("TE_Button_Close", text_editor_input, name=" Cancel ", image="res/close.gif",
                            tooltip="Discard Changes and Close", row=0, column=2, sticky='E')
 
             # Text
@@ -2555,7 +2770,7 @@ if __name__ == "__main__":
                 app.label("TE_Label_Type", "(Text type)")
                 app.label("TE_Label_Address", "Address:")
                 app.entry("TE_Entry_Address", "", case="upper")
-                app.button("TE_Button_Reload_Text", value=text_editor_press, name="Reload Text")
+                app.button("TE_Button_Reload_Text", value=text_editor_input, name="Reload Text")
 
             # Dialogue name and portrait
             with app.frame("TE_Frame_Bottom", row=2, colspan=2, sticky='SEW', stretch='COLUMN',
