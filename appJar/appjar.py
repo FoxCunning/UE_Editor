@@ -7496,7 +7496,7 @@ class gui(object):
 
     def getImageDimensions(self, name):
         img = self.widgetManager.get(WIDGET_NAMES.Image, name).image
-        return img.width(), img.height()
+        return img.width(), img._height()
 
     # force replace the current image, with a new one
     def reloadImage(self, name, imageFile):
@@ -7660,7 +7660,7 @@ class gui(object):
 
         if not self.ttkFlag:
             label.config(background=self._getContainerBg())
-            label.config(width=image.width(), height=image.height())
+            label.config(width=image.width(), height=image._height())
         label.modImage = image  # keep a reference!
 
     # get every nth pixel (must be an integer)
@@ -7674,7 +7674,7 @@ class gui(object):
 
         if not self.ttkFlag:
             label.config(background=self._getContainerBg())
-            label.config(width=image.width(), height=image.height())
+            label.config(width=image.width(), height=image._height())
         label.modImage = image  # keep a reference!
 
     def convertJpgToBmp(self, image):

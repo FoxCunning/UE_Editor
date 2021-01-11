@@ -1765,6 +1765,12 @@ def cutscene_input(widget: str) -> None:
         scene = get_option_index(widget, app.getOptionBox(widget))
         app.selectFrame("Cutscenes", scene, callFunction=True)
 
+    elif widget == "CE_Cutscene_1x1":
+        cutscene_editor.set_selection_size(0)
+
+    elif widget == "CE_Cutscene_2x2":
+        cutscene_editor.set_selection_size(1)
+
     elif widget[:17] == "CE_Edit_Graphics_":
         cutscene_editor.load_palette(38)
         cutscene_editor.load_patterns(0xA, 0x8000, 0xA4, 0x00)
@@ -2419,10 +2425,13 @@ if __name__ == "__main__":
                     # Buttons
                     with app.frame("CE_Frame_Buttons_1", padding=[4, 4], sticky="WE", row=1, column=0):
                         app.button("CE_Save_Parameters_1", cutscene_input, image="res/floppy.gif", sticky="E",
+                                   tooltip="Save Scene's Parameters",
                                    width=32, height=32, row=0, column=0)
                         app.button("CE_Reload_Parameters_1", cutscene_input, image="res/reload.gif", sticky="W",
+                                   tooltip="Reload Parameters from ROM",
                                    width=32, height=32, row=0, column=2)
                         app.button("CE_Edit_Graphics_1", cutscene_input, image="res/brush.gif", sticky="WE",
+                                   tooltip="Edit Graphics",
                                    width=32, height=32, row=0, column=3)
 
         # SFX / MUSIC Tab ----------------------------------------------------------------------------------------------
@@ -2450,7 +2459,7 @@ if __name__ == "__main__":
         #       ##### Sub-Windows #####
 
         # Cutscene Editor Sub-Window -----------------------------------------------------------------------------------
-        with app.subWindow("Cutscene_Editor", title="Cutscene Editor", size=[800, 380], padding=[2, 0], modal=False,
+        with app.subWindow("Cutscene_Editor", title="Cutscene Editor", size=[800, 402], padding=[2, 0], modal=False,
                            resizable=False, inPadding=0, guiPadding=0, bg=colour.DARK_GREY):
             # noinspection PyArgumentList
             app.setStopFunction(cutscene_editor_stop)
@@ -2458,33 +2467,41 @@ if __name__ == "__main__":
             # Buttons
             with app.frame("CE_Cutscene_Buttons", row=0, column=0, padding=[2, 0]):
                 app.button("CE_Cutscene_Save", cutscene_input, image="res/floppy.gif", sticky="W", width=32, height=32,
+                           tooltip="Save Changes",
                            row=0, column=0)
                 app.button("CE_Cutscene_Import", cutscene_input, image="res/import.gif", sticky="W", width=32,
+                           tooltip="Import from File",
                            height=32, row=0, column=1)
                 app.button("CE_Cutscene_Export", cutscene_input, image="res/export.gif", sticky="W", width=32,
+                           tooltip="Export to File",
                            height=32, row=0, column=2)
                 app.button("CE_Cutscene_Close", cutscene_input, image="res/close.gif", sticky="W", width=32, height=32,
+                           tooltip="Discard Changes and Close",
                            row=0, column=3)
                 app.button("CE_Cutscene_1x1", cutscene_input, image="res/1x1.gif", sticky="E", width=32, height=32,
+                           tooltip="Select/Edit 1 Tile/Pattern",
                            row=0, column=4, bg=colour.WHITE)
                 app.button("CE_Cutscene_2x2", cutscene_input, image="res/2x2.gif", sticky="E", width=32, height=32,
-                           row=0, column=5, bg=colour.MEDIUM_GREY)
+                           tooltip="Select/Edit Groups of 2x2 Tiles/Patterns",
+                           row=0, column=5, bg=colour.DARK_GREY)
 
             # Info
             app.label("CE_Info_Cutscene", "Info here...", fg=colour.WHITE, sticky="W", font=11, row=0, column=1)
 
             # Drawing area
-            with app.scrollPane("CE_Pane_Cutscene", row=1, column=1, rowspan=3):
+            with app.scrollPane("CE_Pane_Cutscene", row=1, column=1, rowspan=5):
                 app.canvas("CE_Canvas_Cutscene", row=0, column=0, width=512, height=480, bg=colour.MEDIUM_GREY)
                 app.setCanvasCursor("CE_Canvas_Cutscene", "pencil")
 
             # Tiles
             app.canvas("CE_Canvas_Patterns", sticky="N", row=1, column=0, width=256, height=256, bg=colour.BLACK)
             app.setCanvasCursor("CE_Canvas_Patterns", "hand1")
+            app.label("CE_Pattern_Info", "Pattern: 0x00", sticky="NW", row=2, column=0, font=9, fg=colour.BLACK)
 
             # Palette
-            app.canvas("CE_Canvas_Palettes", row=2, column=0, width=256, height=18, bg=colour.MEDIUM_MAGENTA)
+            app.canvas("CE_Canvas_Palettes", row=3, column=0, width=256, height=18, bg=colour.MEDIUM_MAGENTA)
             app.setCanvasCursor("CE_Canvas_Palettes", "hand1")
+            app.label("CE_Palette_Info", "Palette: 0", sticky="NW", row=4, column=0, font=9, fg=colour.BLACK)
 
         # Party Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Party_Editor", title="Party Editor", size=[360, 240], modal=False, resizable=False,

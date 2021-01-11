@@ -754,10 +754,10 @@ def CF(x):
 
 def njUpsampleH(c):
     xmax = c.width - 3
-    out = [0] * ((c.width * c.height) << 1)
+    out = [0] * ((c.width * c._height) << 1)
     lin = 0
     lout = 0
-    y = c.height
+    y = c._height
     while y:
         out[lout + 0] = CF(CF2A * c.pixels[lin + 0] + CF2B * c.pixels[lin + 1])
         out[lout + 1] = CF(CF3X * c.pixels[lin + 0] + CF3Y * c.pixels[lin + 1] + CF3Z * c.pixels[lin + 2])
@@ -779,7 +779,7 @@ def njUpsampleV(c):
     w = c.width
     s1 = c.stride
     s2 = s1 + s1
-    out = [0] * ((c.width * c.height) << 1)
+    out = [0] * ((c.width * c._height) << 1)
     for x in range(w):
         cin = x
         cout = x
@@ -790,7 +790,7 @@ def njUpsampleV(c):
         out[cout] = CF(CF3A * c.pixels[cin] + CF3B * c.pixels[cin + s1] + CF3C * c.pixels[cin + s2])
         cout += w
         cin += s1
-        y = c.height - 3
+        y = c._height - 3
         while y:
             out[cout] = CF(CF4A * c.pixels[cin - s1] + CF4B * c.pixels[cin] + CF4C * c.pixels[cin + s1] + CF4D * c.pixels[cin + s2])
             cout += w
@@ -804,7 +804,7 @@ def njUpsampleV(c):
         out[cout] = CF(CF3X * c.pixels[cin] + CF3Y * c.pixels[cin - s1] + CF3Z * c.pixels[cin - s2])
         cout += w
         out[cout] = CF(CF2A * c.pixels[cin] + CF2B * c.pixels[cin - s1])
-    c.height <<= 1
+    c._height <<= 1
     c.stride = c.width
     c.pixels = out
 

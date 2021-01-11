@@ -5,6 +5,7 @@ from typing import List
 
 from PIL import Image, ImageTk
 
+import colour
 from appJar import appjar
 from debug import log
 from helpers import Point2D
@@ -21,8 +22,8 @@ class CutsceneEditor:
         self.bank: int = 0
         self.nametable_address: int = 0
         self.attributes_address: int = 0
-        self.width: int = 0
-        self.height: int = 0
+        self._width: int = 0
+        self._height: int = 0
         self.palette_index: int = 0
         self.patterns_address: int = 0
 
@@ -32,17 +33,27 @@ class CutsceneEditor:
         self.canvas_palettes: Canvas = app.getCanvasWidget("CE_Canvas_Palettes")
 
         # Selection from colours
-        self.selected_palette: int = 0
+        self._selected_palette: int = 0
         # Selection from patterns (if 2x2, then this is the top-left tile)
-        self.selected_pattern: int = 0
+        self._selected_pattern: int = 0
         # Selection from nametable (if 2x2, then this is the top-left tile)
-        self.selected_tile: int = 0
+        self._selected_tile: int = 0
 
         self._unsaved_changes: bool = False
 
-        self.patterns: List[int] = [0] * 256
-        image = Image.new('P', (16, 16), 0)
-        self.pattern_cache: List[Image] = [image] * 256
+        # Canvas item IDs
+        self._patterns: List[int] = [0] * 256
+        # Image cache
+        image = Image.new('P', (16, 16), 0)     # Empty image just for initialisation
+        self._pattern_cache: List[Image] = [image] * 256
+        self._pattern_image_cache: List[ImageTk.PhotoImage] = [ImageTk.PhotoImage(image)] * 256
+
+        # Canvas item IDs
+        self._palette_items: List[int] = [0] * 16
+
+        # Canvas item ID, PhotoImage cache
+        self._tiles: List[int] = [0] * (32 * 30)
+        self._tile_image_cache: List[ImageTk.PhotoImage] = [ImageTk.PhotoImage(image)] * (32 * 30)
 
         # Nametable entries, same as how they appear in ROM
         self.nametables: bytearray = bytearray()
@@ -51,15 +62,15 @@ class CutsceneEditor:
         self.attributes: bytearray = bytearray()
 
         # IDs of tkinter items added to canvases indicate current selection
-        self.cutscene_rectangle: int = 0
-        self.pattern_rectangle: int = 0
-        self.palette_rectangle: int = 0
+        self._cutscene_rectangle: int = 0
+        self._pattern_rectangle: int = 0
+        self._palette_rectangle: int = 0
 
         # 0: 1x1 tile, 1: 2x2 tiles
-        self.selection_size: int = 0
+        self._selection_size: int = 0
 
         # Last modified tile on the cutscene, used for drag-editing
-        self.last_modified: Point2D = Point2D(-1, -1)
+        self._last_modified: Point2D = Point2D(-1, -1)
 
         self.rom: ROM = rom
         self.palette_editor = palette_editor
@@ -106,19 +117,18 @@ class CutsceneEditor:
         self.bank = bank
         self.nametable_address = nametable_address
         self.attributes_address = attributes_address
-        self.width = width
-        self.height = height
+        self._width = width
+        self._height = height
 
         self._unsaved_changes = False
 
-        self.app.clearCanvas("CE_Canvas_Cutscene")
-
         # Resize the drawing area according to the size of the cutscene
-        self.app.getScrollPaneWidget("CE_Pane_Cutscene").canvas.configure(width=min([width*2, 512]))
+        self.app.getScrollPaneWidget("CE_Pane_Cutscene").canvas.configure(width=512)
 
         # Load nametables
+        # TODO Add support for nametables that don't fill the screen
         self.nametables.clear()
-        self.nametables = self.rom.read_bytes(bank, nametable_address, min([1024, (width * height) >> 6]))
+        self.nametables = self.rom.read_bytes(bank, nametable_address, 1024)
 
         # Load attributes
         data = self.rom.read_bytes(bank, attributes_address, 64)
@@ -151,24 +161,79 @@ class CutsceneEditor:
         self.select_palette(0)
         self.select_tile(0, 0)
 
-        self.last_modified.x = -1
-        self.last_modified.y = -1
+        self._last_modified.x = -1
+        self._last_modified.y = -1
 
         # Draw the scene on the canvas
         self.draw_cutscene()
 
-        # Add event handlers
-        # self.canvas_cutscene.bind("<Button-1>", self._nametable_click, add="")
-        self.canvas_cutscene.bind("<ButtonPress-1>", self._nametable_mouse_1_down, add="")
-        self.canvas_cutscene.bind("<B1-Motion>", self._nametable_mouse_1_drag, add="")
-        self.canvas_cutscene.bind("<Button-3>", self._nametable_mouse_3, add="")
+        # This will also set the event handlers for the cutscene canvas
+        self.set_selection_size(0)
 
         self.canvas_patterns.bind("<Button-1>", self._patterns_click, add="")
-
         self.canvas_palettes.bind("<Button-1>", self._palettes_click, add="")
 
         # Show sub-window
         self.app.showSubWindow("Cutscene_Editor")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def set_selection_size(self, size: int) -> None:
+        """
+        Sets the tile/pattern selection/editing size to 1x1 or 2x2.
+
+        Parameters
+        ----------
+        size: int
+            0: 1x1, 1: 2x2
+        """
+        # We will use separate event handlers to speed up the reaction to click and drag on the nametables
+
+        if size == 0:
+            self._selection_size = 0
+
+            # Change button colours
+            self.app.button("CE_Cutscene_1x1", bg=colour.WHITE)
+            self.app.button("CE_Cutscene_2x2", bg=colour.DARK_GREY)
+
+            # Updating selections will also resize the indicator rectangle
+            pattern = Point2D(self._selected_pattern % 16, self._selected_pattern >> 4)
+            tile = Point2D(self._selected_tile % 32, self._selected_tile >> 5)
+
+            self.select_pattern(pattern.x, pattern.y)
+            self.select_tile(tile.x, tile.y)
+
+            # Event handlers for 1x1 selection
+            self.canvas_cutscene.bind("<ButtonPress-1>", self._nametable_mouse_1_down, add="")
+            self.canvas_cutscene.bind("<B1-Motion>", self._nametable_mouse_1_drag, add="")
+            self.canvas_cutscene.bind("<Button-3>", self._nametable_mouse_3, add="")
+
+        else:
+            self._selection_size = 1
+
+            self.app.button("CE_Cutscene_1x1", bg=colour.DARK_GREY)
+            self.app.button("CE_Cutscene_2x2", bg=colour.WHITE)
+
+            # Change tile selection to the top-left tile in any 2x2 group
+            tile = Point2D(self._selected_tile % 32, self._selected_tile >> 5)
+            tile.x = tile.x - (tile.x % 2)
+            tile.y = tile.y - (tile.y % 2)
+
+            # Change the pattern selection if we are near a border
+            pattern = Point2D(self._selected_pattern % 16, self._selected_pattern >> 4)
+            if pattern.x > 14:
+                pattern.x = 14
+            if pattern.y > 14:
+                pattern.y = 14
+
+            # Updating selections will also resize the indicator rectangle
+            self.select_pattern(pattern.x, pattern.y)
+            self.select_tile(tile.x, tile.y)
+
+            # Set 2x2 event handlers
+            self.canvas_cutscene.bind("<ButtonPress-1>", self._nametable_mouse_1_down_2x2, add="")
+            self.canvas_cutscene.bind("<B1-Motion>", self._nametable_mouse_1_drag_2x2, add="")
+            self.canvas_cutscene.bind("<Button-3>", self._nametable_mouse_3, add="")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -217,14 +282,10 @@ class CutsceneEditor:
 
         self.app.hideSubWindow("Cutscene_Editor", False)
 
-        self.app.clearCanvas("CE_Canvas_Cutscene")
-        self.app.clearCanvas("CE_Canvas_Patterns")
-        self.app.clearCanvas("CE_Canvas_Palettes")
-
         # Clear patterns list
-        self.patterns = [0] * 256
+        self._patterns = [0] * 256
         image = ImageTk.PhotoImage(Image.new('P', (16, 16), 0))
-        self.pattern_cache = [image] * 256
+        self._pattern_cache = [image] * 256
 
         return True
 
@@ -232,19 +293,22 @@ class CutsceneEditor:
 
     def load_palette(self, palette_index: int) -> None:
         self.palette_index = palette_index
-        self.selected_palette = 0
+        self._selected_palette = 0
 
         # Show colours on the canvas
-        self.app.clearCanvas("CE_Canvas_Palettes")
         palette = self.palette_editor.palettes[palette_index]
         cell_x = 0
 
         for c in range(16):
-            colour = bytes(self.palette_editor.get_colour(palette[c]))
+            rgb = bytes(self.palette_editor.get_colour(palette[c]))
 
-            colour_string = f"#{colour[0]:02X}{colour[1]:02X}{colour[2]:02X}"
-            self.canvas_palettes.create_rectangle(cell_x, 0, cell_x + 15, 17, fill=colour_string, outline="#000000",
-                                                  width=1)
+            colour_string = f"#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
+            if self._palette_items[c] > 0:
+                self.canvas_palettes.itemconfig(self._palette_items[c], fill=colour_string)
+            else:
+                self._palette_items[c] = self.canvas_palettes.create_rectangle(cell_x, 0, cell_x + 15, 17,
+                                                                               fill=colour_string, outline="#000000",
+                                                                               width=1)
             cell_x = cell_x + 16
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -268,7 +332,7 @@ class CutsceneEditor:
             Index of the first pattern in the PPU (0 - 255)
         """
         # Use currently selected palette
-        colours = self.palette_editor.sub_palette(self.palette_index, self.selected_palette)
+        colours = self.palette_editor.sub_palette(self.palette_index, self._selected_palette)
 
         # Load 8x8 patterns
         while count > 0 and first < 256:
@@ -289,45 +353,49 @@ class CutsceneEditor:
             x = (first % 16) << 4
             y = (first >> 4) << 4
 
-            # If there is already an item at those coordinates in the canvas, erase it
-            items = self.canvas_patterns.find_enclosed(x - 8, y - 8, x + 8, y + 8)
-            if len(items) > 0:
-                for i in items:
-                    self.canvas_patterns.delete(i)
+            # Cache the image for quicker drawing and future editing
+            self._pattern_cache[first] = image_2x
 
             # Paste this pattern to the appropriate canvas at the right position
-            self.patterns[first] = self.app.addCanvasImage("CE_Canvas_Patterns", x + 8, y + 8,
-                                                           ImageTk.PhotoImage(image_2x))
-            # Cache the image for quicker drawing
-            self.pattern_cache[first] = image_2x
+            self._pattern_image_cache[first] = ImageTk.PhotoImage(self._pattern_cache[first])
+            if self._patterns[first] > 0:
+                # Update an existing image item
+                self.canvas_patterns.itemconfig(self._patterns[first], image=self._pattern_image_cache[first])
+            else:
+                # Create a new image item if there wasn't one yet
+                self._patterns[first] = self.canvas_patterns.create_image(x, y, anchor="nw",
+                                                                          image=self._pattern_image_cache[first])
+                # self._patterns[first] = self.app.addCanvasImage("CE_Canvas_Patterns", x + 8, y + 8,
+                #                                                image=self._pattern_image_cache[first])
 
             # Advance to the next pattern
             first = first + 1
             address = address + 0x10
             count = count - 1
 
-        if self.pattern_rectangle > 0:
+        if self._pattern_rectangle > 0:
             # Raise selection rectangle
-            self.canvas_patterns.tag_raise(self.pattern_rectangle)
+            self.canvas_patterns.tag_raise(self._pattern_rectangle)
         else:
             # Add a selection rectangle
-            selection_x = (self.selected_pattern << 3) % 256
-            selection_y = (self.selected_pattern >> 4) << 3
-            size = 16 + (15 * self.selection_size)
-            self.pattern_rectangle = self.app.addCanvasRectangle("CE_Canvas_Patterns", selection_x + 1,
-                                                                 selection_y + 1,
-                                                                 size, size, outline="#FFFFFF", width=2)
+            selection_x = (self._selected_pattern << 3) % 256
+            selection_y = (self._selected_pattern >> 4) << 3
+            size = 16 + (15 * self._selection_size)
+            self._pattern_rectangle = self.app.addCanvasRectangle("CE_Canvas_Patterns", selection_x + 1,
+                                                                  selection_y + 1,
+                                                                  size, size, outline="#FFFFFF", width=2)
 
         # TODO Redraw the cutscene using the new patterns, if needed
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def draw_cutscene(self) -> None:
-        self.app.clearCanvas("CE_Canvas_Cutscene")
-
-        # x2 scale
-        width = self.width << 1
-        height = self.height << 1
+        """
+        Fills the cutscene canvas with patterns according to the name and attribute tables.
+        """
+        # x2 scale: double the tile count both vertically and horizontally
+        width = self._width << 1
+        height = self._height << 1
 
         x = 0
         y = 0
@@ -343,10 +411,15 @@ class CutsceneEditor:
 
             # Replace the cached image's palette with the correct one
             try:
-                image = self.pattern_cache[pattern]
+                image = self._pattern_cache[pattern]
                 image.putpalette(colours)
 
-                self.app.addCanvasImage("CE_Canvas_Cutscene", x + 8, y + 8, ImageTk.PhotoImage(image))
+                self._tile_image_cache[tile] = ImageTk.PhotoImage(image)
+                if self._tiles[tile] == 0:
+                    self._tiles[tile] = self.app.addCanvasImage("CE_Canvas_Cutscene", x + 8, y + 8,
+                                                                self._tile_image_cache[tile])
+                else:
+                    self.canvas_cutscene.itemconfig(self._tiles[tile], image=self._tile_image_cache[tile])
 
             except KeyError:
                 # Add a "marked" image like a cross or something to indicate there has been an error?
@@ -369,11 +442,11 @@ class CutsceneEditor:
             self.app.addCanvasLine("CE_Canvas_Cutscene", 0, line_y, 512, line_y, fill="#7E7E7E", width=1)
 
         # Add a selection rectangle
-        selection_x = (self.selected_tile << 4) % 512
-        selection_y = (self.selected_tile >> 5) << 4
-        size = 16 + (15 * self.selection_size)
-        self.cutscene_rectangle = self.app.addCanvasRectangle("CE_Canvas_Cutscene", selection_x + 1, selection_y + 1,
-                                                              size, size, outline="#FFFFFF", width=2)
+        selection_x = (self._selected_tile << 4) % 512
+        selection_y = (self._selected_tile >> 5) << 4
+        size = 16 + (15 * self._selection_size)
+        self._cutscene_rectangle = self.app.addCanvasRectangle("CE_Canvas_Cutscene", selection_x + 1, selection_y + 1,
+                                                               size, size, outline="#FFFFFF", width=2)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -382,16 +455,30 @@ class CutsceneEditor:
         Select a palette (0-3).
         """
         if 0 <= palette <= 3:
-            self.selected_palette = palette
+
+            if palette != self._selected_palette:
+                # Change pattern colours if needed
+                rgb = self.palette_editor.sub_palette(self.palette_index, palette)
+
+                for p in range(256):
+                    image = self._pattern_cache[p]
+                    image.putpalette(rgb)
+                    if self._patterns[p] > 0:
+                        self._pattern_image_cache[p] = ImageTk.PhotoImage(image)
+                        self.canvas_patterns.itemconfig(self._patterns[p], image=self._pattern_image_cache[p])
+
+            self._selected_palette = palette
 
             selection_x = (palette << 6) + 1
 
-            if self.palette_rectangle > 0:
-                self.canvas_palettes.coords(self.palette_rectangle, selection_x, 1, selection_x + 63, 17)
-                self.canvas_palettes.tag_raise(self.palette_rectangle)
+            self.app.label("CE_Palette_Info", f"Palette: {palette}")
+
+            if self._palette_rectangle > 0:
+                self.canvas_palettes.coords(self._palette_rectangle, selection_x, 1, selection_x + 63, 17)
+                self.canvas_palettes.tag_raise(self._palette_rectangle)
             else:
-                self.palette_rectangle = self.canvas_palettes.create_rectangle(selection_x, 1, selection_x + 63, 17,
-                                                                               outline="#FFFFFF", width=2)
+                self._palette_rectangle = self.canvas_palettes.create_rectangle(selection_x, 1, selection_x + 63, 17,
+                                                                                outline="#FFFFFF", width=2)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -400,22 +487,24 @@ class CutsceneEditor:
         Select a pattern (or a 2x2 group of patterns).
         """
         # Make sure we stay within the canvas
-        if self.selection_size == 1:
+        if self._selection_size == 1:
             # 2x2
             if x > 14:
-                x = x - 1
+                x = 14
             if y > 14:
-                y = y - 1
+                y = 14
 
         # Selection canvas contains 16x16 patterns
         # (tile X index % number of tiles in a row) + (tile Y index / number of tiles in a column)
-        self.selected_pattern = (x % 16) + (y << 4)
+        self._selected_pattern = (x % 16) + (y << 4)
 
-        if self.pattern_rectangle > 0:
+        self.app.label("CE_Pattern_Info", f"Pattern: 0x{self._selected_pattern:02X}")
+
+        if self._pattern_rectangle > 0:
             selection_x = (x << 4) + 1  # base X = tile X index * tile width in pixels
             selection_y = (y << 4) + 1  # base Y = tile Y index * tile height in pixels
-            size = 16 + (15 * self.selection_size)
-            self.canvas_patterns.coords(self.pattern_rectangle, selection_x, selection_y,
+            size = 16 + (15 * self._selection_size)
+            self.canvas_patterns.coords(self._pattern_rectangle, selection_x, selection_y,
                                         selection_x + size, selection_y + size)
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -438,67 +527,91 @@ class CutsceneEditor:
             A tuple containing nametable entry (i.e. pattern index) and attribute value at the given coordinates
         """
         # (tile X index % number of tiles in a row) + (tile Y index / number of tiles in a column)
-        self.selected_tile = (x % 32) + (y << 5)
+        self._selected_tile = (x % 32) + (y << 5)
         # self.info(f"Tile at: {x}, {y} = {self.selected_tile}")
-        self.app.label("CE_Info_Cutscene", f"Selection: {x}, {y} [0x{(0x2000 + self.selected_tile):04X}] " +
-                       f"| Pattern 0x{self.nametables[self.selected_tile]:02X} " +
-                       f"| Palette {self.attributes[self.selected_tile]}")
+        self.app.label("CE_Info_Cutscene", f"Selection: {x}, {y} [0x{(0x2000 + self._selected_tile):04X}] " +
+                       f"| Pattern 0x{self.nametables[self._selected_tile]:02X} " +
+                       f"| Palette {self.attributes[self._selected_tile]}")
 
-        if self.cutscene_rectangle > 0:
+        if self._cutscene_rectangle > 0:
             selection_x = (x << 4) + 1
             selection_y = (y << 4) + 1
-            size = 16 + (15 * self.selection_size)
-            self.canvas_cutscene.coords(self.cutscene_rectangle, selection_x, selection_y,
+            size = 16 + (15 * self._selection_size)
+            self.canvas_cutscene.coords(self._cutscene_rectangle, selection_x, selection_y,
                                         selection_x + size, selection_y + size)
 
-        return [self.nametables[self.selected_tile], self.attributes[self.selected_tile]]
-
-    # ------------------------------------------------------------------------------------------------------------------
-
-    def _nametable_click(self, event: any) -> None:
-        """
-        Callback for left mouse button click on the nametable canvas.
-        """
-        # Formula: x = (mouse x / tile width in pixels), y = (mouse y / tile height in pixels)
-        x = event.x >> 4
-        y = event.y >> 4
-        # self.info(f"x: {event.x}, y: {event.y} - select {x}, {y}")
-
-        # Change tile
-        self.edit_nametable_entry(x, y, self.selected_pattern)
-        # TODO Change the other 3 entries if selection size is 2x2
-
-        # Select tile
-        self.select_tile(x, y)
+        return [self.nametables[self._selected_tile], self.attributes[self._selected_tile]]
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def _nametable_mouse_1_down(self, event: any) -> None:
         """
-        Callback for left button down on cutscene canvas.
+        Callback for left button down on cutscene canvas, when selection size is 1x1.
         """
-        self.last_modified.x = event.x >> 4
-        self.last_modified.y = event.y >> 4
+        self._last_modified.x = event.x >> 4
+        self._last_modified.y = event.y >> 4
 
-        # TODO Modify the other 3 tiles if selection size is 2x2
-        self.edit_nametable_entry(self.last_modified.x, self.last_modified.y, self.selected_pattern)
+        self.edit_nametable_entry(self._last_modified.x, self._last_modified.y, self._selected_pattern)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _nametable_mouse_1_down_2x2(self, event: any) -> None:
+        """
+        Callback for left button down on cutscene canvas, when selection size is 2x2.
+        """
+        # We treat the canvas as if it contained half the tiles
+        # Do as if each tile was twice the size on each axis, then multiply by the scaling factor
+        # This ensures we always select the top-left tile of each 2x2 group
+        self._last_modified.x = (event.x >> 5) << 1
+        self._last_modified.y = (event.y >> 5) << 1
+
+        self.info(f"Mouse: {event.x}, {event.y}, tile: {self._last_modified.x}, {self._last_modified.y}")
+
+        # The selection should always be the top-left tile of a 2x2 "super-tile"
+        self.edit_nametable_entry(self._last_modified.x + 1, self._last_modified.y + 1, self._selected_pattern + 17)
+        self.edit_nametable_entry(self._last_modified.x, self._last_modified.y + 1, self._selected_pattern + 16)
+        self.edit_nametable_entry(self._last_modified.x + 1, self._last_modified.y, self._selected_pattern + 1)
+        # We leave the top-left last so that the selection rectangle will be based on its position
+        self.edit_nametable_entry(self._last_modified.x, self._last_modified.y, self._selected_pattern)
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def _nametable_mouse_1_drag(self, event: any) -> None:
         """
-        Callback for left button drag on cutscene canvas.
+        Callback for left button drag on cutscene canvas, when selection size is 1x1.
         """
         x = event.x >> 4
         y = event.y >> 4
 
-        # TODO 2x2 tiles
-        if x == self.last_modified.x and y == self.last_modified.y:
+        if x == self._last_modified.x and y == self._last_modified.y:
             return
         else:
-            self.last_modified.x = x
-            self.last_modified.y = y
-            self.edit_nametable_entry(x, y, self.selected_pattern)
+            self._last_modified.x = x
+            self._last_modified.y = y
+            self.edit_nametable_entry(x, y, self._selected_pattern)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _nametable_mouse_1_drag_2x2(self, event: any) -> None:
+        """
+        Callback for left button drag on cutscene canvas, when selection size is 2x2.
+        """
+        x = (event.x >> 5) << 1
+        y = (event.y >> 5) << 1
+
+        if x == self._last_modified.x and y == self._last_modified.y:
+            return
+        else:
+            self._last_modified.x = x
+            self._last_modified.y = y
+            # Bottom-right
+            self.edit_nametable_entry(x + 1, y + 1, self._selected_pattern + 17)
+            # Bottom-left
+            self.edit_nametable_entry(x, y + 1, self._selected_pattern + 16)
+            # Top-right
+            self.edit_nametable_entry(x + 1, y, self._selected_pattern + 1)
+            # Top-left
+            self.edit_nametable_entry(x, y, self._selected_pattern)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -506,6 +619,7 @@ class CutsceneEditor:
         """
         Callback for right mouse click on cutscene canvas.
         Selects the pattern and attribute used for that tile.
+        1x1 selection version.
         """
         x = event.x >> 4
         y = event.y >> 4
@@ -517,9 +631,24 @@ class CutsceneEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _nametable_mouse_3_2x2(self, event: any) -> None:
+        """
+        Callback for right mouse click on cutscene canvas.
+        Selects the pattern and attribute used for that tile.
+        2x2 selection version.
+        """
+        x = (event.x >> 5) << 1
+        y = (event.y >> 5) << 1
+
+        tile_data = self.select_tile(x, y)
+        self.select_pattern(tile_data[0] % 16, tile_data[0] >> 4)
+        self.select_palette(tile_data[1])
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _patterns_click(self, event: any) -> None:
         """
-        Callback for left mouse click on the patterns canvas.
+        Callback for left mouse click on the patterns canvas, when the selection size is 1x2.
         """
         # Formula: x = (mouse x / tile width in pixels), y = (mouse y / tile height in pixels)
         x = event.x >> 4
@@ -540,27 +669,22 @@ class CutsceneEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _update_attribute(self, x: int, y: int, palette: int) -> None:
-        t = x % 32 + (y << 5)
+        t = (x % 32) + (y << 5)
 
         self.attributes[t] = palette
         colours = self.palette_editor.sub_palette(self.palette_index, palette)
 
         pattern = self.nametables[t]
-        new_image = self.pattern_cache[pattern]
+        new_image = self._pattern_cache[pattern]
         new_image.putpalette(colours)
+
+        self._tile_image_cache[t] = ImageTk.PhotoImage(new_image)
 
         # X position on canvas = X index * width in pixels
         # Y position on canvas = Y index * height in pixels
-        item_position = Point2D(x=x << 4, y=y << 4)
-        # Get the old image at these coordinate and delete it
-        items = self.canvas_cutscene.find_enclosed(item_position.x, item_position.y,
-                                                   item_position.x + 16, item_position.y + 16)
-        for i in items:
-            self.canvas_cutscene.delete(i)
-        # Create a new image with the correct pattern
-        new_item = self.app.addCanvasImage("CE_Canvas_Cutscene", item_position.x + 8, item_position.y + 8,
-                                           image=ImageTk.PhotoImage(new_image))
-        self.canvas_cutscene.tag_lower(new_item)
+        # item_position = Point2D(x=x << 4, y=y << 4)
+
+        self.canvas_cutscene.itemconfig(self._tiles[t], image=self._tile_image_cache[t])
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -586,12 +710,12 @@ class CutsceneEditor:
         # Get the attribute table for these coordinates
         sub_palette = self.attributes[t]
 
-        if self.selected_palette != sub_palette:
+        if self._selected_palette != sub_palette:
             # We are changing the palette, which affects other tiles
             # Get the top-left tile of this 2x2 group
             top_left = Point2D(x - (x % 2), y - (y % 2))
             # Update the palette for the whole group
-            sub_palette = self.selected_palette
+            sub_palette = self._selected_palette
 
             self._update_attribute(top_left.x, top_left.y, sub_palette)
             self._update_attribute(top_left.x + 1, top_left.y, sub_palette)
@@ -600,24 +724,18 @@ class CutsceneEditor:
 
         else:
             # Palette didn't change: only update this tile
-            sub_palette = self.selected_palette
+            sub_palette = self._selected_palette
             colours = self.palette_editor.sub_palette(self.palette_index, sub_palette)
 
-            new_image = self.pattern_cache[pattern]
+            new_image = self._pattern_cache[pattern]
             new_image.putpalette(colours)
+            self._tile_image_cache[t] = ImageTk.PhotoImage(new_image)
 
             # X position on canvas = X index * width in pixels
             # Y position on canvas = Y index * height in pixels
-            item_position = Point2D(x=x << 4, y=y << 4)
-            # Get the old image at these coordinate and delete it
-            items = self.canvas_cutscene.find_enclosed(item_position.x, item_position.y,
-                                                       item_position.x + 16, item_position.y + 16)
-            for i in items:
-                self.canvas_cutscene.delete(i)
-            # Create a new image with the correct pattern
-            new_item = self.app.addCanvasImage("CE_Canvas_Cutscene", item_position.x + 8, item_position.y + 8,
-                                               image=ImageTk.PhotoImage(new_image))
-            self.canvas_cutscene.tag_lower(new_item)
+            # item_position = Point2D(x=x << 4, y=y << 4)
+
+            self.canvas_cutscene.itemconfig(self._tiles[t], image=self._tile_image_cache[t])
 
         self.select_tile(x, y)
 
