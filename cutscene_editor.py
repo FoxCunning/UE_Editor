@@ -798,3 +798,94 @@ class CutsceneEditor:
         self._unsaved_changes = False
 
         return success
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def export_to_file(self, file_name: str) -> None:
+        data = self.nametable[:960]
+
+        table_size = len(self.attributes)
+        shift = [0, 2, 4, 6]
+
+        # Convert attribute per tile to PPU format
+        for a in range(64):
+            # Each value is (bottom-right << 6) | (bottom-left << 4) | (top-right << 2) | (top-left << 0)
+            attribute = 0
+
+            # Get the top-left tile for this attribute entry
+            # Each attribute pertains to 4x4 tiles and there are 8x8 attributes
+            # So tile x = (attribute % 8) * 4, tile y = (attribute / 8) * 4
+            x = (a % 8) << 2
+            y = (a >> 3) << 2
+
+            # We are considering a 32 * 32 tile area, so tile = (x % 32) + (y * 32)
+            top_right = (x % 32) + (y << 5)
+
+            # Get the other corner tiles in this 4x4 square
+            tiles = [top_right, top_right + 2, top_right + 64, top_right + 66]
+
+            for t in range(4):
+                if tiles[t] < table_size:
+                    attribute = attribute | (self.attributes[tiles[t]] << shift[t])
+
+            data.append(attribute)
+
+        # Open file for writing
+        try:
+            file = open(file_name, "wb")
+            if file is not None:
+                file.write(data)
+                file.close()
+
+        except OSError as error:
+            self.app.errorBox("Export Cutscene", f"ERROR: {error.strerror}.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def import_from_file(self, file_name: str) -> None:
+        try:
+            file = open(file_name, "rb")
+            data = file.read()
+            file.close()
+
+            # Read nametables
+            # TODO Add support for nametables that don't fill the screen
+            self.nametable.clear()
+            self.nametable = bytearray(data[:960])
+
+            # Read attributes
+            self.attributes.clear()
+            size = 960
+            self.attributes = bytearray(size)
+
+            data = data[960:]
+
+            for a in range(64):
+                top_left = data[a] & 0x03
+                top_right = (data[a] >> 2) & 0x03
+                bottom_left = (data[a] >> 4) & 0x03
+                bottom_right = data[a] >> 6
+
+                tile_x = (a << 2) % 32
+                tile_y = (a >> 3) << 2
+
+                tile = (tile_x % 32) + (tile_y * 32)
+                self._assign_attributes(tile, top_left)
+
+                tile = ((tile_x + 2) % 32) + (tile_y * 32)
+                self._assign_attributes(tile, top_right)
+
+                tile = (tile_x % 32) + ((tile_y + 2) * 32)
+                self._assign_attributes(tile, bottom_left)
+
+                tile = ((tile_x + 2) % 32) + ((tile_y + 2) * 32)
+                self._assign_attributes(tile, bottom_right)
+
+            # Redraw the scene
+            self.draw_cutscene()
+
+        except IndexError:
+            self.app.errorBox("Import Cutscene", "ERROR: Invalid data, EOF encountered.")
+
+        except OSError as error:
+            self.app.errorBox("Import Cutscene", f"ERROR: {error.strerror}.")

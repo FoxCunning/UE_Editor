@@ -2156,6 +2156,26 @@ def cutscene_input(widget: str) -> None:
         if cutscene_editor.save_nametable() is True and cutscene_editor.save_attributes() is True:
             cutscene_editor.close_window()
 
+    elif widget == "CE_Cutscene_Export":
+        # Ask for a file name
+        file_name = app.saveBox("Export Cutscene...", None, settings.get("last map export path"), ".bin",
+                                [("Raw PPU Data", "*.bin"), ("All Files", "*.*")],
+                                parent="Cutscene_Editor")
+        if file_name != "":
+            cutscene_editor.export_to_file(file_name)
+            directory = os.path.dirname(file_name)
+            settings.set("last map import path", directory)
+
+    elif widget == "CE_Cutscene_Import":
+        # Browse for a file to import
+        file_name = app.openBox("Import Cutscene...", settings.get("last map import path"),
+                                [("Raw PPU Data", "*.bin"), ("All Files", "*.*")],
+                                asFile=False, parent="Cutscene_Editor", multiple=False)
+        if file_name != "":
+            cutscene_editor.import_from_file(file_name)
+            directory = os.path.dirname(file_name)
+            settings.set("last map import path", directory)
+
     elif widget == "CE_Cutscene_Close":
         cutscene_editor.close_window()
 
@@ -2173,7 +2193,8 @@ def cutscene_input(widget: str) -> None:
         cutscene_editor.load_palette(38)
         cutscene_editor.load_patterns(0xA, 0x8000, 0xA4, 0x00)
         cutscene_editor.load_patterns(0x7, 0xA100, 20, 0x0A)
-        cutscene_editor.load_patterns(0xC, 0xAF01, 92, 0xA4)
+        cutscene_editor.load_patterns(0xC, 0xAF01, 84, 0xA4)
+        cutscene_editor.load_patterns(0xA, 0x8F80, 8, 0xF8)
         cutscene_editor.show_window(0xC, 0x9B1B, 0x9EEB, 32, 30)
 
     else:
