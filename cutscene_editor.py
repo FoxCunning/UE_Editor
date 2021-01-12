@@ -44,7 +44,7 @@ class CutsceneEditor:
         # Canvas item IDs
         self._patterns: List[int] = [0] * 256
         # Image cache
-        image = Image.new('P', (16, 16), 0)     # Empty image just for initialisation
+        image = Image.new('P', (16, 16), 0)  # Empty image just for initialisation
         self._pattern_cache: List[Image] = [image] * 256
         self._pattern_image_cache: List[ImageTk.PhotoImage] = [ImageTk.PhotoImage(image)] * 256
 
@@ -56,7 +56,7 @@ class CutsceneEditor:
         self._tile_image_cache: List[ImageTk.PhotoImage] = [ImageTk.PhotoImage(image)] * (32 * 30)
 
         # Nametable entries, same as how they appear in ROM
-        self.nametables: bytearray = bytearray()
+        self.nametable: bytearray = bytearray()
         # Attribute values, one per tile so NOT as they appear in ROM
         # These can be matched to nametable tiles so that nametables[t] uses palette attributes[t]
         self.attributes: bytearray = bytearray()
@@ -109,10 +109,10 @@ class CutsceneEditor:
             Address of the attribute table
 
         width: int
-            Horizontal tile count
+            Horizontal tile count (1-32)
 
         height: int
-            Vertical tile count
+            Vertical tile count (1-30)
         """
         self.bank = bank
         self.nametable_address = nametable_address
@@ -127,13 +127,13 @@ class CutsceneEditor:
 
         # Load nametables
         # TODO Add support for nametables that don't fill the screen
-        self.nametables.clear()
-        self.nametables = self.rom.read_bytes(bank, nametable_address, 1024)
+        self.nametable.clear()
+        self.nametable = self.rom.read_bytes(bank, nametable_address, 960)
 
         # Load attributes
         data = self.rom.read_bytes(bank, attributes_address, 64)
         self.attributes.clear()
-        size = 32*30
+        size = 32 * 30
         self.attributes = bytearray(size)
 
         for a in range(64):
@@ -393,17 +393,17 @@ class CutsceneEditor:
         """
         Fills the cutscene canvas with patterns according to the name and attribute tables.
         """
-        # x2 scale: double the tile count both vertically and horizontally
-        width = self._width << 1
-        height = self._height << 1
+        # x2 scale: double the tile size both vertically and horizontally
+        width = 512
+        height = 480
 
         x = 0
         y = 0
 
         tile = 0
 
-        while y < height and tile < len(self.nametables):
-            pattern = self.nametables[tile]
+        while y < height and tile < len(self.nametable):
+            pattern = self.nametable[tile]
 
             # Get the colours for this tile from the attributes list
             attribute = self.attributes[tile]
@@ -445,8 +445,15 @@ class CutsceneEditor:
         selection_x = (self._selected_tile << 4) % 512
         selection_y = (self._selected_tile >> 5) << 4
         size = 16 + (15 * self._selection_size)
-        self._cutscene_rectangle = self.app.addCanvasRectangle("CE_Canvas_Cutscene", selection_x + 1, selection_y + 1,
-                                                               size, size, outline="#FFFFFF", width=2)
+
+        if self._cutscene_rectangle > 0:
+            self.canvas_cutscene.coords(self._cutscene_rectangle, selection_x + 1, selection_y + 1,
+                                        selection_x + size, selection_y + size)
+            self.canvas_cutscene.tag_raise(self._cutscene_rectangle)
+        else:
+            self._cutscene_rectangle = self.app.addCanvasRectangle("CE_Canvas_Cutscene",
+                                                                   selection_x + 1, selection_y + 1,
+                                                                   size, size, outline="#FFFFFF", width=2)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -530,7 +537,7 @@ class CutsceneEditor:
         self._selected_tile = (x % 32) + (y << 5)
         # self.info(f"Tile at: {x}, {y} = {self.selected_tile}")
         self.app.label("CE_Info_Cutscene", f"Selection: {x}, {y} [0x{(0x2000 + self._selected_tile):04X}] " +
-                       f"| Pattern 0x{self.nametables[self._selected_tile]:02X} " +
+                       f"| Pattern 0x{self.nametable[self._selected_tile]:02X} " +
                        f"| Palette {self.attributes[self._selected_tile]}")
 
         if self._cutscene_rectangle > 0:
@@ -540,7 +547,7 @@ class CutsceneEditor:
             self.canvas_cutscene.coords(self._cutscene_rectangle, selection_x, selection_y,
                                         selection_x + size, selection_y + size)
 
-        return [self.nametables[self._selected_tile], self.attributes[self._selected_tile]]
+        return [self.nametable[self._selected_tile], self.attributes[self._selected_tile]]
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -674,7 +681,7 @@ class CutsceneEditor:
         self.attributes[t] = palette
         colours = self.palette_editor.sub_palette(self.palette_index, palette)
 
-        pattern = self.nametables[t]
+        pattern = self.nametable[t]
         new_image = self._pattern_cache[pattern]
         new_image.putpalette(colours)
 
@@ -703,9 +710,9 @@ class CutsceneEditor:
         pattern: int
             Index of the new pattern (0-255)
         """
-        # (tile X index % number of tiles in a row) + (tile Y index / number of tiles in a column)
-        t = x % 32 + (y << 5)
-        self.nametables[t] = pattern
+        # (tile X index % number of tiles in a row) + (tile Y index * number of tiles in a column)
+        t = (x % 32) + (y << 5)
+        self.nametable[t] = pattern
 
         # Get the attribute table for these coordinates
         sub_palette = self.attributes[t]
@@ -740,3 +747,54 @@ class CutsceneEditor:
         self.select_tile(x, y)
 
         self._unsaved_changes = True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def save_nametable(self) -> bool:
+        success: bool = True
+
+        # TODO Add support for scenes that don't fill the whole screen
+        self.rom.write_bytes(self.bank, self.nametable_address, self.nametable)
+
+        return success
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def save_attributes(self) -> bool:
+        success: bool = True
+
+        data = bytearray()
+
+        size = len(self.attributes)
+
+        shift = [0, 2, 4, 6]
+
+        # Convert attribute per tile to PPU format
+        for a in range(64):
+            # Each value is (bottom-right << 6) | (bottom-left << 4) | (top-right << 2) | (top-left << 0)
+            attribute = 0
+
+            # Get the top-left tile for this attribute entry
+            # Each attribute pertains to 4x4 tiles and there are 8x8 attributes
+            # So tile x = (attribute % 8) * 4, tile y = (attribute / 8) * 4
+            x = (a % 8) << 2
+            y = (a >> 3) << 2
+
+            # We are considering a 32 * 32 tile area, so tile = (x % 32) + (y * 32)
+            top_right = (x % 32) + (y << 5)
+
+            # Get the other corner tiles in this 4x4 square
+            tiles = [top_right, top_right + 2, top_right + 64, top_right + 66]
+
+            for t in range(4):
+                if tiles[t] < size:
+                    attribute = attribute | (self.attributes[tiles[t]] << shift[t])
+
+            data.append(attribute)
+
+        # TODO Actually save
+        self.info(f"Attribute table: {data.hex()}")
+
+        self._unsaved_changes = False
+
+        return success

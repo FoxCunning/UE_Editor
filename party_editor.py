@@ -5577,7 +5577,7 @@ class PartyEditor:
                 else:
                     return False
 
-            value = int.to_bytes(self.routines[i].mp_cast, 1, "little", signed=True)
+            value = self.routines[i].mp_cast.to_bytes(1, "little", signed=True)
             self.rom.write_byte(0xF, 0xDBC3 + i, value[0])
 
         # Save routine pointers table at $DBB1

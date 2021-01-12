@@ -33,7 +33,7 @@ from rom import ROM, feature_names
 from text_editor import TextEditor
 
 
-# --- Editor Settings class ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 @dataclass(init=True, repr=False)
 class EditorSettings:
@@ -51,7 +51,7 @@ class EditorSettings:
              "sync npc sprites": True
              }
 
-    # --- EditorSettings.load() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def load(self) -> bool:
         """
@@ -90,7 +90,7 @@ class EditorSettings:
         file.close()
         return True
 
-    # --- EditorSettings.save() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def save(self) -> bool:
         """
@@ -128,7 +128,7 @@ class EditorSettings:
         file.close()
         return True
 
-    # --- EditorSettings._parse_line() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _parse_line(self, line: str) -> None:
         """
@@ -177,7 +177,7 @@ class EditorSettings:
 
         return
 
-    # --- EditorSettings.get() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def get(self, key: str) -> any:
         """
@@ -201,8 +201,7 @@ class EditorSettings:
 
         return value
 
-    # --- EditorSettings.set() ---
-
+    # ------------------------------------------------------------------------------------------------------------------
     def set(self, key: str, value: str) -> None:
         """
         Changes the value of the given setting
@@ -217,7 +216,7 @@ class EditorSettings:
         self._parse_line(f"{key} = {value}")
 
 
-# --- Global variables ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 settings = EditorSettings()
 
@@ -250,7 +249,7 @@ last_tile = {
 }
 
 
-# --- get_option_index() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def get_option_index(widget: str, value: str) -> int:
     """
@@ -272,7 +271,7 @@ def get_option_index(widget: str, value: str) -> int:
     return box.options.index(value)
 
 
-# --- edit_map() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def edit_map() -> None:
     """
@@ -332,7 +331,7 @@ def edit_map() -> None:
         app.getScrollPaneWidget("ME_Scroll_Pane").canvas.configure(width=508)
 
 
-# --- select_dungeon_level() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_dungeon_level(sel: str) -> None:
     """
@@ -352,7 +351,7 @@ def select_dungeon_level(sel: str) -> None:
     map_editor.show_map()
 
 
-# --- change_dungeon_message() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def change_dungeon_message(widget) -> None:
     """
@@ -366,7 +365,7 @@ def change_dungeon_message(widget) -> None:
     map_editor.change_message(message=app.getTextArea(widget))
 
 
-# --- select_dungeon_special_type() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_dungeon_special_type(widget) -> None:
     """
@@ -398,7 +397,7 @@ def select_dungeon_special_type(widget) -> None:
                      parent="Map_Editor")
 
 
-# --- no_stop() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def no_stop() -> bool:
     """
@@ -412,7 +411,7 @@ def no_stop() -> bool:
     return False
 
 
-# --- map_editor_stop() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def map_editor_stop() -> bool:
     """
@@ -430,7 +429,7 @@ def map_editor_stop() -> bool:
     return True
 
 
-# --- map_editor_input() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def map_editor_input(widget: str) -> None:
     """
@@ -561,7 +560,7 @@ def map_editor_input(widget: str) -> None:
         log(3, "EDITOR", f"Unimplemented Map Editor button: {widget}")
 
 
-# --- map_editor_pick_tile() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def map_editor_pick_tile(event: any) -> None:
     """
@@ -590,7 +589,7 @@ def map_editor_pick_tile(event: any) -> None:
         map_editor.select_tool("draw")
 
 
-# --- map_editor_edit_tile() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def map_editor_edit_tile(event: any) -> None:
     """
@@ -659,7 +658,7 @@ def map_editor_edit_tile(event: any) -> None:
         map_editor.select_tool("draw")
 
 
-# --- npc_select_graphics() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def npc_select_graphics(option_box: str) -> None:
     """
@@ -685,7 +684,7 @@ def npc_select_graphics(option_box: str) -> None:
         map_editor.change_npc_palettes(top, bottom)
 
 
-# --- entrance_editor_press() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def entrance_editor_press(widget: str) -> None:
     """
@@ -821,7 +820,7 @@ def entrance_editor_press(widget: str) -> None:
         log(3, "ENTRANCE EDITOR", f"Unimplemented callback for widget '{widget}'.")
 
 
-# --- encounter_input() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def encounter_input(widget: str) -> None:
     """
@@ -843,7 +842,7 @@ def encounter_input(widget: str) -> None:
             return
 
 
-# --- enemy_editor_input() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def enemy_editor_input(widget: str) -> None:
     """
@@ -958,7 +957,7 @@ def enemy_editor_input(widget: str) -> None:
         log(3, "ENEMY EDITOR", f"Unimplemented input from: '{widget}'.")
 
 
-# --- select_palette() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_palette(sel: str) -> None:
     """
@@ -974,7 +973,7 @@ def select_palette(sel: str) -> None:
     palette_editor.choose_palette_set(palette_set)
 
 
-# --- cycle_palette_sets() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def cycle_palette_sets(direction: int) -> None:
     """
@@ -991,7 +990,7 @@ def cycle_palette_sets(direction: int) -> None:
         palette_editor.next_palette()
 
 
-# --- edit_colour() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def edit_colour(event: any, palette_index: int) -> None:
     """
@@ -1008,7 +1007,7 @@ def edit_colour(event: any, palette_index: int) -> None:
     palette_editor.edit_colour(palette_index, colour_index)
 
 
-# --- pick_colour() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def pick_colour(event: any) -> None:
     """
@@ -1024,7 +1023,7 @@ def pick_colour(event: any) -> None:
     palette_editor.change_colour(colour_index)
 
 
-# --- edit_text() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def edit_text() -> None:
     """
@@ -1042,7 +1041,7 @@ def edit_text() -> None:
     text_editor.show_window(string_index, string_type)
 
 
-# --- close_rom() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyArgumentList
 def close_rom() -> None:
@@ -1073,7 +1072,7 @@ def close_rom() -> None:
     app.setTitle("UE Editor")
 
 
-# --- save_rom() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def save_rom(file_name: str) -> None:
     """
@@ -1095,7 +1094,7 @@ def save_rom(file_name: str) -> None:
         app.errorBox("Export ROM", f"ERROR: Could not save to '{file_name}'.")
 
 
-# --- open_rom() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyArgumentList
 def open_rom(file_name: str) -> None:
@@ -1225,6 +1224,9 @@ def open_rom(file_name: str) -> None:
         # Party editor
         party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
 
+        # Cutscene data
+        read_cutscene_data(0)
+
         # Cutscene editor
         cutscene_editor = CutsceneEditor(app, rom, palette_editor)
 
@@ -1241,7 +1243,397 @@ def open_rom(file_name: str) -> None:
         app.setTitle(f"UE Editor - {os.path.basename(file_name)}")
 
 
-# --- update_map_table() ---
+# ----------------------------------------------------------------------------------------------------------------------
+
+def save_cutscene_data(scene: int) -> None:
+    if scene == 0:  # Lord British game start
+
+        # Party facing direction
+        if app.getOptionBoxWidget("CE_Param_0_00").cget("state") != 'disabled':
+            value = get_option_index("CE_Param_0_00", app.getOptionBox("CE_Param_0_00"))
+            rom.write_byte(0xC, 0x812F, value)
+
+        # Show party sprite 1-4
+        address = [0x828D, 0x829C, 0x82AB, 0x82BA]
+        for param in range(4):
+            widget = f"CE_Param_0_0{param + 1}"
+            if app.getCheckBoxWidget(widget).cget("state") != "disabled":
+                rom.write_bytes(0xC, address[param], bytes([0x20, 0xBE, 0x82]))     # JSR $82BE
+            else:
+                rom.write_bytes(0xC, address[param], bytes([0xEA, 0xEA, 0xEA]))     # 3x NOP
+
+        # Sprite 1-4 Movement Offset X
+        address = [0x8282, 0x8291, 0x82A0, 0x82AF]
+        for param in range(4):
+            widget = f"CE_Param_0_0{param + 5}"
+            if app.getEntryWidget(widget).cget("state") != "disabled":
+                try:
+                    signed_value = int(app.getEntry(widget), 10)
+                    byte_value = signed_value.to_bytes(1, "little", signed=True)
+                    rom.write_byte(0xC, address[param], byte_value[0])
+                except ValueError:
+                    app.warningBox("Save Cutscene Data",
+                                   f"WARNING: Invalid entry for Sprite {param + 1} Movement Offset X.")
+
+        # Horizontal movement delay 1-4
+        address = [0x8288, 0x8297, 0x82A6, 0x82B5]
+        for param in range(4):
+            widget = f"CE_Param_0_{(param + 9):02d}"
+            if app.getEntryWidget(widget).cget("state") != "disabled":
+                try:
+                    value = int(app.getEntry(widget), 10)
+                    rom.write_byte(0xC, address[param], value)
+                except ValueError:
+                    app.warningBox("Save Cutscene Data",
+                                   f"WARNING: Invalid entry for Sprite {param + 1} Horizontal Movement Delay.")
+
+        # Global movement
+        # Options: None, Up, Down, Left, Right
+        if app.getOptionBoxWidget("CE_Param_0_13").cget("state") != "disabled":
+            option = get_option_index("CE_Param_0_13", app.getOptionBox("CE_Param_0_13"))
+            data = bytearray()
+            if option == 0:             # No movement:
+                data = [0xEA, 0xEA]     # NOP, NOP
+            elif option == 1:           # Up:
+                data = [0xCE, 0x18]     # DEC $18
+            elif option == 2:           # Down:
+                data = [0xE6, 0x18]     # INC $18
+            elif option == 3:           # Left
+                data = [0xCE, 0x19]     # DEC $19
+            elif option == 4:           # Right
+                data = [0xE6, 0x19]     # INC $19
+
+            if len(data) > 0:
+                rom.write_bytes(0xC, 0x82CE, data)
+
+        # Starting X, Y
+        address = [0x82BF, 0x82C3]
+        for param in range(2):
+            widget = f"CE_Param_0_{param + 14}"
+            if app.getEntryWidget(widget).cget("state") != "disabled":
+                try:
+                    value = int(app.getEntry(widget), 10)
+                    rom.write_byte(0xC, address[param], value)
+                except ValueError:
+                    app.warningBox("Save Cutscene Data", "WARNING: Invalid entry for Starting X/Y.\n" +
+                                   "Please enter a decimal value between 0 and 255.")
+
+        # Target position check and value
+        if app.getOptionBoxWidget("CE_Param_0_16").cget("state") != "disabled":
+            option = get_option_index("CE_Param_0_16", app.getOptionBox("CE_Param_0_16"))
+            # Options: "X =", "Y =", "X >=", "Y >=", "X <", "Y <"
+            data = [[0x19, 0xC9, 0x50, 0xD0],   # BNE
+                    [0x18, 0xC9, 0x50, 0xD0],
+                    [0x19, 0xC9, 0x50, 0xB0],   # BCS
+                    [0x18, 0xC9, 0x50, 0xB0],
+                    [0x19, 0xC9, 0x50, 0x90],   # BCC
+                    [0x18, 0xC9, 0x50, 0x90]]
+            code = bytearray(data[option])
+            try:
+                value = int(app.getEntry("CE_Param_0_17"), 10)
+                code[2] = value
+                rom.write_bytes(0xC, 0x82E0, code)
+            except ValueError:
+                app.warningBox("Save Cutscene Data", "WARNING: Invalid entry for Target Position.\n" +
+                               "Please enter a decimal value between 0 and 255.")
+
+        # Dialogue IDs
+        address = [0x8242, 0x826A]
+        for param in range(2):
+            widget = f"CE_Param_0_{param + 18}"
+            if app.getEntryWidget(widget).cget("state") != "disabled":
+                try:
+                    value = int(app.getEntry(widget), 16)
+                    rom.write_byte(0xC, address[param], value)
+                except ValueError:
+                    app.warningBox("Save Cutscene Data", "WARNING: Invalid Dialogue ID entry.\n" +
+                                   "Please enter a hexadecimal value between 0x00 and 0xFF")
+
+        # Dialogue position and size
+        if app.getEntryWidget("CE_Param_0_20").cget("state") != "disabled":
+            try:
+                x = int(app.getEntry("CE_Param_0_20"), 10)
+                y = int(app.getEntry("CE_Param_0_21"), 10)
+                w = int(app.getEntry("CE_Param_0_22"), 10)
+                h = int(app.getEntry("CE_Param_0_23"), 10)
+                rom.write_byte(0xC, 0x8249, x)
+                rom.write_byte(0xC, 0x822F, x - 2)
+                rom.write_byte(0xC, 0x824D, y)
+                rom.write_byte(0xC, 0x8233, y - 2)
+                rom.write_byte(0xC, 0x8251, w)
+                rom.write_byte(0xC, 0x8237, w + 2)
+                rom.write_byte(0xC, 0x8255, h)
+                rom.write_byte(0xC, 0x823B, h + 4)
+            except ValueError:
+                app.warningBox("Save Cutscene Data", "WARNING: Invalid entry for Dialogue Size/Position.\n",
+                               "Please enter decimal values between 2 and 251.")
+
+    app.setStatusbar("Data saved successfully.")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def read_cutscene_data(scene: int) -> None:
+    if scene == 0:      # Lord British game start
+
+        # Party facing direction
+        data = rom.read_bytes(0xC, 0x812E, 2)
+        # Check for custom code
+        if data[0] != 0xA9 or data[1] > 4:
+            app.disableOptionBox("CE_Param_0_00")
+        else:
+            app.enableOptionBox("CE_Param_0_00")
+            app.setOptionBox("CE_Param_0_00", data[1], callFunction=False)
+
+        # Show party sprite 1
+        data = rom.read_bytes(0xC, 0x828D, 3)
+        if data == b'\x20\xBE\x82':
+            app.enableCheckBox("CE_Param_0_01")
+            app.setCheckBox("CE_Param_0_01", True, callFunction=False)
+        elif data[0] == 0xEA:
+            app.enableCheckBox("CE_Param_0_01")
+            app.setCheckBox("CE_Param_0_01", False, callFunction=False)
+        else:
+            app.disableCheckBox("CE_Param_0_01")
+
+        # Show party sprite 2
+        data = rom.read_bytes(0xC, 0x829C, 3)
+        if data == b'\x20\xBE\x82':
+            app.enableCheckBox("CE_Param_0_02")
+            app.setCheckBox("CE_Param_0_02", True, callFunction=False)
+        elif data[0] == 0xEA:
+            app.enableCheckBox("CE_Param_0_02")
+            app.setCheckBox("CE_Param_0_02", False, callFunction=False)
+        else:
+            app.disableCheckBox("CE_Param_0_02")
+
+        # Show party sprite 3
+        data = rom.read_bytes(0xC, 0x82AB, 3)
+        if data == b'\x20\xBE\x82':
+            app.enableCheckBox("CE_Param_0_03")
+            app.setCheckBox("CE_Param_0_03", True, callFunction=False)
+        elif data[0] == 0xEA:
+            app.enableCheckBox("CE_Param_0_03")
+            app.setCheckBox("CE_Param_0_03", False, callFunction=False)
+        else:
+            app.disableCheckBox("CE_Param_0_03")
+
+        # Show party sprite 4
+        data = rom.read_bytes(0xC, 0x82BA, 3)
+        if data == b'\x20\xBE\x82':
+            app.enableCheckBox("CE_Param_0_04")
+            app.setCheckBox("CE_Param_0_04", True, callFunction=False)
+        elif data[0] == 0xEA:
+            app.enableCheckBox("CE_Param_0_04")
+            app.setCheckBox("CE_Param_0_04", False, callFunction=False)
+        else:
+            app.disableCheckBox("CE_Param_0_04")
+
+        # Sprite 1 movement offset X
+        data = rom.read_bytes(0xC, 0x8281, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_05")
+        else:
+            app.enableEntry("CE_Param_0_05")
+            app.clearEntry("CE_Param_0_05", callFunction=False, setFocus=False)
+            value = int.from_bytes([data[1]], 'little', signed=True)
+            app.setEntry("CE_Param_0_05", f"{value}", callFunction=False)
+
+        # Sprite 2 movement offset X
+        data = rom.read_bytes(0xC, 0x8290, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_06")
+        else:
+            app.enableEntry("CE_Param_0_06")
+            app.clearEntry("CE_Param_0_06", callFunction=False, setFocus=False)
+            value = int.from_bytes([data[1]], 'little', signed=True)
+            app.setEntry("CE_Param_0_06", f"{value}", callFunction=False)
+
+        # Sprite 3 movement offset X
+        data = rom.read_bytes(0xC, 0x829F, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_07")
+        else:
+            app.enableEntry("CE_Param_0_07")
+            app.clearEntry("CE_Param_0_07", callFunction=False, setFocus=False)
+            value = int.from_bytes([data[1]], 'little', signed=True)
+            app.setEntry("CE_Param_0_07", f"{value}", callFunction=False)
+
+        # Sprite 4 movement offset X
+        data = rom.read_bytes(0xC, 0x82AE, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_08")
+        else:
+            app.enableEntry("CE_Param_0_08")
+            app.clearEntry("CE_Param_0_08", callFunction=False, setFocus=False)
+            value = int.from_bytes([data[1]], 'little', signed=True)
+            app.setEntry("CE_Param_0_08", f"{value}", callFunction=False)
+
+        # Sprite 1 movement delay
+        data = rom.read_bytes(0xC, 0x8287, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_09")
+        else:
+            app.enableEntry("CE_Param_0_09")
+            app.clearEntry("CE_Param_0_09", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_09", f"{data[1]}", callFunction=False)
+
+        # Sprite 2 movement delay
+        data = rom.read_bytes(0xC, 0x8296, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_10")
+        else:
+            app.enableEntry("CE_Param_0_10")
+            app.clearEntry("CE_Param_0_10", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_10", f"{data[1]}", callFunction=False)
+
+        # Sprite 3 movement delay
+        data = rom.read_bytes(0xC, 0x82A5, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_11")
+        else:
+            app.enableEntry("CE_Param_0_11")
+            app.clearEntry("CE_Param_0_11", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_11", f"{data[1]}", callFunction=False)
+
+        # Sprite 4 movement delay
+        data = rom.read_bytes(0xC, 0x82B4, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_12")
+        else:
+            app.enableEntry("CE_Param_0_12")
+            app.clearEntry("CE_Param_0_12", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_12", f"{data[1]}", callFunction=False)
+
+        # Global movement
+        data = rom.read_bytes(0xC, 0x82CE, 2)
+        option = -1
+        if data[0] == 0xE6:         # INC
+            if data[1] == 0x18:
+                option = 2          # Down
+            elif data[1] == 0x19:
+                option = 4          # Right
+            else:
+                option = 0          # None
+        elif data[0] == 0xC6:       # DEC
+            if data[1] == 0x18:
+                option = 1          # Up
+            elif data[1] == 0x19:
+                option = 3          # Left
+            else:
+                option = 0          # None
+        if option == -1:
+            app.disableOptionBox("CE_Param_0_13")
+        else:
+            app.enableOptionBox("CE_Param_0_13")
+            app.setOptionBox("CE_Param_0_13", option, callFunction=False)
+
+        # Starting X
+        data = rom.read_bytes(0xC, 0x82BE, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_14")
+        else:
+            app.enableEntry("CE_Param_0_14")
+            app.clearEntry("CE_Param_0_14", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_14", f"{data[1]}", callFunction=False)
+
+        # Starting Y
+        data = rom.read_bytes(0xC, 0x82C2, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_15")
+        else:
+            app.enableEntry("CE_Param_0_15")
+            app.clearEntry("CE_Param_0_15", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_15", f"{data[1]}", callFunction=False)
+
+        # Target position
+        data = rom.read_bytes(0xC, 0x82E0, 4)
+        option = -1     # Options: "X =", "Y =", "X >=", "Y >=", "X <", "Y <"
+        if data[3] == 0xD0:     # BNE
+            if data[0] == 0x19:
+                option = 0
+            elif data[0] == 0x18:
+                option = 1
+        elif data[3] == 0xB0:   # BCS
+            if data[0] == 0x19:
+                option = 2
+            elif data[0] == 0x18:
+                option = 3
+        elif data[3] == 0x90:   # BCC
+            if data[0] == 0x19:
+                option = 4
+            elif data[0] == 0x18:
+                option = 5
+
+        if option == -1:
+            app.disableOptionBox("CE_Param_0_16")
+            app.disableEntry("CE_Param_0_17")
+        else:
+            app.enableOptionBox("CE_Param_0_16")
+            app.enableEntry("CE_Param_0_17")
+            app.setOptionBox("CE_Param_0_16", option, callFunction=False)
+            app.clearEntry("CE_Param_0_17", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_17", f"{data[2]}", callFunction=False)
+
+        # First Dialogue ID
+        data = rom.read_bytes(0xC, 0x8241, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_18")
+        else:
+            app.enableEntry("CE_Param_0_18")
+            app.clearEntry("CE_Param_0_18", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_18", f"0x{data[1]:02X}", callFunction=False)
+
+        # Last Dialogue ID
+        data = rom.read_bytes(0xC, 0x8269, 2)
+        if data[0] != 0xC9:
+            app.disableEntry("CE_Param_0_19")
+        else:
+            app.enableEntry("CE_Param_0_19")
+            app.clearEntry("CE_Param_0_19", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_19", f"0x{data[1]:02X}", callFunction=False)
+
+        # Dialogue X
+        data = rom.read_bytes(0xC, 0x8248, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_20")
+        else:
+            app.enableEntry("CE_Param_0_20")
+            app.clearEntry("CE_Param_0_20", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_20", f"{data[1]}", callFunction=False)
+
+        # Dialogue Y
+        data = rom.read_bytes(0xC, 0x824C, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_21")
+        else:
+            app.enableEntry("CE_Param_0_21")
+            app.clearEntry("CE_Param_0_21", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_21", f"{data[1]}", callFunction=False)
+
+        # Dialogue Width
+        data = rom.read_bytes(0xC, 0x8250, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_22")
+        else:
+            app.enableEntry("CE_Param_0_22")
+            app.clearEntry("CE_Param_0_22", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_22", f"{data[1]}", callFunction=False)
+
+        # Dialogue Height
+        data = rom.read_bytes(0xC, 0x8254, 2)
+        if data[0] != 0xA9:
+            app.disableEntry("CE_Param_0_23")
+        else:
+            app.enableEntry("CE_Param_0_23")
+            app.clearEntry("CE_Param_0_23", callFunction=False, setFocus=False)
+            app.setEntry("CE_Param_0_23", f"{data[1]}", callFunction=False)
+
+    else:
+        log(2, "EDITOR", f"Invalid cutscene index: {scene}.")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 def update_map_table(map_data: MapTableEntry) -> None:
     """
@@ -1279,7 +1671,6 @@ def update_map_table(map_data: MapTableEntry) -> None:
 
         # Continent flag
         elif map_data.flags & 0x20 != 0:
-
             # No Guards
             if map_data.flags & 0x40 != 0:
                 map_type = 0
@@ -1289,7 +1680,6 @@ def update_map_table(map_data: MapTableEntry) -> None:
 
         # Town / Castle
         else:
-
             # No Guards
             if map_data.flags & 0x40 != 0:
                 map_type = 2
@@ -1348,7 +1738,7 @@ def update_map_table(map_data: MapTableEntry) -> None:
     app.setEntry("MapInfo_Flags", f"0x{map_data.flags:02X}", False)
 
 
-# --- select_map() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_map(sel: str) -> None:
     """
@@ -1384,7 +1774,7 @@ def select_map(sel: str) -> None:
         app.setOptionBox("Map_Compression", 0)
 
 
-# --- select_compression() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_compression(sel: str) -> None:
     """
@@ -1400,7 +1790,7 @@ def select_compression(sel: str) -> None:
     # print("Selected compression: {0}".format(map_compression))
 
 
-# --- text_editor_stop() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def text_editor_stop() -> bool:
     """
@@ -1423,7 +1813,7 @@ def text_editor_stop() -> bool:
     return True
 
 
-# --- text_editor_input() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def text_editor_input(widget: str) -> None:
     """
@@ -1556,7 +1946,7 @@ def text_editor_input(widget: str) -> None:
         print(f"Unimplemented Text Editor button: {widget}")
 
 
-# --- select_text_type() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_text_type(sel: str) -> None:
     """
@@ -1588,7 +1978,7 @@ def select_text_type(sel: str) -> None:
     text_editor.index = -1
 
 
-# --- update_text_table() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def update_text_table(text_type: str) -> None:
     """
@@ -1637,7 +2027,7 @@ def update_text_table(text_type: str) -> None:
     app.updateListBox("Text_Id", strings_list)
 
 
-# --- save_text() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def save_text(text_id: int, text_string: str, text_type: str) -> None:
     """
@@ -1682,7 +2072,7 @@ def save_text(text_id: int, text_string: str, text_type: str) -> None:
         return
 
 
-# --- select_text_id() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_text_id(sel: str) -> None:
     """
@@ -1734,7 +2124,7 @@ def select_text_id(sel: str) -> None:
     app.setLabel("TextEditor_Type", f"String #{index[0]}:")
 
 
-# --- select_portrait() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def select_portrait(sel: str) -> None:
     """
@@ -1754,11 +2144,19 @@ def select_portrait(sel: str) -> None:
     text_editor.load_portrait(index)
 
 
-# --- cutscene_input() ---
+# ----------------------------------------------------------------------------------------------------------------------
+
 def cutscene_input(widget: str) -> None:
     global cutscene_editor
 
-    if widget == "CE_Cutscene_Close":
+    if widget == "CE_Save_Parameters_0":
+        save_cutscene_data(0)
+
+    elif widget == "CE_Cutscene_Save":
+        if cutscene_editor.save_nametable() is True and cutscene_editor.save_attributes() is True:
+            cutscene_editor.close_window()
+
+    elif widget == "CE_Cutscene_Close":
         cutscene_editor.close_window()
 
     elif widget == "CE_Option_Cutscene":
@@ -1776,13 +2174,13 @@ def cutscene_input(widget: str) -> None:
         cutscene_editor.load_patterns(0xA, 0x8000, 0xA4, 0x00)
         cutscene_editor.load_patterns(0x7, 0xA100, 20, 0x0A)
         cutscene_editor.load_patterns(0xC, 0xAF01, 92, 0xA4)
-        cutscene_editor.show_window(0xC, 0x9B1B, 0x9EEB, 256, 240)
+        cutscene_editor.show_window(0xC, 0x9B1B, 0x9EEB, 32, 30)
 
     else:
         log(3, "CUTSCENE_EDITOR", f"Unimplemented input from widget '{widget}'.")
 
 
-# --- party_editor_input() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def party_editor_input(button: str) -> bool:
     if button == "PT_Button_Races":
@@ -1815,17 +2213,19 @@ def party_editor_input(button: str) -> bool:
     return True
 
 
-# --- cutscene_editor_stop() ---
+# ----------------------------------------------------------------------------------------------------------------------
+
 def cutscene_editor_stop() -> bool:
     return cutscene_editor.close_window()
 
 
-# --- party_editor_stop() ---
+# ----------------------------------------------------------------------------------------------------------------------
+
 def party_editor_stop() -> bool:
     return party_editor.close_window()
 
 
-# --- main_input() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 # noinspection PyArgumentList
 def main_input(widget: str) -> bool:
@@ -1972,7 +2372,7 @@ def main_input(widget: str) -> bool:
     return True
 
 
-# --- editor_stop() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def editor_stop() -> bool:
     # TODO Ask for confirmation if there are unsaved changes
@@ -1981,7 +2381,7 @@ def editor_stop() -> bool:
     return True
 
 
-# --- MAIN ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
 
@@ -2300,7 +2700,7 @@ if __name__ == "__main__":
                                         row=0, column=0, disabled="horizontal", sticky="NEW"):
                         app.label("CE_Label_0_00", "Party sprites facing", sticky="E", colspan=2,
                                   row=1, column=0, font=11)
-                        app.optionBox("CE_Param_0_00", ["None", "East", "West", "South", "North"],
+                        app.optionBox("CE_Param_0_00", ["None", "East", "West", "North", "South"],
                                       change=cutscene_input,
                                       sticky="W", width=10, colspan=2, row=1, column=2, font=10)
 
@@ -2371,18 +2771,19 @@ if __name__ == "__main__":
 
                         app.label("CE_Label_0_16", "Target position", sticky="E", colspan=2,
                                   row=8, column=0, font=11)
-                        app.optionBox("CE_Param_0_16", ["X >=", "Y >=", "X <", "Y <"], change=cutscene_input,
+                        app.optionBox("CE_Param_0_16", ["X =", "Y =", "X >=", "Y >=", "X <", "Y <"],
+                                      change=cutscene_input,
                                       row=8, column=2, sticky="WE", font=10)
                         app.entry("CE_Param_0_17", "0", change=cutscene_input, sticky="W", width=4,
                                   row=8, column=3, font=10)
 
                         app.label("CE_Label_0_18", "First dialogue ID", sticky="E",
                                   row=9, column=0, font=11)
-                        app.entry("CE_Param_0_18", "32", change=cutscene_input, sticky="W", width=3,
+                        app.entry("CE_Param_0_18", "32", change=cutscene_input, sticky="W", width=4,
                                   row=9, column=1, font=10)
                         app.label("CE_Label_0_19", "Last dialogue ID", sticky="E",
                                   row=9, column=2, font=11)
-                        app.entry("CE_Param_0_19", "37", change=cutscene_input, sticky="W", width=3,
+                        app.entry("CE_Param_0_19", "37", change=cutscene_input, sticky="W", width=4,
                                   row=9, column=3, font=10)
 
                         app.label("CE_Label_0_20", "Dialogue X", sticky="E",
@@ -2405,7 +2806,7 @@ if __name__ == "__main__":
 
                     # Resize scrollable pane
                     canvas = app.getScrollPaneWidget("CE_Pane_Parameters_0").canvas
-                    canvas.configure(width=492 - 8, height=344 - 132)
+                    canvas.configure(width=492 - 8, height=344 - 160)
 
                     # Buttons
                     with app.frame("CE_Frame_Buttons_0", padding=[4, 4], sticky="WE", row=1, column=0):
