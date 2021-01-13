@@ -1258,9 +1258,10 @@ def save_cutscene_data(scene: int) -> None:
         for param in range(4):
             widget = f"CE_Param_0_0{param + 1}"
             if app.getCheckBoxWidget(widget).cget("state") != "disabled":
-                rom.write_bytes(0xC, address[param], bytes([0x20, 0xBE, 0x82]))     # JSR $82BE
-            else:
-                rom.write_bytes(0xC, address[param], bytes([0xEA, 0xEA, 0xEA]))     # 3x NOP
+                if app.getCheckBox(widget) is True:
+                    rom.write_bytes(0xC, address[param], bytes([0x20, 0xBE, 0x82]))     # JSR $82BE
+                else:
+                    rom.write_bytes(0xC, address[param], bytes([0xEA, 0xEA, 0xEA]))     # 3x NOP
 
         # Sprite 1-4 Movement Offset X
         address = [0x8282, 0x8291, 0x82A0, 0x82AF]
@@ -1361,7 +1362,7 @@ def save_cutscene_data(scene: int) -> None:
                 rom.write_byte(0xC, 0x824D, y)
                 rom.write_byte(0xC, 0x8233, y - 2)
                 rom.write_byte(0xC, 0x8251, w)
-                rom.write_byte(0xC, 0x8237, w + 2)
+                rom.write_byte(0xC, 0x8237, w + 4)
                 rom.write_byte(0xC, 0x8255, h)
                 rom.write_byte(0xC, 0x823B, h + 4)
             except ValueError:
