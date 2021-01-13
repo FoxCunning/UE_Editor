@@ -792,8 +792,9 @@ class CutsceneEditor:
 
             data.append(attribute)
 
-        # TODO Actually save
-        self.info(f"Attribute table: {data.hex()}")
+        # Actually save
+        # self.info(f"Attribute table: {data.hex()}")
+        self.rom.write_bytes(self.bank, self.attributes_address, data)
 
         self._unsaved_changes = False
 
