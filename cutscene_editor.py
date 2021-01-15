@@ -137,6 +137,8 @@ class CutsceneEditor:
 
         self._unsaved_changes = False
 
+        # TODO Create the widgets here and destroy them on window close to save memory
+
         # Resize the drawing area according to the size of the cutscene
         self.app.getScrollPaneWidget("CE_Pane_Cutscene").canvas.configure(width=512)
 
@@ -309,8 +311,8 @@ class CutsceneEditor:
         """
         # Ask to confirm if there are unsaved changes
         if self._unsaved_changes is True:
-            if self.app.yesNoBox("Cutscene Editor", "Are you sure you want to close the cutscene editor?\n" +
-                                                    "All unsaved changes will be lost.", "Cutscene_Editor") is False:
+            if self.app.yesNoBox("Screen Editor", "Are you sure you want to close the cutscene editor?\n" +
+                                                  "All unsaved changes will be lost.", "Cutscene_Editor") is False:
                 return False
 
         self.app.hideSubWindow("Cutscene_Editor", False)

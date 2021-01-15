@@ -238,7 +238,8 @@ def exodus_to_ascii(exodus_string: bytearray) -> str:
 # --- read_text() ---
 
 def read_text(rom: ROM, bank: int, address: int) -> str:
-    """Reads and decodes a string of text from ROM
+    """
+    Reads and decodes a string of text from ROM.
 
     Parameters
     ----------
