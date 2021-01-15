@@ -109,6 +109,9 @@ class PartyEditor:
         # Number of selectable professions (11 by default)
         self.selectable_professions: int = 11
 
+        self._canvas_items: List[int] = [0] * 4
+        self._canvas_cache: List[ImageTk.PhotoImage] = [ImageTk.PhotoImage(Image.new('P', (16, 16), 0))] * 4
+
         # ID of races/professions used in the character creation menus
         self.menu_string_id: int = 0
 
@@ -1249,7 +1252,7 @@ class PartyEditor:
         special_dialogue = self.rom.read_byte(0xF, 0xD0C2)
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(520, 360)
+            self.app.setSize(520, 386)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 2], row=0, column=0, colspan=2,
@@ -1260,7 +1263,7 @@ class PartyEditor:
                                 tooltip="Discard Changes and Close Window", row=0, column=1)
 
             # Weapons
-            with self.app.labelFrame("Weapons", padding=[2, 2], row=1, column=0, bg=colour.PALE_VIOLET):
+            with self.app.labelFrame("Weapons", padding=[2, 1], row=1, column=0, colspan=2, bg=colour.PALE_VIOLET):
                 with self.app.frame("PW_Frame_Weapons_Selection", padding=[2, 2], row=0, column=0):
                     self.app.label("PE_Label_Throwing_Weapon", "Throwing Weapon:", row=0, column=0, font=11)
                     self.app.optionBox("PE_Option_Throwing_Weapon", self.weapon_names, change=self._weapons_input,
@@ -1284,8 +1287,11 @@ class PartyEditor:
                                       row=1, column=0, font=11)
                     self.app.label("PE_Label_Weapon_Damage", "Base Damage = 0", row=1, column=1, colspan=2, font=11)
 
+                with self.app.frame("PE_Frame_Weapon_Icon", padding=[8, 8], row=1, column=1):
+                    self.app.canvas("PE_Canvas_Weapon", width=32, height=32, row=0, column=0, bg="#808080")
+
             # Armour
-            with self.app.labelFrame("Armour", padding=[2, 2], row=2, column=0, bg=colour.PALE_RED):
+            with self.app.labelFrame("Armour", padding=[2, 1], row=2, column=0, bg=colour.PALE_RED):
                 with self.app.frame("PW_Frame_Armour_Selection", padding=[2, 2], row=0, column=0):
                     self.app.label("PE_Label_Armour", "Edit armour:", row=1, column=0, font=11)
                     self.app.optionBox("PE_Option_Armour", self.armour_names, change=self._weapons_input,
@@ -1311,26 +1317,26 @@ class PartyEditor:
                                    row=1, column=3, font=10)
 
             # Special
-            with self.app.labelFrame("Special", padding=[2, 2], row=1, column=1, rowspan=2,
-                                     bg=colour.PALE_BROWN):
-                self.app.label("PE_Label_Special_0", "On this map:", row=0, column=0, colspan=3, font=11)
-                self.app.optionBox("PE_Special_Map", self.map_editor.location_names,
-                                   index=special_map, colspan=3, sticky="EW",
-                                   row=1, column=0, font=10)
-                self.app.label("PE_Label_Special_1", "Limit possible weapons to:", row=2, column=0, colspan=3, font=11)
+            with self.app.labelFrame("Special", padding=[2, 1], row=2, column=1, bg=colour.PALE_BROWN):
+                with self.app.frame("PE_Frame_Special", padding=[1, 1], row=0, column=0, colspan=3):
+                    self.app.label("PE_Label_Special_0", "In: ", sticky="E", row=0, column=0, font=11)
+                    self.app.optionBox("PE_Special_Map", self.map_editor.location_names,
+                                       index=special_map, sticky="W",
+                                       row=0, column=1, font=10)
+                self.app.label("PE_Label_Special_1", "Limit possible weapons to:", row=1, column=0, colspan=3, font=11)
                 self.app.optionBox("PE_Special_Condition",
                                    ["Exactly", "Anything except", "At least (including)", "Up to (excluding)"],
                                    colspan=3, sticky="EW",
-                                   row=3, column=0, font=10)
+                                   row=2, column=0, font=10)
                 self.app.optionBox("PE_Special_Weapon", self.weapon_names,
                                    colspan=3, sticky="EW",
-                                   row=4, column=0, font=10)
-                self.app.label("PE_Label_Special_2", "Failure dialogue:", row=5, column=0, font=11)
+                                   row=3, column=0, font=10)
+                self.app.label("PE_Label_Special_2", "Failure dialogue:", row=4, column=0, font=11)
                 self.app.entry("PE_Special_Dialogue", f"0x{special_dialogue:02X}", fg=colour.BLACK, width=5,
                                change=self._weapons_input,
-                               row=5, column=1, font=10)
+                               row=4, column=1, font=10)
                 self.app.button("PE_Button_Special_Dialogue", self._weapons_input, image="res/edit-dlg-small.gif",
-                                width=16, height=16, row=5, column=2)
+                                width=16, height=16, row=4, column=2)
 
         self.app.setOptionBox("PE_Special_Map", index=special_map, callFunction=False)
         self.app.setOptionBox("PE_Special_Weapon", index=special_weapon, callFunction=False)
@@ -4345,6 +4351,36 @@ class PartyEditor:
         # Damage
         damage = (weapon_id >> 1) + weapon_id
         self.app.setLabel("PE_Label_Weapon_Damage", f"Base Damage = {damage}")
+
+        # Weapon graphics, if supported
+        if self.rom.has_feature("weapon gfx"):
+            addresses: List[int] = []
+            # Read the pattern ID table
+            data = self.rom.read_bytes(0x2, 0xBF60, 64)
+            for i in range(4):
+                # Convert pattern ID to offset
+                addresses.append(0x8000 + (data[(weapon_id << 2) + i] << 4))
+
+            canvas = self.app.getCanvasWidget("PE_Canvas_Weapon")
+
+            colours = self.palette_editor.sub_palette(0, 1)
+
+            for i in range(4):
+                pixels = self.rom.read_pattern(0xA, addresses[i])
+                image_1x = Image.frombytes('P', (8, 8), bytes(pixels))
+                image_1x.putpalette(colours)
+                image_2x = Image.new('P', (16, 16), 0)
+                image_2x.putpalette(colours)
+                image_2x.paste(image_1x.resize(size=(16, 16), resample=Image.NONE))
+
+                self._canvas_cache[i] = ImageTk.PhotoImage(image_2x)
+
+                if self._canvas_items[i] < 1:
+                    x = (i % 2) << 4    # (index % columns) * pixel width
+                    y = (i >> 1) << 4   # (index / rows) * pixel height
+                    self._canvas_items[i] = canvas.create_image(x, y, anchor="nw", image=self._canvas_cache[i])
+                else:
+                    canvas.itemconfig(self._canvas_items[i], image=self._canvas_cache[i])
 
     # --- PartyEditor.armour_info() ---
 
