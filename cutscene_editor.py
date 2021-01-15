@@ -24,6 +24,8 @@ class CutsceneEditor:
         self.attributes_address: int = 0
         self._width: int = 0
         self._height: int = 0
+        self._x: int = 0
+        self._y: int = 0
         self.palette_index: int = 0
         self.patterns_address: int = 0
 
@@ -93,7 +95,8 @@ class CutsceneEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def show_window(self, bank: int, nametable_address: int, attributes_address: int, width: int, height: int):
+    def show_window(self, bank: int, nametable_address: int, attributes_address: int, width: int = 32, height: int = 30,
+                    x: int = 0, y: int = 0, static_attributes: bytearray = None):
         """
         Shows the graphical editor for a cutscene.
 
@@ -106,19 +109,30 @@ class CutsceneEditor:
             Address of the nametable
 
         attributes_address: int
-            Address of the attribute table
+            Address of the attribute table, or -1 if static attributes are provided
 
         width: int
             Horizontal tile count (1-32)
 
         height: int
             Vertical tile count (1-30)
+
+        x: int
+            Horizontal position where drawing starts (0-31)
+
+        y: int
+            Vertical position where drawing starts (0-29)
+
+        static_attributes: bytearray
+            If the attributes should not be changed or are not read from ROM, an array of 64 bytes must be provided
         """
         self.bank = bank
         self.nametable_address = nametable_address
         self.attributes_address = attributes_address
         self._width = width
         self._height = height
+        self._x = x
+        self._y = y
 
         self._unsaved_changes = False
 
@@ -126,15 +140,30 @@ class CutsceneEditor:
         self.app.getScrollPaneWidget("CE_Pane_Cutscene").canvas.configure(width=512)
 
         # Load nametables
-        # TODO Add support for nametables that don't fill the screen
-        self.nametable.clear()
-        self.nametable = self.rom.read_bytes(bank, nametable_address, 960)
+        if self._width < 32 or self._height < 30:
+            # We fill the table with zeroes, and then change the ones loaded from ROM
+            self.nametable = bytearray([0] * 960)
+
+            position = 0
+            data = self.rom.read_bytes(bank, nametable_address, width * height)
+            for tile_y in range(x, x + width):
+                for tile_x in range(y, y + height):
+                    self.nametable[(tile_x % 32) + (tile_y << 5)] = data[position]
+                    position = position + 1
+        else:
+            self.nametable = self.rom.read_bytes(bank, nametable_address, 960)
 
         # Load attributes
-        data = self.rom.read_bytes(bank, attributes_address, 64)
         self.attributes.clear()
-        size = 32 * 30
+        size = 32 * 30  # This is the nametable size: we will match palette IDs to tiles
         self.attributes = bytearray(size)
+
+        if attributes_address != -1:
+            data = self.rom.read_bytes(bank, attributes_address, 64)
+            self.app.setCanvasCursor("CE_Canvas_Palettes", "hand1")
+        else:
+            data = static_attributes
+            self.app.setCanvasCursor("CE_Canvas_Palettes", "X_cursor")
 
         for a in range(64):
             top_left = data[a] & 0x03
@@ -171,7 +200,10 @@ class CutsceneEditor:
         self.set_selection_size(0)
 
         self.canvas_patterns.bind("<Button-1>", self._patterns_click, add="")
-        self.canvas_palettes.bind("<Button-1>", self._palettes_click, add="")
+        if attributes_address == -1:
+            self.canvas_palettes.bind("<Button-1>", None, add="")
+        else:
+            self.canvas_palettes.bind("<Button-1>", self._palettes_click, add="")
 
         # Show sub-window
         self.app.showSubWindow("Cutscene_Editor")
@@ -446,6 +478,8 @@ class CutsceneEditor:
         selection_y = (self._selected_tile >> 5) << 4
         size = 16 + (15 * self._selection_size)
 
+        # TODO Add a bounding box from x, y to x + width, y + width
+
         if self._cutscene_rectangle > 0:
             self.canvas_cutscene.coords(self._cutscene_rectangle, selection_x + 1, selection_y + 1,
                                         selection_x + size, selection_y + size)
@@ -459,7 +493,7 @@ class CutsceneEditor:
 
     def select_palette(self, palette: int) -> None:
         """
-        Select a palette (0-3).
+        Selects a palette (0-3).
         """
         if 0 <= palette <= 3:
 
@@ -717,7 +751,8 @@ class CutsceneEditor:
         # Get the attribute table for these coordinates
         sub_palette = self.attributes[t]
 
-        if self._selected_palette != sub_palette:
+        # Don't change palette if the attributes are static
+        if self._selected_palette != sub_palette and self.attributes_address != -1:
             # We are changing the palette, which affects other tiles
             # Get the top-left tile of this 2x2 group
             top_left = Point2D(x - (x % 2), y - (y % 2))
@@ -753,14 +788,28 @@ class CutsceneEditor:
     def save_nametable(self) -> bool:
         success: bool = True
 
-        # TODO Add support for scenes that don't fill the whole screen
-        self.rom.write_bytes(self.bank, self.nametable_address, self.nametable)
+        if self._width == 32 and self._height == 30:
+            data = self.nametable
+        else:
+            data = bytearray()
+
+            for y in range(self._y, self._y + self._height):
+                for x in range(self._x, self._x + self._width):
+                    tile = self.nametable[(x % 32) + (y << 5)]
+                    data.append(tile)
+
+        self.rom.write_bytes(self.bank, self.nametable_address, data)
 
         return success
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def save_attributes(self) -> bool:
+        if self.attributes_address == -1:
+            # Don't save static attributes
+            self._unsaved_changes = False
+            return True
+
         success: bool = True
 
         data = bytearray()

@@ -30,6 +30,7 @@ from map_editor import MapEditor, MapTableEntry
 from palette_editor import PaletteEditor
 from party_editor import PartyEditor
 from rom import ROM, feature_names
+from music_editor import MusicEditor
 from text_editor import TextEditor
 
 
@@ -241,6 +242,7 @@ palette_editor: PaletteEditor
 enemy_editor: EnemyEditor
 party_editor: PartyEditor
 cutscene_editor: CutsceneEditor
+music_editor: MusicEditor
 
 # These will be save when clicking on the map
 last_tile = {
@@ -1115,6 +1117,7 @@ def open_rom(file_name: str) -> None:
     global enemy_editor
     global party_editor
     global cutscene_editor
+    global music_editor
 
     app.setStatusbar(f"Opening ROM file '{file_name}'", field=0)
     val = rom.open(file_name)
@@ -1226,9 +1229,15 @@ def open_rom(file_name: str) -> None:
 
         # Cutscene data
         read_cutscene_data(0)
+        read_cutscene_data(1)
+        read_cutscene_data(2)
 
         # Cutscene editor
         cutscene_editor = CutsceneEditor(app, rom, palette_editor)
+
+        # Music editor
+        music_editor = MusicEditor(rom)
+        app.changeOptionBox("CE_Param_2_00", music_editor.read_music_titles(), index=0, callFunction=False)
 
         # Activate tabs
         app.setTabbedFrameDisabledTab("TabbedFrame", "Map", False)
@@ -1630,6 +1639,28 @@ def read_cutscene_data(scene: int) -> None:
             app.clearEntry("CE_Param_0_23", callFunction=False, setFocus=False)
             app.setEntry("CE_Param_0_23", f"{data[1]}", callFunction=False)
 
+    elif scene == 2:    # Title Screen
+
+        # Music ID
+        data = rom.read_bytes(0xE, 0xB8F6, 2)
+        if data[0] != 0xA9:
+            app.disableOptionBox("CE_Param_2_00")
+        else:
+            app.enableOptionBox("CE_Param_2_00")
+            app.setOptionBox("CE_Param_2_00", data[1], callFunction=False)
+
+        addresses = [0xB907, 0xB90B, 0xB90F, 0xB913]
+        for param in range(4):
+            widget = f"CE_Param_2_0{param+1}"
+            data = rom.read_bytes(0xE, addresses[param], 2)
+            if data[0] != 0xA9:
+                app.disableEntry(widget)
+            else:
+                data[1] = data[1] & 0x7F
+                app.enableEntry(widget)
+                app.clearEntry(widget, callFunction=False, setFocus=False)
+                app.setEntry(widget, f"{data[1]}", callFunction=False)
+
     else:
         log(2, "EDITOR", f"Invalid cutscene index: {scene}.")
 
@@ -2018,11 +2049,8 @@ def update_text_table(text_type: str) -> None:
             strings_list.append(f"0x{index:02X} @0x{entry:04X}")
             index = index + 1
 
-    elif text_type == "Choose Type":
-        pass
-
     else:
-        log(3, "EDITOR", f"update_text_table: Unimplemented text type '{text_type}'.")
+        pass
 
     app.clearListBox("Text_Id")
     app.updateListBox("Text_Id", strings_list)
@@ -2048,7 +2076,7 @@ def save_text(text_id: int, text_string: str, text_type: str) -> None:
         return
 
     if text_type == "":
-        text_type = app.getListBox("Text_Type")
+        text_type = app.getOptionBox("Text_Type")
 
     if text_type == "Special":
         text_editor.special_text[text_id] = text_string
@@ -2150,7 +2178,11 @@ def select_portrait(sel: str) -> None:
 def cutscene_input(widget: str) -> None:
     global cutscene_editor
 
-    if widget == "CE_Save_Parameters_0":
+    if widget == "CE_Option_Cutscene":
+        scene = get_option_index(widget, app.getOptionBox(widget))
+        app.selectFrame("Cutscenes", scene, callFunction=True)
+
+    elif widget == "CE_Save_Parameters_0":
         save_cutscene_data(0)
 
     elif widget == "CE_Cutscene_Save":
@@ -2180,10 +2212,6 @@ def cutscene_input(widget: str) -> None:
     elif widget == "CE_Cutscene_Close":
         cutscene_editor.close_window()
 
-    elif widget == "CE_Option_Cutscene":
-        scene = get_option_index(widget, app.getOptionBox(widget))
-        app.selectFrame("Cutscenes", scene, callFunction=True)
-
     elif widget == "CE_Cutscene_1x1":
         cutscene_editor.set_selection_size(0)
 
@@ -2191,12 +2219,39 @@ def cutscene_input(widget: str) -> None:
         cutscene_editor.set_selection_size(1)
 
     elif widget[:17] == "CE_Edit_Graphics_":
-        cutscene_editor.load_palette(38)
-        cutscene_editor.load_patterns(0xA, 0x8000, 0xA4, 0x00)
-        cutscene_editor.load_patterns(0x7, 0xA100, 20, 0x0A)
-        cutscene_editor.load_patterns(0xC, 0xAF01, 84, 0xA4)
-        cutscene_editor.load_patterns(0xA, 0x8F80, 8, 0xF8)
-        cutscene_editor.show_window(0xC, 0x9B1B, 0x9EEB, 32, 30)
+        scene_id = int(widget[-1:], 10)
+        if scene_id == 0:
+            cutscene_editor.load_palette(38)
+            cutscene_editor.load_patterns(0xA, 0x8000, 0xA4, 0x00)
+            cutscene_editor.load_patterns(0x7, 0xA100, 20, 0x0A)
+            cutscene_editor.load_patterns(0xC, 0xAF01, 84, 0xA4)
+            cutscene_editor.load_patterns(0xA, 0x8F80, 8, 0xF8)
+            cutscene_editor.show_window(0xC, 0x9B1B, 0x9EEB, 32, 30)
+
+        elif scene_id == 1:
+            dungeon_attributes = bytearray([0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
+                                            0x99, 0xAA, 0xAA, 0xAA, 0xAA, 0x55, 0x55, 0x55,
+                                            0x99, 0xAA, 0xFA, 0xBA, 0xAA, 0x55, 0x55, 0x55,
+                                            0x99, 0xAA, 0xFF, 0xBB, 0xAA, 0x55, 0x55, 0x55,
+                                            0x99, 0xAA, 0xAA, 0xAA, 0xAA, 0x55, 0x55, 0x55,
+                                            0x59, 0x5A, 0x5A, 0x5A, 0x5A, 0x55, 0x55, 0x55,
+                                            0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
+                                            0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05, 0x05])
+            cutscene_editor.load_palette(22)
+            cutscene_editor.load_patterns(0xA, 0x8000, 0xA4, 0x00)
+            cutscene_editor.load_patterns(0xA, 0x9B00, 58, 0xA4)
+            cutscene_editor.load_patterns(0xA, 0x9FD0, 4, 0xF0)
+            cutscene_editor.load_patterns(0xA, 0x9500, 12, 0xF4)
+            cutscene_editor.show_window(0xD, 0xA500, -1, 16, 16, 5, 3, dungeon_attributes)
+
+        elif scene_id == 2:
+            cutscene_editor.load_palette(12)
+            cutscene_editor.load_patterns(0xE, 0x8000, 128, 0x00)
+            cutscene_editor.load_patterns(0xA, 0x8800, 128, 0x80)
+            cutscene_editor.show_window(0xE, 0x8800, 0x8BC0, 32, 30)
+
+        else:
+            log(3, "CUTSCENE_EDITOR", f"Unimplemented cutscene #{scene_id}")
 
     else:
         log(3, "CUTSCENE_EDITOR", f"Unimplemented input from widget '{widget}'.")
@@ -2654,7 +2709,7 @@ if __name__ == "__main__":
                            stretch='NONE')
 
             with app.frame("TextEditor_Right", row=0, column=1, sticky='NE', padding=[2, 2], bg=colour.PALE_BROWN):
-                app.optionBox("Text_Type", ["Choose Type", "Dialogue", "Special", "NPC Names", "Enemy Names",
+                app.optionBox("Text_Type", ["- Choose Type -", "Dialogue", "Special", "NPC Names", "Enemy Names",
                                             "Menus / Intro"],
                               change=select_text_type, row=0, column=4, sticky='NW', colspan=2, stretch='NONE',
                               bg=colour.PALE_ORANGE)
@@ -2709,9 +2764,8 @@ if __name__ == "__main__":
         # CUTSCENES Tab ------------------------------------------------------------------------------------------------
         with app.tab("Cutscenes", padding=[4, 2]):
             app.label("CE_Label_Selection", "Edit scene", sticky="NE", row=0, column=0, font=11)
-            # TODO Add option for title screen
-            app.optionBox("CE_Option_Cutscene", ["Lord British", "Time Lord"], change=cutscene_input, sticky="NW",
-                          row=0, column=1, font=10)
+            app.optionBox("CE_Option_Cutscene", ["Lord British", "Time Lord", "Title"], change=cutscene_input,
+                          sticky="NW", row=0, column=1, font=10)
 
             with app.frameStack("Cutscenes", start=0, sticky="NW", row=1, column=0, colspan=3):
 
@@ -2842,7 +2896,7 @@ if __name__ == "__main__":
                 # Cutscene 1 parameters
                 with app.frame("CE_Frame_Cutscene_1", bg=colour.PALE_BLUE):
                     # Parameters
-                    with app.frame("CE_Frame_Parameters_1", padding=[4, 1], sticky="NEW"):
+                    with app.frame("CE_Frame_Parameters_1", row=0, column=0, padding=[4, 1], sticky="NEW"):
                         app.label("CE_Label_Cutscene_1", "Parameters...", sticky="WE", row=0, column=0, colspan=2)
 
                     # Buttons
@@ -2854,6 +2908,43 @@ if __name__ == "__main__":
                                    tooltip="Reload Parameters from ROM",
                                    width=32, height=32, row=0, column=2)
                         app.button("CE_Edit_Graphics_1", cutscene_input, image="res/brush.gif", sticky="WE",
+                                   tooltip="Edit Graphics",
+                                   width=32, height=32, row=0, column=3)
+
+                # Title parameters
+                with app.frame("CE_Frame_Cutscene_2", bg=colour.PALE_VIOLET):
+                    # Parameters
+                    with app.frame("CE_Frame_Parameters_2", row=0, column=0, padding=[4, 1], sticky="NEW"):
+                        app.label("CE_Label_2_00", "Music ID", sticky="WE", row=0, column=0, font=11)
+
+                        app.optionBox("CE_Param_2_00", ["- File not loaded -"], change=cutscene_input,
+                                      sticky="W", row=0, column=1, colspan=2, font=10, fg=colour.BLACK)
+
+                        app.label("CE_Label_2_01", "Text Position (X)", row=1, column=0, sticky="NEW")
+                        app.entry("CE_Param_2_01", "", change=cutscene_input,
+                                  sticky="NW", width=5, row=1, column=1, font=10, fg=colour.BLACK)
+
+                        app.label("CE_Label_2_02", "Text Position (Y)", row=1, column=2, sticky="NEW")
+                        app.entry("CE_Param_2_02", "", change=cutscene_input,
+                                  sticky="NW", width=5, row=1, column=3, font=10, fg=colour.BLACK)
+
+                        app.label("CE_Label_2_03", "Line Length", row=2, column=0, sticky="NEW")
+                        app.entry("CE_Param_2_03", "", change=cutscene_input,
+                                  sticky="NW", width=5, row=2, column=1, font=10, fg=colour.BLACK)
+
+                        app.label("CE_Label_2_04", "Line Count", row=2, column=2, sticky="NEW")
+                        app.entry("CE_Param_2_04", "", change=cutscene_input,
+                                  sticky="NW", width=5, row=2, column=3, font=10, fg=colour.BLACK)
+
+                    # Buttons
+                    with app.frame("CE_Frame_Buttons_2", padding=[4, 4], sticky="SEW", row=1, column=0, colspan=4):
+                        app.button("CE_Save_Parameters_2", cutscene_input, image="res/floppy.gif", sticky="SE",
+                                   tooltip="Save Scene's Parameters",
+                                   width=32, height=32, row=0, column=0)
+                        app.button("CE_Reload_Parameters_2", cutscene_input, image="res/reload.gif", sticky="SW",
+                                   tooltip="Reload Parameters from ROM",
+                                   width=32, height=32, row=0, column=2)
+                        app.button("CE_Edit_Graphics_2", cutscene_input, image="res/brush.gif", sticky="SEW",
                                    tooltip="Edit Graphics",
                                    width=32, height=32, row=0, column=3)
 
@@ -2890,7 +2981,7 @@ if __name__ == "__main__":
             # Buttons
             with app.frame("CE_Cutscene_Buttons", row=0, column=0, padding=[2, 0]):
                 app.button("CE_Cutscene_Save", cutscene_input, image="res/floppy.gif", sticky="W", width=32, height=32,
-                           tooltip="Save Changes",
+                           tooltip="Save Changes and close this window",
                            row=0, column=0)
                 app.button("CE_Cutscene_Import", cutscene_input, image="res/import.gif", sticky="W", width=32,
                            tooltip="Import from File",
@@ -2899,7 +2990,7 @@ if __name__ == "__main__":
                            tooltip="Export to File",
                            height=32, row=0, column=2)
                 app.button("CE_Cutscene_Close", cutscene_input, image="res/close.gif", sticky="W", width=32, height=32,
-                           tooltip="Discard Changes and Close",
+                           tooltip="Discard Changes and close this window",
                            row=0, column=3)
                 app.button("CE_Cutscene_1x1", cutscene_input, image="res/1x1.gif", sticky="E", width=32, height=32,
                            tooltip="Select/Edit 1 Tile/Pattern",

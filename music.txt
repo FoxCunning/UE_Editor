@@ -1,0 +1,12 @@
+Dungeon
+Town
+Sailing
+Ending
+Ambrosia
+Battle
+Exodus
+(Unused)
+Overworld
+Britannia
+King
+(Silence)
