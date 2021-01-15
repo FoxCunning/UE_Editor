@@ -2242,7 +2242,7 @@ def cutscene_input(widget: str) -> None:
             cutscene_editor.load_patterns(0xA, 0x9B00, 58, 0xA4)
             cutscene_editor.load_patterns(0xA, 0x9FD0, 4, 0xF0)
             cutscene_editor.load_patterns(0xA, 0x9500, 12, 0xF4)
-            cutscene_editor.show_window(0xD, 0xA500, -1, 16, 16, 5, 3, dungeon_attributes)
+            cutscene_editor.show_window(0xD, 0xA500, -1, 16, 16, 3, 5, dungeon_attributes)
 
         elif scene_id == 2:
             cutscene_editor.load_palette(12)

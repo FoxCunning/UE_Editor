@@ -67,6 +67,7 @@ class CutsceneEditor:
         self._cutscene_rectangle: int = 0
         self._pattern_rectangle: int = 0
         self._palette_rectangle: int = 0
+        self._cutscene_bounds: int = 0
 
         # 0: 1x1 tile, 1: 2x2 tiles
         self._selection_size: int = 0
@@ -146,8 +147,8 @@ class CutsceneEditor:
 
             position = 0
             data = self.rom.read_bytes(bank, nametable_address, width * height)
-            for tile_y in range(x, x + width):
-                for tile_x in range(y, y + height):
+            for tile_y in range(y, y + width):
+                for tile_x in range(x, x + height):
                     self.nametable[(tile_x % 32) + (tile_y << 5)] = data[position]
                     position = position + 1
         else:
@@ -478,7 +479,18 @@ class CutsceneEditor:
         selection_y = (self._selected_tile >> 5) << 4
         size = 16 + (15 * self._selection_size)
 
-        # TODO Add a bounding box from x, y to x + width, y + width
+        # Add a bounding box from x, y to x + width, y + width
+        x = (self._x << 4) + 1
+        y = (self._y << 4) + 1
+        if self._cutscene_bounds > 0:
+            self.canvas_cutscene.coords(self._cutscene_bounds, x, y,
+                                        x + (self._width << 4) - 2, y + (self._height << 4) - 2)
+            self.canvas_cutscene.tag_raise(self._cutscene_bounds)
+        else:
+            self._cutscene_bounds = self.app.addCanvasRectangle("CE_Canvas_Cutscene",
+                                                                x, y, (self._width << 4) - 2, (self._height << 4) - 2,
+                                                                outline="#FF0000", width=2)
+            self.canvas_cutscene.tag_raise(self._cutscene_bounds)
 
         if self._cutscene_rectangle > 0:
             self.canvas_cutscene.coords(self._cutscene_rectangle, selection_x + 1, selection_y + 1,
@@ -488,6 +500,7 @@ class CutsceneEditor:
             self._cutscene_rectangle = self.app.addCanvasRectangle("CE_Canvas_Cutscene",
                                                                    selection_x + 1, selection_y + 1,
                                                                    size, size, outline="#FFFFFF", width=2)
+            self.canvas_cutscene.tag_raise(self._cutscene_rectangle)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -899,8 +912,6 @@ class CutsceneEditor:
             file.close()
 
             # Read nametables
-            # TODO Add support for nametables that don't fill the screen
-            self.nametable.clear()
             self.nametable = bytearray(data[:960])
 
             # Read attributes
