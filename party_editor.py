@@ -1005,7 +1005,7 @@ class PartyEditor:
         professions_list = self.profession_names + ["None"]
 
         with self.app.subWindow("Party_Editor"):
-            self.app.setSize(400, 492)
+            self.app.setSize(400, 500)
 
             # Buttons
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
@@ -1051,7 +1051,7 @@ class PartyEditor:
                 # B0E0    LDA ($99),Y
                 # B0E2    CLC
                 if self.rom.read_bytes(0x0, 0xB0C4, 3) == b'\xB1\x99\xC9' \
-                        and self.rom.read_bytes(0x0, 0xB0E0, 3) == b'\xB1\x99\x18':
+                        and self.rom.read_bytes(0x0, 0xB0E0, 2) == b'\xB1\x99':
 
                     self.app.label("PE_Label_Profession_1", "Available to:", row=0, column=0, sticky='SEW', font=11)
                     self.app.optionBox("PE_Profession_1", professions_list, change=self._special_input,
@@ -5930,7 +5930,7 @@ class PartyEditor:
         # Bank 0
         # B0DE    LDY #$08  ; <-- #$08 = Dexterity
         # B0E0    LDA ($99),Y
-        # B0E2    CLC
+        # B0E2    LSR       ; CLC in older versions ($4A new, $18 old)
         # B0E3    ADC $51
         box = self.app.getOptionBoxWidget("PE_Damage_1")
         value = box.options.index(self.app.getOptionBox("PE_Damage_1"))
