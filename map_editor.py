@@ -1,17 +1,22 @@
 __author__ = "Fox Cunning"
 
+import os
 from dataclasses import dataclass
 from typing import List, TextIO
 
 from PIL import Image, ImageTk
 
+import colour
 from appJar import gui
+
+from editor_settings import EditorSettings
 from debug import log
 import lzss as lzss
 import rle as rle
 from helpers import Point2D
 from palette_editor import PaletteEditor
-import text_editor
+from text_editor import TextEditor, read_text, ascii_to_exodus
+from enemy_editor import EnemyEditor
 from rom import ROM
 
 
@@ -66,6 +71,20 @@ class DungeonData:
     fountain_pointer: int = 0x0000  # Default: 0xB95D + 2 + (Dungeon ID * 4)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
+def no_stop() -> bool:
+    """
+    Used for sub-windows that should only be closed programmatically
+
+    Returns
+    -------
+    bool
+        False
+    """
+    return False
+
+
 # ------------------------------------------------------------------------------------------------------------------
 
 class MapEditor:
@@ -82,9 +101,13 @@ class MapEditor:
         Instance of the Palette Editor (used to colour map tiles and NPCs)
     """
 
-    def __init__(self, rom: ROM, app: gui, palette_editor: PaletteEditor):
+    def __init__(self, rom: ROM, app: gui, palette_editor: PaletteEditor, text_editor: TextEditor,
+                 enemy_editor: EnemyEditor, settings: EditorSettings):
         self.rom: ROM = rom
         self.app: gui = app
+        self.text_editor = text_editor
+        self.enemy_editor = enemy_editor
+        self.settings = settings
 
         # Map data table from 0F:FEA0-FF6F
         self.map_table: List[MapTableEntry] = []
@@ -118,6 +141,10 @@ class MapEditor:
 
         # Index of the NPC currently being edited, taken from the npc_data list
         self.npc_index: int = -1
+
+        # Index of the selected entrance / moongate from the listbox in the Entrance Editor sub-sub-window
+        self.selected_entrance: int = -1
+        self.selected_moongate: int = -1
 
         # List of entrances to other maps that are accessible from this one
         self.entrances: List[Point2D] = []
@@ -174,6 +201,12 @@ class MapEditor:
         # Read NPC Palette indices from 0C:BA08
         # Each entry contains: bits 0,1 = bottom palette | bits 2,3 = top palette
         self.npc_palette_indices = []
+
+        # These will be saved when clicking on the map
+        self._last_tile = {
+            "x": 0,
+            "y": 0
+        }
 
         # List of all location names, as read from locations txt file
         self.location_names: List[str] = []
@@ -400,19 +433,19 @@ class MapEditor:
         self.app.clearCanvas("ME_Canvas_Map_Colours")
 
         colours = []
-        colour = bytearray(self.palette_editor.get_colour(map_palette[9]))
-        colours.append(colour[0])
-        colours.append(colour[1])
-        colours.append(colour[2])
+        rgb = bytearray(self.palette_editor.get_colour(map_palette[9]))
+        colours.append(rgb[0])
+        colours.append(rgb[1])
+        colours.append(rgb[2])
         image = Image.new('P', (16, 16), 0)
         image.putpalette(colours)
         self.app.addCanvasImage("ME_Canvas_Map_Colours", 9, 9, ImageTk.PhotoImage(image))
 
         colours.clear()
-        colour = bytearray(self.palette_editor.get_colour(map_palette[10]))
-        colours.append(colour[0])
-        colours.append(colour[1])
-        colours.append(colour[2])
+        rgb = bytearray(self.palette_editor.get_colour(map_palette[10]))
+        colours.append(rgb[0])
+        colours.append(rgb[1])
+        colours.append(rgb[2])
         image = Image.new('P', (16, 16), 0)
         image.putpalette(colours)
         self.app.addCanvasImage("ME_Canvas_Map_Colours", 26, 9, ImageTk.PhotoImage(image))
@@ -433,10 +466,10 @@ class MapEditor:
             colours = []
             for c in range(palette_index, palette_index + 4):
                 colour_index = map_palette[c]
-                colour = bytearray(self.palette_editor.get_colour(colour_index))
-                colours.append(colour[0])  # Red
-                colours.append(colour[1])  # Green
-                colours.append(colour[2])  # Blue
+                rgb = bytearray(self.palette_editor.get_colour(colour_index))
+                colours.append(rgb[0])  # Red
+                colours.append(rgb[1])  # Green
+                colours.append(rgb[2])  # Blue
 
             # We will combine the four patterns in a single 16x16 image and then cache it
             tile = Image.new('P', (16, 16), 0)
@@ -565,10 +598,10 @@ class MapEditor:
                 except IndexError:
                     self.error(f"Index out of range for palette[1]: {c}")
                     colour_index = 0
-                colour = bytearray(self.palette_editor.get_colour(colour_index))
-                top_colours.append(colour[0])
-                top_colours.append(colour[1])
-                top_colours.append(colour[2])
+                rgb = bytearray(self.palette_editor.get_colour(colour_index))
+                top_colours.append(rgb[0])
+                top_colours.append(rgb[1])
+                top_colours.append(rgb[2])
 
             # Bottom palette index
             palette_index = (self.npc_palette_indices[npc_index] & 0x03) * 4
@@ -580,10 +613,10 @@ class MapEditor:
                 except IndexError:
                     self.error(f"Index out of range for palette[1]: {c}")
                     colour_index = 0
-                colour = bytearray(self.palette_editor.get_colour(colour_index))
-                bottom_colours.append(colour[0])  # Red
-                bottom_colours.append(colour[1])  # Green
-                bottom_colours.append(colour[2])  # Blue
+                rgb = bytearray(self.palette_editor.get_colour(colour_index))
+                bottom_colours.append(rgb[0])  # Red
+                bottom_colours.append(rgb[1])  # Green
+                bottom_colours.append(rgb[2])  # Blue
 
             # Top-Left pattern
             pixels = bytes(bytearray(self.rom.read_pattern(3, address)))
@@ -754,7 +787,7 @@ class MapEditor:
 
                     # Also make sure the pointer is valid
                     if 0xBFFF > pointer > 0x8000:
-                        message = text_editor.read_text(self.rom, 0xD, pointer)
+                        message = read_text(self.rom, 0xD, pointer)
 
                     messages.append(message)
 
@@ -1207,6 +1240,26 @@ class MapEditor:
         else:
             self.warning(f"Unimplemented tool: '{tool}'")
 
+    # ----------------------------------------------------------------------------------------------------------------------
+
+    def close_windows(self) -> bool:
+        """
+        Handles a request to close the map editor sub-window
+
+        Returns
+        -------
+        bool
+            Always returns true
+        """
+        # TODO Ask to save changes (if any)
+        self.app.hideSubWindow("NPC_Editor")
+        self.app.emptySubWindow("NPC_Editor")
+        self.app.hideSubWindow("Entrance_Editor", useStopFunction=False)
+        self.app.emptySubWindow("Entrance_Editor")
+        self.app.hideSubWindow("Map_Editor", useStopFunction=False)
+        self.app.emptySubWindow("Map_Editor")
+        return True
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def open_map(self, map_index: int, force_compression: str = "") -> None:
@@ -1235,6 +1288,528 @@ class MapEditor:
             self._load_map(map_data.bank, map_data.data_pointer, compression)
         else:
             self._load_dungeon(map_data.bank, map_data.data_pointer, compression)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _get_selection_index(self, widget: str) -> int:
+        """
+
+        Returns
+        -------
+        int:
+            The index of the currently selected option from an OptionBox widget
+        """
+        value = "(nothing)"
+        try:
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            return box.options.index(value)
+        except ValueError as error:
+            self.error(f"ERROR: Getting selection index for '{value}' in '{widget}': {error}.")
+            return 0
+
+    # ----------------------------------------------------------------------------------------------------------------------
+
+    def update_map_table(self, map_data: MapTableEntry) -> None:
+        """
+        Updates the widgets in the Map Editor Tab
+
+        Parameters
+        ----------
+        map_data: MapTableEntry
+            Data to show
+        """
+        self.app.setEntry("MapInfo_Bank", f"0x{map_data.bank:02X}", False)
+        self.app.setEntry("MapInfo_DataPtr", f"0x{map_data.data_pointer:04X}", False)
+
+        # Get index of selected map
+
+        try:
+            map_index = int(self.app.getOptionBox("MapInfo_Select")[:4], base=16)
+        except IndexError:
+            value = self.app.getOptionBox("MapInfo_Select")
+            log(3, "EDITOR", f"Error getting map index from: '{value}'.")
+            map_index = 0
+
+        # Basic info
+
+        # In v1.09+, the map type depends on its flags entirely
+
+        if self.max_maps() > 26:
+
+            if map_index == 0:  # Map 0 is hardcoded
+                map_type = 0
+
+            # Dungeon flag
+            elif map_data.flags & 0x80 != 0:
+                map_type = 4
+
+            # Continent flag
+            elif map_data.flags & 0x20 != 0:
+                # No Guards
+                if map_data.flags & 0x40 != 0:
+                    map_type = 0
+                # With Guards
+                else:
+                    map_type = 1
+
+            # Town / Castle
+            else:
+                # No Guards
+                if map_data.flags & 0x40 != 0:
+                    map_type = 2
+                # With Guards
+                else:
+                    map_type = 3
+
+        # Otherwise, it's a mix of dungeon flag and map index
+        else:
+
+            if map_data.flags & 0x80 != 0:  # Dungeons
+                map_type = 4
+
+            elif map_index == 0:  # Sosaria
+                map_type = 0
+
+            elif map_index == 6:  # Castle British
+                map_type = 3
+
+            elif map_index == 15:  # Ambrosia
+                map_type = 2
+
+            elif map_index == 20:  # Castle Death
+                map_type = 2
+
+            else:  # Towns / default
+                map_type = 3
+
+        self.app.setOptionBox("MapInfo_Basic_Type", map_type)
+
+        if 0 <= map_data.bank <= 0xF:
+            self.app.setOptionBox("MapInfo_Basic_Bank", map_data.bank)
+        else:
+            # Defaults based on type: dungeons on bank 2, anything else bank 0
+            if map_data.flags & 0x80 != 0:
+                self.app.setOptionBox("MapInfo_Basic_Bank", 2)
+            else:
+                self.app.setOptionBox("MapInfo_Basic_Bank", 0)
+
+        map_id = map_data.flags & 0x1F
+        self.app.setSpinBox("MapInfo_Basic_ID", map_id, callFunction=False)
+
+        # Advanced info
+
+        # For dungeon maps, the low byte is actually the facing direction
+        # ...but only for version 1.09+, so we need to detect that based on the entry table address
+        if self.max_maps() > 26:
+            if self.is_dungeon(self.map_index):
+                self.app.setLabel("MapInfo_h2", "Facing dir.:")
+            else:
+                self.app.setLabel("MapInfo_h2", "NPC Table:")
+        self.app.setEntry("MapInfo_NPCPtr", f"0x{map_data.npc_pointer:04X}", False)
+
+        self.app.setEntry("MapInfo_EntryX", f"{map_data.entry_x}", False)
+        self.app.setEntry("MapInfo_EntryY", f"{map_data.entry_y}", False)
+        self.app.setEntry("MapInfo_Flags", f"0x{map_data.flags:02X}", False)
+
+    # ----------------------------------------------------------------------------------------------------------------------
+
+    def map_input(self, widget: str) -> None:
+        """
+        Generic button callback for the Map Editor sub-window and its sub-windows
+
+        Parameters
+        ----------
+        widget: str
+            Name of the Button widget being pressed
+
+        """
+        if widget == "ME_Button_Draw":
+            self.select_tool("draw")
+
+        elif widget == "ME_Button_Fill":
+            self.select_tool("fill")
+
+        elif widget == "ME_Button_Clear":
+            self.select_tool("clear")
+
+        elif widget == "ME_Button_Info":
+            self.select_tool("info")
+
+        elif widget == "MapEditor_Discard":
+            self.close_windows()
+
+        elif widget == "MapEditor_Save":
+            if self.settings.get("sync npc sprites"):
+                sync = True
+            else:
+                sync = False
+            self.save_map(sync)
+
+            # Reload enemy sprites if sync sprite options is selected
+            if sync:
+                self.enemy_editor.read_enemy_data(self.text_editor)
+
+            self.app.hideSubWindow("Entrance_Editor")
+            self.app.hideSubWindow("NPC_Editor")
+            self.app.hideSubWindow("Map_Editor")
+            # Addresses may have changed due to reallocation, so refresh display
+            self.update_map_table(self.map_table[self.map_index])
+
+        elif widget == "MapEditor_Import":
+            # Browse for a file to import
+            file_name = self.app.openBox("Import Map Data...", self.settings.get("last map import path"),
+                                         [("4-bit packed", "*.bin"), ("LZSS Compressed", "*.lzss"),
+                                          ("RLE Encoded", "*.rle")],
+                                         asFile=False, parent="Map_Editor", multiple=False)
+            if file_name != "":
+                self.import_map(file_name)
+                directory = os.path.dirname(file_name)
+                self.settings.set("last map import path", directory)
+
+        elif widget == "MapEditor_Export":
+            # Ask for a file name
+            file_name = self.app.saveBox("Export Map Data...", None, self.settings.get("last map export path"), ".bin",
+                                         [("4-bit packed", "*.bin"), ("LZSS Compressed", "*.lzss"),
+                                          ("RLE Encoded", "*.rle")],
+                                         parent="Map_Editor")
+            if file_name != "":
+                self.export_map(file_name)
+                directory = os.path.dirname(file_name)
+                self.settings.set("last map export path", directory)
+
+        elif widget == "ME_Option_Map_Colours":
+            # Do nothing if ROM doesn't support custom map colours
+            if self.rom.has_feature("custom map colours") is False:
+                return
+
+            # Read value
+            try:
+                colour_value = int(self.app.getOptionBox("ME_Option_Map_Colours"), 16)
+            except ValueError:
+                return
+            # Reload tiles using the new colour
+            self.load_tiles(map_colour=colour_value)
+            # Redraw the map
+            self.redraw_map()
+
+        elif widget == "NPCE_Option_NPC_List":
+            try:
+                # Move the map to the specified NPC's position
+                npc_index = int(self.app.getOptionBox("NPCE_Option_NPC_List")[:2])
+                x = self.npc_data[npc_index].starting_x
+                y = self.npc_data[npc_index].starting_y
+                if (0 <= x <= 63) and (0 <= y <= 63):
+                    self.jump_to(x, y)
+
+                # Populate the info frame with the selected character's data
+                npc_index = int(self.app.getOptionBox("NPCE_Option_NPC_List")[:2])
+                self.npc_index = npc_index
+                self.npc_info(npc_index)
+                self.app.showLabelFrame("NPCE_Frame_Info")
+
+            except ValueError:
+                pass
+
+        elif widget == "NPCE_Entry_Dialogue_ID":
+            # Get Dialogue/Function ID
+            value = self.app.getEntry("NPCE_Entry_Dialogue_ID")
+            try:
+                dialogue_id = int(value, 16)
+            except ValueError:
+                # app.errorBox("Apply NPC Changes", f"ERROR: Invalid Dialogue/Function ID '{value}'.\n"
+                #                                  "Please enter a numeric value in hexadecimal format (e.g.: 0x1B).",
+                #             parent="NPC_Editor")
+                return
+
+            self.set_npc_dialogue(dialogue_id)
+
+        elif widget == "NPCE_Create":
+            # This will create a new NPC with default attributes
+            self.npc_info(-1)
+            self.app.showLabelFrame("NPCE_Frame_Info")
+            # app.setButton("NPCE_Button_Create_Apply", "Create NPC")
+
+        elif widget == "NPCE_Button_Position":
+            self.select_tool("move_npc")
+
+        elif widget == "NPCE_Button_Edit_Dialogue":
+            string_id = self.app.getEntry("NPCE_Entry_Dialogue_ID")
+            try:
+                value = int(string_id, 16)
+                if 0 <= value <= 0xE6:
+                    self.text_editor.show_window(value, "Dialogue")
+                else:
+                    self.app.warningBox("Edit Dialogue", f"{string_id} is not a valid Dialogue ID.",
+                                        parent="NPC_Editor")
+            except ValueError:
+                self.app.warningBox("Edit Dialogue", f"{string_id} is not a valid Dialogue ID.", parent="NPC_Editor")
+
+        else:
+            self.warning(f"Unimplemented Map Editor button: {widget}")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def create_widgets(self) -> None:
+
+        with self.app.subWindow("Map_Editor"):
+
+            # noinspection PyArgumentList
+            self.app.setStopFunction(self.close_windows)
+
+            # Buttons
+            with self.app.frame("ME_Frame_Buttons", row=0, column=0, padding=[4, 0], sticky='NEW', stretch='ROW'):
+                self.app.button("MapEditor_Import", name="Import", value=self.map_input, image="res/import.gif",
+                                tooltip="Import from File", row=0, column=0)
+                self.app.button("MapEditor_Export", name="Export", value=self.map_input, image="res/export.gif",
+                                tooltip="Export to File", row=0, column=1)
+                self.app.button("MapEditor_Save", name="Save Changes", value=self.map_input, image="res/floppy.gif",
+                                tooltip="Close and Apply Changes", row=0, column=2)
+                self.app.button("MapEditor_Discard", name="Discard Changes", value=self.map_input,
+                                image="res/close.gif",
+                                tooltip="Close and Discard Changes", row=0, column=3)
+
+            # Tile picker / toolbox
+            with self.app.frame("ME_Frame_Tile_Picker", row=1, column=0, padding=[4, 0], stretch='COLUMN', sticky='EW',
+                                bg=colour.PALE_BLUE):
+                self.app.button("ME_Button_Draw", self.map_input, name="Draw", image="res/pencil.gif",
+                                tooltip="Draw", height=32, row=0, column=0)
+                self.app.button("ME_Button_Fill", self.map_input, name="Fill", image="res/bucket.gif",
+                                tooltip="Flood Fill", height=32, row=0, column=1)
+                self.app.button("ME_Button_Clear", self.map_input, name="Clear", image="res/eraser.gif",
+                                tooltip="Clear Map", height=32, row=0, column=2)
+                self.app.button("ME_Button_Info", self.map_input, name="Info", image="res/zoom.gif",
+                                tooltip="Tile Info", height=32, row=0, column=3)
+                self.app.canvas("ME_Canvas_Tiles", row=0, column=4, width=128, height=32, stretch='NONE', map=None,
+                                bg="black").bind("<Button-1>", self.map_pick_tile, add="+")
+                self.app.setCanvasCursor("ME_Canvas_Tiles", "hand2")
+
+            # Tile info frame
+            with self.app.labelFrame("Tile Info", row=2, column=0, bg=colour.PALE_VIOLET, stretch='BOTH', sticky='EW'):
+                self.app.canvas("ME_Canvas_Selected_Tile", row=0, column=0, width=16, height=16, stretch='NONE',
+                                map=None,
+                                bg=colour.PALE_NAVY)
+                self.app.label("ME_Selected_Tile_Name", "", row=0, column=1)
+                self.app.label("ME_Selected_Tile_Properties", "", row=0, column=2)
+                self.app.label("ME_Selected_Tile_Position", "", row=0, column=3)
+
+                # Special tile info
+                with self.app.frame("ME_Frame_Special_Tile", row=0, column=4, padding=[8, 0]):
+                    self.app.label("ME_Special_Tile_Name", "Special", row=0, column=0)
+                    self.app.optionBox("ME_Special_Tile_Value", ["", "", "", ""], row=0, column=1, width=10,
+                                       change=self.select_dungeon_special_type)
+
+            # Colours and special options
+            with self.app.frame("ME_Frame_Map_Options", row=3, column=0, padding=[4, 4], stretch='ROW', sticky='EW'):
+                # Column 0
+                self.app.label("Map-specific colours:", row=0, column=0, sticky='E')
+                # Column 1
+                values: List[str] = []
+                for i in range(9):
+                    values.append(f"0x{i:02X}")
+                self.app.optionBox("ME_Option_Map_Colours", values, row=0, column=1, width=4, sticky='W',
+                                   change=self.map_input)
+                del values
+                # Column 2
+                self.app.canvas("ME_Canvas_Map_Colours", width=35, height=18, row=0, column=2, stretch='NONE',
+                                map=None, bg=colour.BLACK)
+
+            # Map Canvas
+            with self.app.scrollPane("ME_Scroll_Pane", row=4, column=0, stretch='BOTH', padding=[0, 0], sticky='NEWS'):
+                # Map Canvas
+                self.app.canvas("ME_Canvas_Map", row=0, column=0, width=1024, height=1024, map=None,
+                                bg="black").bind("<Button-1>", self.map_edit_tile, add="+")
+
+                # Dungeon tools
+                with self.app.frame("ME_Frame_Dungeon_Tools", row=0, column=1, padding=[8, 0], sticky='SEWN',
+                                    stretch='COLUMN', bg=colour.PALE_ORANGE):
+                    # Dungeon tools Row #0
+                    self.app.label("ME_Label_Dungeon_Level", "Floor:", row=0, column=0)
+                    # Dungeon tools Row #1
+                    self.app.optionBox("ME_Option_Dungeon_Level",
+                                       [" 1 ", " 2 ", " 3 ", " 4 ", " 5 ", " 6 ", " 7 ", " 8 "],
+                                       change=self.select_dungeon_level, row=1, column=0, stretch='NONE', sticky='NEW')
+                    # Dungeon tools Row #2
+                    self.app.label("ME_Label_Dungeon_Message", "Message Sign:", row=2, column=0, font=9)
+                    # Dungeon tools Row #3
+                    self.app.textArea("ME_Text_Dungeon_Message", "", row=3, column=0, sticky='WE', height=5,
+                                      scroll=True,
+                                      width=12, change=self.change_dungeon_message).setFont(size=9)
+                    # Dungeon tools Row #4
+                    self.app.label("ME_Label_Marks_Count", "Marks: 0", row=4, column=0, width=10,
+                                   stretch='NONE', sticky='NEW', font=9)
+                    # Dungeon tools Row #5
+                    self.app.label("ME_Label_Fountains_Count", "Fountains: 0", row=5, column=0, width=10,
+                                   stretch='NONE', sticky='NEW', font=9)
+                    # Dungeon tools Row #6
+                    self.app.checkBox("ME_Auto_Ladders", text="Auto-Ladder", value=True, row=6, column=0,
+                                      tooltip="Automatically create corresponding ladder on the connecting floor",
+                                      font=9)
+
+            # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
+            with self.app.subWindow("Map_Progress", title="Redraw Map", modal=True, size=[300, 100], padding=[4, 4],
+                                    bg=colour.PALE_LIME):
+                # noinspection PyArgumentList
+                self.app.setStopFunction(no_stop)
+
+                self.app.label("Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE',
+                               font=16)
+                self.app.meter("ME_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
+                               fill=colour.MEDIUM_BLUE)
+
+            # Entrance / Moongate Editor Sub-Sub-Window ----------------------------------------------------------------
+            with self.app.subWindow("Entrance_Editor", "Entrances / Moongates", size=[256, 440], modal=False,
+                                    resizable=False, bg=colour.PALE_OLIVE):
+                # noinspection PyArgumentList
+                self.app.setStopFunction(self.close_windows)
+
+                # Entrances frame
+                with self.app.labelFrame("EE_Frame_Entrances", name="Entrances", row=0, column=0, stretch='ROW',
+                                         sticky='NEW'):
+                    # Column 0
+                    self.app.listBox("EE_List_Entrances", list(range(22)), change=self.entrance_input, row=0,
+                                     column=0, width=16, font=10)
+
+                    # Column 1
+                    with self.app.frame("EE_Frame_Entrance_Tools", padding=[1, 1], row=0, column=1):
+                        # Row 0
+                        self.app.button("EE_Button_Entrance_Set", name="Move", image="res/target.gif", row=0, column=0,
+                                        value=self.entrance_input, tooltip="Pick new coordinates from the map")
+                        self.app.button("EE_Button_Entrance_Remove", name="Delete", image="res/eraser.gif",
+                                        value=self.entrance_input,
+                                        tooltip="Clear this entrance (moves it off map)",
+                                        row=0, column=1)
+                        # Row 1
+                        self.app.label("EE_Label_h2", "X:", row=1, column=0, font=9)
+                        self.app.label("EE_Label_h3", "Y:", row=1, column=1, font=9)
+                        # Row 2
+                        self.app.entry("EE_Entrance_X", value=255, change=self.entrance_input, width=4,
+                                       row=2, column=0, font=9)
+                        self.app.entry("EE_Entrance_Y", value=255, change=self.entrance_input, width=4,
+                                       row=2, column=1, font=9)
+                        # Row 3
+                        self.app.label("EE_Label_h4", "Map:", row=3, column=0, font=9)
+                        self.app.label("EE_Entrance_Map", "0x00", width=4, row=3, column=1, font=9)
+
+                # Moongates frame
+                with self.app.labelFrame("EE_Frame_Moongates", name="Moongates", row=1, column=0, stretch='BOTH',
+                                         expand='BOTH', sticky='SEWN'):
+                    # Column 0
+                    with self.app.frame("EE_Frame_Moongate_List", row=0, column=0):
+                        # Row 0
+                        self.app.listBox("EE_List_Moongates", list(range(9)), change=self.entrance_input,
+                                         colspan=2, width=10, height=6, row=0, column=0, font=10)
+                        # Row 1
+                        self.app.label("EE_Label_h10", "Dawn tile:", stretch='BOTH', sticky='NEWS', row=1, column=0,
+                                       font=9)
+                        self.app.canvas("EE_Canvas_Dawn_Tile", width=16, height=16, bg=colour.BLACK, map=None,
+                                        stretch='BOTH', sticky='W', row=1, column=1)
+                        # Row 2
+                        tiles_list: List[str] = []
+                        for i in range(16):
+                            tiles_list.append(f"0x{i:02X}")
+                        self.app.optionBox("EE_Option_Dawn_Tile", tiles_list, change=self.entrance_input,
+                                           colspan=2, sticky='EW', row=2, column=0, font=9)
+                        # Row 3
+                        self.app.label("EE_Label_h9", "Active on:", row=3, column=0, colspan=2, font=9)
+                        # Row 4
+                        self.app.optionBox("EE_List_Moongates_Options", ["Continent maps", "A specific map"],
+                                           change=self.entrance_input,
+                                           row=4, column=0, colspan=2, sticky='EW', font=9)
+                        # Row 5
+                        self.app.optionBox("EE_Option_Moongates_Map", self.location_names, sticky='EW',
+                                           row=5, column=0, colspan=2, font=9)
+
+                    # Column 1
+                    with self.app.frame("EE_Frame_Moongate_Tools", padding=[1, 1], row=0, column=1):
+                        # Row 0
+                        self.app.button("EE_Button_Moongate_Set", name="Move", image="res/target.gif", row=0, column=0,
+                                        value=self.entrance_input, tooltip="Pick new coordinates from the map")
+                        self.app.button("EE_Button_Moongate_Remove", name="Delete", image="res/eraser.gif", row=0,
+                                        column=1,
+                                        value=self.entrance_input,
+                                        tooltip="Clear this Moongate (moves it off map)")
+                        # Row 1
+                        self.app.label("EE_Label_Moongate_X", "X:", row=1, column=0, font=9)
+                        self.app.label("EE_Label_Moongate_Y", "Y:", row=1, column=1, font=9)
+                        # Row 2
+                        self.app.entry("EE_Moongate_X", value=255, width=4, row=2, column=0,
+                                       change=self.entrance_input, font=9)
+                        self.app.entry("EE_Moongate_Y", value=255, width=4, row=2, column=1,
+                                       change=self.entrance_input, font=9)
+                        # Row 3
+                        self.app.label("EE_Label_h7", "Moon Phase:", sticky='EW', row=3, column=0, colspan=2, font=9)
+                        # Row 4
+                        self.app.canvas("EE_Canvas_Moon_Phase", width=16, height=16, bg=colour.BLACK, map=None,
+                                        stretch='BOTH', sticky='N', row=4, column=0, colspan=2)
+                        # Row 5
+                        self.app.label("EE_Label_h8", "'Ground':", sticky='EW', row=5, column=0, colspan=2, font=9)
+                        # Row 6
+                        self.app.canvas("EE_Canvas_Moongate_Tile", width=16, height=16, bg=colour.BLACK, map=None,
+                                        stretch='BOTH', sticky='N', row=6, column=0, colspan=2)
+                        # Row 7
+                        self.app.optionBox("EE_Option_Moongate_Tile", tiles_list, row=7, column=0, colspan=2,
+                                           height=1, change=self.entrance_input, sticky='N', font=9)
+
+            # NPC Editor Sub-Sub-Window --------------------------------------------------------------------------------
+            with self.app.subWindow("NPC_Editor", "NPC Editor", size=[360, 300], modal=False, resizable=False):
+                # noinspection PyArgumentList
+                self.app.setStopFunction(self.close_windows)
+
+                # NPC Actions
+                with self.app.frame("NPCE_Frame_Top", row=0, column=0, stretch='COLUMN', sticky='NEW', padding=[4, 0]):
+                    self.app.button("NPCE_Create", self.map_input, name=" Create a New NPC ",
+                                    row=0, column=0, font=9)
+                    self.app.label("NPCE_Label", "Or select an existing one from the list below",
+                                   row=1, column=0, font=9)
+
+                # NPC Selection
+                with self.app.frame("NPCE_Frame_Middle", row=1, column=0, stretch='COLUMN', sticky='NEW',
+                                    padding=[4, 4]):
+                    self.app.optionBox("NPCE_Option_NPC_List", ["No NPCs on this map"], change=self.map_input,
+                                       row=0, column=0, width=28, font=9)
+                    self.app.button("NPCE_Delete", self.map_input, name="Delete", image="res/eraser.gif",
+                                    tooltip="Delete NPC", row=0, column=1, font=9)
+
+                # NPC Info
+                with self.app.labelFrame("NPCE_Frame_Info", name="NPC Info", row=2, column=0, stretch='BOTH',
+                                         sticky='NEWS', padding=[4, 4]):
+                    with self.app.frame("NPCE_Frame_Info_Top", row=0, column=0, padding=[4, 0]):
+                        # NPC Graphics
+                        self.app.label("NPCE_Sprite_ID", "GFX Index: ", row=0, column=0, font=10)
+                        options = []
+                        for i in range(0x1F):
+                            options.append(f"0x{i:02X}")
+                        self.app.optionBox("NPCE_Option_Graphics", options, change=self.npc_select_graphics, row=0,
+                                           column=1,
+                                           font=9)
+                        self.app.canvas("NPCE_Canvas_New_Sprite", row=0, column=2, width=16, height=16, stretch='NONE',
+                                        map=None, bg=colour.MEDIUM_GREY)
+                        self.app.checkBox("NPCE_Check_Static", text="Static", change=self.npc_select_graphics, row=0,
+                                          column=3,
+                                          font=9)
+
+                    with self.app.frame("NPCE_Frame_Info_Palettes", row=1, column=0, padding=[4, 0]):
+                        # 1
+                        self.app.label("NPCE_Label_Palette_1", "Palette 1:", row=0, column=0, font=9)
+                        self.app.optionBox("NPCE_Palette_1", ["0", "1", "2", "3"], change=self.npc_select_graphics,
+                                           row=0, column=1, font=9)
+                        # 2
+                        self.app.label("NPCE_Label_Palette_2", "Palette 2:", row=0, column=2, font=9)
+                        self.app.optionBox("NPCE_Palette_2", ["0", "1", "2", "3"], change=self.npc_select_graphics,
+                                           row=0, column=3, font=9)
+
+                    with self.app.frame("NPCE_Frame_Info_Bottom", row=2, column=0, padding=[4, 0]):
+                        # NPC Properties Row 0
+                        self.app.label("NPCE_Dialogue_ID", "Dialogue/Function:", row=0, column=0, colspan=2, font=9)
+                        self.app.label("NPCE_Starting_Position", "Starting Pos: 0, 0", row=0, column=2, font=9)
+                        # NPC Properties Row 1
+                        self.app.entry("NPCE_Entry_Dialogue_ID", "0x00", change=self.map_input, case="upper",
+                                       row=1, column=0, font=9)
+                        self.app.button("NPCE_Button_Edit_Dialogue", value=self.map_input, image="res/edit-dlg.gif",
+                                        tooltip="Edit Dialogue Text", row=1, column=1, font=9)
+                        self.app.button("NPCE_Button_Position", self.map_input, name="Set Position", row=1, column=2,
+                                        font=9)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -2292,10 +2867,10 @@ class MapEditor:
             except IndexError:
                 self.error(f"Index out of range for palette[1]: {c}")
                 colour_index = 0
-            colour = bytearray(self.palette_editor.get_colour(colour_index))
-            top_colours.append(colour[0])
-            top_colours.append(colour[1])
-            top_colours.append(colour[2])
+            rgb = bytearray(self.palette_editor.get_colour(colour_index))
+            top_colours.append(rgb[0])
+            top_colours.append(rgb[1])
+            top_colours.append(rgb[2])
 
         # Bottom palette index
         palette_index = (palette_bottom & 0x03) * 4
@@ -2307,10 +2882,10 @@ class MapEditor:
             except IndexError:
                 self.error(f"Index out of range for palette[1]: {c}")
                 colour_index = 0
-            colour = bytearray(self.palette_editor.get_colour(colour_index))
-            bottom_colours.append(colour[0])  # Red
-            bottom_colours.append(colour[1])  # Green
-            bottom_colours.append(colour[2])  # Blue
+            rgb = bytearray(self.palette_editor.get_colour(colour_index))
+            bottom_colours.append(rgb[0])  # Red
+            bottom_colours.append(rgb[1])  # Green
+            bottom_colours.append(rgb[2])  # Blue
 
         # Top-Left pattern
         pixels = bytes(bytearray(self.rom.read_pattern(3, address)))
@@ -2892,7 +3467,7 @@ class MapEditor:
 
     def show_mark_info(self, mark_id) -> None:
         # Get the names from ROM
-        mark_names = text_editor.read_text(self.rom, 0xC, 0xA608).splitlines(False)
+        mark_names = read_text(self.rom, 0xC, 0xA608).splitlines(False)
         if len(mark_names) != 4:
             mark_values = ["0: KINGS", "1: FIRE", "2: FORCE", "3: SNAKE"]
         else:
@@ -3022,7 +3597,8 @@ class MapEditor:
         # B200    LDA $A8	; <-- Change to lda $70 ($A5 $70) to load map index instead
         # B202    CMP #$0C	; <-- Change 0B:B203 to the index of the map where Moongates and Dawn should be enabled
         check = self.app.getOptionBox("EE_List_Moongates_Options")
-        value = int(self.app.getOptionBox("EE_Option_Moongates_Map")[:4], 16)
+        # value = int(self.app.getOptionBox("EE_Option_Moongates_Map")[:4], 16)
+        value = self._get_selection_index("EE_Option_Moongates_Map")
 
         if check[0] == 'C':
             self.rom.write_byte(0xB, 0xB201, 0xA8)
@@ -3343,7 +3919,7 @@ class MapEditor:
                         # Allocate memory for this text if needed
                         if match is False:
                             # Encode string
-                            data = text_editor.ascii_to_exodus(current_message)
+                            data = ascii_to_exodus(current_message)
                             # Add terminator character if needed
                             if len(data) < 1 or data[-1] != 0xFF:
                                 data.append(0xFF)
@@ -3476,3 +4052,320 @@ class MapEditor:
 
         self.info("All done!")
         return True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def map_pick_tile(self, event: any) -> None:
+        """
+        Called when the user clicks on the tile picker canvas
+
+        Parameters
+        ----------
+        event
+            Mouse click event instance
+        """
+        tile_index = (event.x >> 4) + ((event.y >> 4) << 3)
+
+        if tile_index < 0 or tile_index > 0xF:
+            return
+
+        # print(f"Picked tiled ID: 0x{tile_index:02X}")
+        self.selected_tile_id = tile_index
+        self.tile_info(tile_index)
+        self.app.setLabel("ME_Selected_Tile_Position", "")
+
+        # Hide the "special" field for now
+        self.app.hideFrame("ME_Frame_Special_Tile")
+
+        # If the current tool is neither "draw" nor "fill", switch to drawing mode
+        if self.tool != "draw" and self.tool != "fill":
+            self.select_tool("draw")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def map_edit_tile(self, event: any) -> None:
+        """
+        Called when the user clicks on the map canvas
+
+        Parameters
+        ----------
+        event
+            Mouse click event instance
+        """
+        tile_x = event.x >> 4
+        tile_y = event.y >> 4
+
+        # Save coordinates for future editing
+        self._last_tile["x"] = tile_x
+        self._last_tile["y"] = tile_y
+
+        if self.tool == "draw":
+            self.change_tile(tile_x, tile_y, self.selected_tile_id, True)
+            # Also display tile position
+            self.app.setLabel("ME_Selected_Tile_Position", f"[{tile_x}, {tile_y}]")
+
+        elif self.tool == "fill":
+            self.flood_fill(tile_x, tile_y)
+
+        elif self.tool == "info":
+            # log(4, "EDITOR", f"Tile {tile_x}, {tile_y}")
+
+            # Get the ID of the tile at the mouse click coordinates
+            tile_id = self.get_tile_id(tile_x, tile_y)
+
+            # Display info about this tile
+            self.tile_info(tile_id, tile_x, tile_y)
+
+            self.selected_tile_id = tile_id
+            self.app.setLabel("ME_Selected_Tile_Position", f"[{tile_x}, {tile_y}]")
+
+            if self.is_dungeon() is False:
+                # Find an NPC at this coordinates and show it in NPC editor
+                npc_index = self.find_npc(tile_x, tile_y)
+                if npc_index > -1:
+                    # log(4, "EDITOR", f"Found NPC #{npc_index}")
+                    self.npc_index = npc_index
+                    self.npc_info(npc_index)
+                    self.app.setOptionBox("NPCE_Option_NPC_List", npc_index)
+                    self.app.showLabelFrame("NPCE_Frame_Info")
+                    # app.setButton("NPCE_Button_Create_Apply", "Apply Changes")
+
+        elif self.tool == "move_entrance":
+            self.select_tool("draw")
+            if self.selected_entrance < 0 or len(self.app.getAllListItems("EE_List_Entrances")) < 1:
+                return
+
+            self.change_entrance(self.selected_entrance, tile_x, tile_y)
+
+        elif self.tool == "move_moongate":
+            self.select_tool("draw")
+            if self.selected_moongate < 0 or len(self.app.getAllListItems("EE_List_Moongates")) < 1:
+                return
+
+            self.change_moongate(self.selected_moongate, tile_x, tile_y)
+
+        elif self.tool == "move_npc":
+            self.move_npc(tile_x, tile_y)
+            # Select draw tool after we're done moving
+            self.select_tool("draw")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def npc_select_graphics(self, option_box: str) -> None:
+        """
+        An item has been selected from the NPC Sprite Option Box in the NPC Editor sub-window
+
+        Parameters
+        ----------
+        option_box: str
+            Name of the widget generating the event, could be either the option box or the "static" checkbox
+        """
+        if option_box == "NPCE_Option_Graphics" or option_box == "NPCE_Option_Graphics":
+            selection = int(self.app.getOptionBox("NPCE_Option_Graphics"), base=16)
+            if self.app.getCheckBox("NPCE_Check_Static"):
+                selection = selection | 0x80
+            self.select_npc_graphics(selection)
+
+        elif option_box == "NPCE_Palette_1" or option_box == "NPCE_Palette_2":
+            top = int(self.app.getOptionBox("NPCE_Palette_1"))
+            if self.rom.has_feature("2-colour sprites"):
+                bottom = int(self.app.getOptionBox("NPCE_Palette_2"))
+            else:
+                bottom = 0
+            self.change_npc_palettes(top, bottom)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def entrance_input(self, widget: str) -> None:
+        """
+        Callback function for presses/changes on widgets in the Entrance Editor sub-sub-window
+
+        Parameters
+        ----------
+        widget: str
+            Name of the widget that generated the event
+        """
+
+        _SELECTED = "#DFDFDF"
+        _UNSELECTED = "#FFFFFF"
+
+        # Click on Entrance Move Button
+        if widget == "EE_Button_Entrance_Set":
+            if self.selected_entrance > -1:
+                self.select_tool("move_entrance")
+
+        # Click on Entrance Remove Button
+        elif widget == "EE_Button_Entrance_Remove":
+            if self.selected_entrance < 0 or len(self.app.getAllListItems("EE_List_Entrances")) < 1:
+                return
+
+            self.change_entrance(self.selected_entrance, 0xFF, 0xFF)
+
+        # Selected item from Entrances ListBox
+        elif widget == "EE_List_Entrances":
+            value = self.app.getListBoxPos(widget)
+            if len(value):
+                # If clicking on the already selected item, just jump to it on the map
+                if value[0] == self.selected_entrance:
+                    point = self.entrances[value[0]]
+                    self.jump_to(point.x, point.y)
+
+                else:
+                    # We change the background of the item as it will be deselected when clicking outside the list
+                    items: list = self.app.getAllListItems(widget)
+                    for pos in range(len(items)):
+                        if pos == value[0]:
+                            self.app.setListItemAtPosBg(widget, pos, _SELECTED)
+                            self.selected_entrance = pos
+                        else:
+                            self.app.setListItemAtPosBg(widget, pos, _UNSELECTED)
+
+                    # Update the widgets to show info about this entrance
+                    self.entrance_info(value[0])
+
+        # Input new value in Entrance X / Y Entry Widget
+        elif widget == "EE_Entrance_X" or widget == "EE_Entrance_Y":
+            if self.selected_entrance < 0 or len(self.app.getAllListItems("EE_List_Entrances")) < 1:
+                return
+
+            try:
+                new_x = int(self.app.getEntry("EE_Entrance_X"))
+                new_y = int(self.app.getEntry("EE_Entrance_Y"))
+                self.change_entrance(self.selected_entrance, new_x, new_y)
+
+            except ValueError:
+                pass
+
+        # Selected new condition for Moongates to show up
+        elif widget == "EE_List_Moongates_Options":
+            value = self.app.getOptionBox("EE_List_Moongates_Options")
+            if value[0] == 'C':  # Continent maps only
+                self.app.disableOptionBox("EE_Option_Moongates_Map")
+
+            else:  # A specific map
+                self.app.enableOptionBox("EE_Option_Moongates_Map")
+                # Select the current map by default
+                self.app.setOptionBox("EE_Option_Moongates_Map", index=self.map_index, callFunction=False)
+
+            # This will save the changes to the ROM buffer, and show/hide the Moongates accordingly
+            self.update_moongate_condition()
+
+        # Selected item from Moongates ListBox
+        elif widget == "EE_List_Moongates":
+            value = self.app.getListBoxPos(widget)
+            if len(value):
+                # If clicking on the already selected item, just jump to it on the map
+                if value[0] == self.selected_moongate:
+                    point = self.moongates[value[0]]
+                    self.jump_to(point.x, point.y)
+
+                else:
+                    items: list = self.app.getAllListItems(widget)
+                    for pos in range(len(items)):
+                        if pos == value[0]:
+                            self.app.setListItemAtPosBg(widget, pos, _SELECTED)
+                            self.selected_moongate = pos
+                            self.moongate_info(pos)
+                        else:
+                            self.app.setListItemAtPosBg(widget, pos, _UNSELECTED)
+
+        # Mouse click on move Moongate button
+        elif widget == "EE_Button_Moongate_Set":
+            if 0 <= self.selected_moongate <= 8:
+                self.select_tool("move_moongate")
+
+        # Mouse click on remove Moongate button
+        elif widget == "EE_Button_Moongate_Remove":
+            if self.selected_moongate < 0 or len(self.app.getAllListItems("EE_List_Moongates")) < 1:
+                pass
+            else:
+                self.change_moongate(self.selected_moongate, 0xFF, 0xFF)
+
+        # Entered a new value for Moongate X
+        elif widget == "EE_Moongate_X" or widget == "EE_Moongate_Y":
+            if 0 <= self.selected_moongate <= 8:
+                try:
+                    new_x = int(self.app.getEntry("EE_Moongate_X"))
+                    new_y = int(self.app.getEntry("EE_Moongate_Y"))
+                    self.change_moongate(self.selected_moongate, new_x=new_x, new_y=new_y)
+                except ValueError:
+                    # Invalid input: restore previous value
+                    # app.setEntry(widget, f"{map_editor.moongates[selected_moongate].x}", callFunction=False)
+                    pass
+
+        # Selected a new tile for Dawn
+        elif widget == "EE_Option_Dawn_Tile":
+            new_tile_id = int(self.app.getOptionBox(widget), 16)
+            self.change_moongate(8, new_dawn_tile=new_tile_id)
+
+        # Selected a new Moongate/Dawn replacement tile
+        elif widget == "EE_Option_Moongate_Tile":
+            if 0 <= self.selected_moongate <= 8:
+                new_tile_id = int(self.app.getOptionBox(widget), 16)
+                self.change_moongate(self.selected_moongate, new_replacement_tile=new_tile_id)
+
+        else:
+            self.warning(f"Unimplemented callback for widget '{widget}'.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def select_dungeon_special_type(self, widget) -> None:
+        """
+        User selected either a new Mark or Fountain type for the currently selected dungeon tile
+
+        Parameters
+        ----------
+        widget
+            The OptionBox where the event occurred
+        """
+        tile_x = self._last_tile["x"]
+        tile_y = self._last_tile["y"]
+
+        try:
+            special_id = int(self.app.getOptionBox(widget)[0])
+        except ValueError as error:
+            log(2, "EDITOR", f"Could not read special type ID from '{self.app.getOptionBox(widget)}': {error}")
+            return
+
+        # First, check if the current tile is a special one, and then change it depending on which one it is
+        tile_id = self.get_tile_id(tile_x, tile_y)
+
+        if tile_id == 6:  # Mark
+            self.change_mark_type(tile_x, tile_y, special_id)
+        elif tile_id == 7:  # Fountain
+            self.change_fountain_type(tile_x, tile_y, special_id)
+        else:  # Not a special tile!
+            self.app.errorBox("ERROR", f"Could not find special tile at {tile_x}, {tile_y}!\nID = 0x{tile_id:02X}.",
+                              parent="Map_Editor")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def select_dungeon_level(self, sel: str) -> None:
+        """
+        Called when the user clicks on the dungeon level Option Box widget
+
+        Parameters
+        ----------
+        sel: str
+            Title of the Option Box widget
+        """
+        try:
+            level = int(self.app.getOptionBox(sel)) - 1
+        except ValueError:
+            level = 0
+
+        self.dungeon_level = level
+        self.show_map()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def change_dungeon_message(self, widget) -> None:
+        """
+        User typed something in the dungeon message.
+
+        Parameters
+        ----------
+        widget
+            The TextArea widget where the event occurred
+        """
+        self.change_message(message=self.app.getTextArea(widget))
