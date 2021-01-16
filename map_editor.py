@@ -15,7 +15,7 @@ import text_editor
 from rom import ROM
 
 
-# --- NPCData ---
+# ------------------------------------------------------------------------------------------------------------------
 
 @dataclass(init=True, repr=False)
 class NPCData:
@@ -28,7 +28,7 @@ class NPCData:
     starting_y: int = 0xFF
 
 
-# --- MapTableEntry ---
+# ------------------------------------------------------------------------------------------------------------------
 
 @dataclass(init=True, repr=False)
 class MapTableEntry:
@@ -45,7 +45,7 @@ class MapTableEntry:
     flags: int = 0  # 1 byte flags/ID (bit 7 set = dungeon)
 
 
-# --- DungeonData ---
+# ------------------------------------------------------------------------------------------------------------------
 
 @dataclass(init=True, repr=False)
 class DungeonData:
@@ -66,7 +66,7 @@ class DungeonData:
     fountain_pointer: int = 0x0000  # Default: 0xB95D + 2 + (Dungeon ID * 4)
 
 
-# --- MapEditor ---
+# ------------------------------------------------------------------------------------------------------------------
 
 class MapEditor:
     """
@@ -192,22 +192,22 @@ class MapEditor:
             for m in range(self.max_maps()):
                 self.location_names.append(f"MAP{m:02}")
 
-    # --- MapEditor.error() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def error(self, message: str):
         log(2, f"{self.__class__.__name__}", message)
 
-    # --- MapEditor.warning() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def warning(self, message: str):
         log(3, f"{self.__class__.__name__}", message)
 
-    # --- MapEditor.info() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def info(self, message: str):
         log(4, f"{self.__class__.__name__}", message)
 
-    # --- MapEditor.load_tiles() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def load_tiles(self, map_index: int = -1, map_colour: int = -1) -> None:
         """
@@ -232,9 +232,6 @@ class MapEditor:
             self.map_index = map_index
 
         self.info(f"Loading tiles for map 0x{map_index:02X}...")
-
-        # TODO Use the table at 0A:B600 if the version of the game supports it
-        # TODO Also detect vanilla game and use hardcoded vanilla substitutions
 
         if self.is_dungeon(map_index):
             if map_colour < 0:
@@ -261,7 +258,7 @@ class MapEditor:
         self.selected_tile_id = 0
         self.tile_info(0)
 
-    # --- MapEditor._load_dungeon_tiles() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _load_dungeon_tiles(self) -> None:
         """
@@ -369,7 +366,7 @@ class MapEditor:
             y = 8 + (16 * (tile_index >> 3))
             self.app.addCanvasImage("ME_Canvas_Tiles", x, y, image)
 
-    # --- MapEditor._load_map_tiles() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _load_map_tiles(self) -> None:
         """
@@ -446,6 +443,9 @@ class MapEditor:
             tile.putpalette(colours)
 
             actual_tile_index = tile_index
+
+            # TODO Use the table at 0A:B600 if the version of the game supports it
+            # TODO Also detect vanilla game and use hardcoded vanilla substitutions
 
             # Some maps use alternative tiles, like the Force Field used in castle maps
             if self.map_index == 0:  # ---[ Sosaria ]---
@@ -529,7 +529,7 @@ class MapEditor:
             y = 8 + (16 * (tile_index >> 3))
             self.app.addCanvasImage("ME_Canvas_Tiles", x, y, image)
 
-    # --- MapEditor.load_npc_sprites() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def load_npc_sprites(self) -> None:
         """
@@ -616,7 +616,7 @@ class MapEditor:
         # Default sprite selection
         self.selected_npc_graphics = 0
 
-    # --- MapEditor.read_map_table() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_map_table(self) -> None:
         """Reads the maps data table from ROM
@@ -650,7 +650,7 @@ class MapEditor:
 
             self.map_table.append(data)
 
-    # --- MapEditor.read_dungeon_data() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_dungeon_data(self) -> None:
         """
@@ -775,7 +775,7 @@ class MapEditor:
             while len(d.message_pointers) < 8:
                 d.message_pointers.append(0xBFFF)
 
-    # --- MapEditor.load_npc_data() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def load_npc_data(self) -> None:
         """
@@ -844,7 +844,7 @@ class MapEditor:
         else:
             self.app.changeOptionBox("NPCE_Option_NPC_List", npc_list)
 
-    # --- MapEditor.load_entrances() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def load_entrances(self) -> None:
         """
@@ -963,7 +963,7 @@ class MapEditor:
             self.app.disableEntry("EE_Entrance_X")
             self.app.disableEntry("EE_Entrance_Y")
 
-    # --- MapEditor.load_moongates() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def load_moongates(self) -> None:
         """
@@ -1080,7 +1080,7 @@ class MapEditor:
             self.app.disableEntry("EE_Moongate_Y")
             self.app.disableOptionBox("EE_Option_Moongate_Tile")
 
-    # --- MapEditor.select_tool() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def select_tool(self, tool: str) -> None:
         """
@@ -1207,7 +1207,7 @@ class MapEditor:
         else:
             self.warning(f"Unimplemented tool: '{tool}'")
 
-    # --- MapEditor.open_map() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def open_map(self, map_index: int, force_compression: str = "") -> None:
         """
@@ -1236,7 +1236,7 @@ class MapEditor:
         else:
             self._load_dungeon(map_data.bank, map_data.data_pointer, compression)
 
-    # --- MapEditor._load_dungeon() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _load_dungeon(self, bank: int, address: int, compression: str = "") -> None:
         """
@@ -1309,7 +1309,7 @@ class MapEditor:
 
             self.show_map()
 
-    # --- MapEditor._load_map() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _load_map(self, bank: int, address: int, compression: str) -> None:
         """
@@ -1388,7 +1388,7 @@ class MapEditor:
             log(3, f"{self.__class__.__name__}",
                 f"Unimplemented compression method '{compression}' for non-dungeon map.")
 
-    # --- MapEditor.import_map() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def import_map(self, file_name: str) -> bool:
         """
@@ -1518,7 +1518,7 @@ class MapEditor:
 
             return False
 
-    # --- MapEditor.export_map() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def export_map(self, file_name: str) -> bool:
         """
@@ -1568,7 +1568,7 @@ class MapEditor:
         else:
             return False
 
-    # --- MapEditor.jump_to() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def jump_to(self, x: int, y: int) -> None:
         """
@@ -1594,7 +1594,7 @@ class MapEditor:
         pane.canvas.xview_moveto(float(delta_x + offset_x) / 64)
         pane.canvas.yview_moveto(float(delta_y + offset_y) / 64)
 
-    # --- MapEditor.show_map() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def show_map(self) -> None:
         """
@@ -1678,7 +1678,7 @@ class MapEditor:
             self.app.showSubWindow("NPC_Editor")
             self.app.showSubWindow("Map_Editor")
 
-    # --- MapEditor._set_party_entry() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _set_party_entry(self, x: int, y: int, facing: int = 0) -> None:
         """
@@ -1699,7 +1699,7 @@ class MapEditor:
         if self.is_dungeon():
             self.map_table[self.map_index].npc_pointer = facing
 
-    # --- MapEditor.flood_fill() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def flood_fill(self, x: int, y: int) -> None:
         """
@@ -1733,7 +1733,7 @@ class MapEditor:
             else:
                 self._dungeon_flood_fill(x, y, self.selected_tile_id, old_tile_id)
 
-    # --- MapEditor._flood_fill() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _flood_fill(self, x: int, y: int, new_tile_id: int, old_tile_id: int) -> None:
         """
@@ -1789,7 +1789,7 @@ class MapEditor:
 
         self.select_tool("fill")
 
-    # --- MapEditor._dungeon_flood_fill() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _dungeon_flood_fill(self, x: int, y: int, new_tile_id: int, old_tile_id: int) -> None:
         """
@@ -1843,7 +1843,7 @@ class MapEditor:
 
         self.select_tool("fill")
 
-    # --- MapEditor.change_tile() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def change_tile(self, x: int, y: int, tile_id: int, show_info: bool = True) -> None:
         """
@@ -2007,7 +2007,7 @@ class MapEditor:
         # Update canvas image
         self.app.getCanvas("ME_Canvas_Map").itemconfig(self.canvas_map_images[canvas_index], image=self.tiles[tile_id])
 
-    # --- MapEditor.redraw_map() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def redraw_map(self) -> None:
         """
@@ -2028,7 +2028,7 @@ class MapEditor:
             canvas.itemconfig(self.canvas_map_images[canvas_index], image=self.tiles[tile_id])
             canvas_index = canvas_index + 1
 
-    # --- MapEditor.tile_info() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def tile_info(self, tile_id: int, x: int = -1, y: int = -1) -> None:
         """
@@ -2160,7 +2160,7 @@ class MapEditor:
         self.app.addCanvasImage("ME_Canvas_Selected_Tile", 8, 8, self.tiles[tile_id])
         self.app.setLabel("ME_Selected_Tile_Properties", f"({info})")
 
-    # --- MapEditor._dungeon_tile_info ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _dungeon_tile_info(self, tile_id, x: int = -1, y: int = -1):
         names = [
@@ -2207,7 +2207,7 @@ class MapEditor:
             else:
                 self.app.hideFrame("ME_Frame_Special_Tile")
 
-    # --- MapEditor.apply_npc_changes() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def set_npc_dialogue(self, dialogue_id: int, npc_index: int = -1) -> None:
         """
@@ -2225,7 +2225,7 @@ class MapEditor:
 
         self.npc_data[npc_index].dialogue_id = dialogue_id
 
-    # --- MapEditor.choose_npc_graphics() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def select_npc_graphics(self, selection: int) -> None:
         """
@@ -2254,7 +2254,7 @@ class MapEditor:
         box = self.app.getOptionBoxWidget("NPCE_Option_NPC_List")
         box.options[self.npc_index] = new_text
 
-    # --- MapEditor.change_npc_palettes() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def change_npc_palettes(self, palette_top: int, palette_bottom: int = 0, **kwargs) -> None:
         """
@@ -2344,7 +2344,7 @@ class MapEditor:
         self.app.clearCanvas("NPCE_Canvas_New_Sprite")
         self.app.addCanvasImage("NPCE_Canvas_New_Sprite", 8, 8, photo_image)
 
-    # --- MapEditor.find_npc() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def find_npc(self, npc_x: int, npc_y: int) -> int:
         """
@@ -2369,7 +2369,7 @@ class MapEditor:
 
         return -1  # Not found
 
-    # --- MapEditor._create_npc() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _create_npc(self) -> (NPCData, int):
         """
@@ -2406,7 +2406,7 @@ class MapEditor:
 
         return npc, npc_index
 
-    # --- MapEditor.move_npc() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def move_npc(self, x: int, y: int, npc_index: int = -1) -> None:
         """
@@ -2434,7 +2434,7 @@ class MapEditor:
         # Update the label showing the position
         self.app.setLabel("NPCE_Starting_Position", f"Starting Pos: {x}, {y}")
 
-    # --- MapEditor.npc_info() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def npc_info(self, npc_index: int) -> None:
         """
@@ -2485,7 +2485,7 @@ class MapEditor:
         # Dialogue / Function ID
         self.app.setEntry("NPCE_Entry_Dialogue_ID", f"0x{npc.dialogue_id:02X}", callFunction=False)
 
-    # --- MapEditor.moongate_info() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def moongate_info(self, moongate_index: int) -> None:
         """
@@ -2554,7 +2554,7 @@ class MapEditor:
 
         self.app.setOptionBox("EE_Option_Moongate_Tile", self.moongate_replacements[moongate_index], callFunction=False)
 
-    # --- MapEditor.entrance_info() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def entrance_info(self, entrance_index: int) -> None:
         """
@@ -2583,7 +2583,7 @@ class MapEditor:
 
         self.app.setLabel("EE_Entrance_Map", f"0x{destination:02X}")
 
-    # --- MapEditor.change_moongate() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def change_moongate(self, moongate_index: int, new_x: int = -1, new_y: int = -1,
                         new_replacement_tile: int = -1, new_dawn_tile: int = -1) -> None:
@@ -2651,7 +2651,7 @@ class MapEditor:
             self.app.clearCanvas("EE_Canvas_Dawn_Tile")
             self.app.addCanvasImage("EE_Canvas_Dawn_Tile", 8, 8, self.tiles[self.dawn_tile])
 
-    # --- MapEditor.change_entrance() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def change_entrance(self, entrance_index: int, new_x: int = 255, new_y: int = 255) -> None:
         """
@@ -2692,7 +2692,7 @@ class MapEditor:
         self.app.setListItemAtPos("EE_List_Entrances", entrance_index,
                                   f"0x{destination:02X} -> {new_x:02}, {new_y:02}")
 
-    # --- MapEditor.is_dungeon() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def is_dungeon(self, map_index: int = -1) -> bool:
         """Use this to check if a map is a dungeon, using the most significant bit of flag/ID field
@@ -2723,7 +2723,7 @@ class MapEditor:
 
         return False
 
-    # --- MapEditor.is_continent() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def is_continent(self, map_index: int = -1) -> bool:
         """
@@ -2751,7 +2751,7 @@ class MapEditor:
 
         return False
 
-    # --- MapEditor.is_guarded() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def is_guarded(self, map_index: int = -1) -> bool:
         """
@@ -2773,7 +2773,7 @@ class MapEditor:
 
         return True
 
-    # --- MapEditor.get_tile_id() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def get_tile_id(self, x: int, y: int, level: int = -1) -> int:
         """
@@ -2805,7 +2805,7 @@ class MapEditor:
 
         return tile_id
 
-    # --- MapEditor.get_fountain_index() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def get_fountain_index(self, x: int, y: int) -> int:
         """Get the index of the fountain that is at the given coordinates in the current dungeon map
@@ -2833,7 +2833,7 @@ class MapEditor:
 
         return count + 1
 
-    # --- MapEditor.get_mark_index() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def get_mark_index(self, x: int, y: int) -> int:
         """
@@ -2862,7 +2862,7 @@ class MapEditor:
 
         return count + 1
 
-    # --- MapEditor.show_marks_count() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def show_marks_count(self) -> None:
         dungeon_id = self.get_map_id()
@@ -2870,7 +2870,7 @@ class MapEditor:
 
         self.app.setLabel("ME_Label_Marks_Count", f"Marks: {value}")
 
-    # --- MapEditor.show_fountains_count() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def show_fountains_count(self) -> None:
         dungeon_id = self.get_map_id()
@@ -2878,7 +2878,7 @@ class MapEditor:
 
         self.app.setLabel("ME_Label_Fountains_Count", f"Fountains: {value}")
 
-    # --- MapEditor.show_fountain_info() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def show_fountain_info(self, fountain_id) -> None:
         fountain_values = ["0: HEAL", "1: CURE", "2: HURT", "3: POISON"]
@@ -2888,10 +2888,16 @@ class MapEditor:
 
         self.app.showFrame("ME_Frame_Special_Tile")
 
-    # --- MapEditor.show_mark_info() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def show_mark_info(self, mark_id) -> None:
-        # TODO Get the names from ROM
+        # Get the names from ROM
+        mark_names = text_editor.read_text(self.rom, 0xC, 0xA608).splitlines(False)
+        if len(mark_names) != 4:
+            mark_values = ["0: KINGS", "1: FIRE", "2: FORCE", "3: SNAKE"]
+        else:
+            mark_values = [f"0: {mark_names[3]}", f"0: {mark_names[1]}", f"0: {mark_names[0]}", f"0: {mark_names[2]}"]
+
         mark_values = ["0: KINGS", "1: FIRE", "2: FORCE", "3: SNAKE"]
         self.app.changeOptionBox("ME_Special_Tile_Value", options=mark_values)
         self.app.setOptionBox("ME_Special_Tile_Value", mark_id, value=False, callFunction=False)
@@ -2899,7 +2905,7 @@ class MapEditor:
 
         self.app.showFrame("ME_Frame_Special_Tile")
 
-    # --- MapEditor.change_mark_type() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def change_mark_type(self, x: int, y: int, new_id: int) -> None:
         """
@@ -2923,7 +2929,7 @@ class MapEditor:
         else:
             self.dungeon_data[dungeon_id].mark_ids[index] = new_id
 
-    # --- MapEditor.change_fountain_type() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def change_fountain_type(self, x: int, y: int, new_id: int) -> None:
         """
@@ -2947,7 +2953,7 @@ class MapEditor:
         else:
             self.dungeon_data[dungeon_id].fountain_ids[index] = new_id
 
-    # --- MapEditor.change_message() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def change_message(self, level: int = -1, message: str = "") -> None:
         """
@@ -2968,7 +2974,7 @@ class MapEditor:
         # Ignore pointer as it will be reallocated when saving the map
         self.dungeon_data[dungeon_id].messages[level] = message.upper()
 
-    # --- MapEditor.get_map_id() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def get_map_id(self) -> int:
         """
@@ -2985,7 +2991,7 @@ class MapEditor:
             mask = 0x3F
         return self.map_table[self.map_index].flags & mask
 
-    # --- MapEditor.max_maps() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def max_maps(self) -> int:
         """
@@ -3004,7 +3010,7 @@ class MapEditor:
 
         return 32
 
-    # --- MapEditor.update_moongate_condition() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def update_moongate_condition(self) -> None:
         """
@@ -3028,7 +3034,7 @@ class MapEditor:
 
         self.load_moongates()
 
-    # --- ProcessedEntry ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     @dataclass(init=True, repr=False)
     class ProcessedEntry:
@@ -3038,7 +3044,7 @@ class MapEditor:
         old_address: int = 0
         new_address: int = 0
 
-    # --- MapEditor.save_map() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def save_map(self, sync_npc_sprites: bool = True) -> bool:
         """

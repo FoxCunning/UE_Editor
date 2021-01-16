@@ -618,7 +618,7 @@ def map_editor_edit_tile(event: any) -> None:
         map_editor.flood_fill(tile_x, tile_y)
 
     elif map_editor.tool == "info":
-        log(4, "EDITOR", f"Tile {tile_x}, {tile_y}")
+        # log(4, "EDITOR", f"Tile {tile_x}, {tile_y}")
 
         # Get the ID of the tile at the mouse click coordinates
         tile_id = map_editor.get_tile_id(tile_x, tile_y)
