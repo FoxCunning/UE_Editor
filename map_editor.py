@@ -2898,7 +2898,6 @@ class MapEditor:
         else:
             mark_values = [f"0: {mark_names[3]}", f"0: {mark_names[1]}", f"0: {mark_names[0]}", f"0: {mark_names[2]}"]
 
-        mark_values = ["0: KINGS", "1: FIRE", "2: FORCE", "3: SNAKE"]
         self.app.changeOptionBox("ME_Special_Tile_Value", options=mark_values)
         self.app.setOptionBox("ME_Special_Tile_Value", mark_id, value=False, callFunction=False)
         self.app.setLabel("ME_Special_Tile_Name", "Mark type:")
