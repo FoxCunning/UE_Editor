@@ -97,9 +97,9 @@ def edit_map() -> None:
     map_editor.map_table[selected_map].entry_x = int(app.getEntry("MapInfo_EntryX"))
     map_editor.map_table[selected_map].flags = int(app.getEntry("MapInfo_Flags"), 16)
 
-    map_editor.create_widgets()
-    app.showSubWindow("Map_Editor", hide=False)
-    map_editor.load_npc_sprites()  # Reload NPC sprites to refresh palettes
+    map_editor.show_window()
+    if map_editor.is_dungeon() is False:
+        map_editor.load_npc_sprites()  # Reload NPC sprites to refresh palettes
     map_editor.load_tiles(selected_map)
 
     # TODO Force compression if checked

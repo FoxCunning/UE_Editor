@@ -8,6 +8,7 @@ from PIL import Image, ImageTk
 
 import colour
 from appJar import gui
+from appJar.appjar import ItemLookupError
 
 from editor_settings import EditorSettings
 from debug import log
@@ -203,10 +204,7 @@ class MapEditor:
         self.npc_palette_indices = []
 
         # These will be saved when clicking on the map
-        self._last_tile = {
-            "x": 0,
-            "y": 0
-        }
+        self._last_tile: Point2D = Point2D()
 
         # List of all location names, as read from locations txt file
         self.location_names: List[str] = []
@@ -1239,6 +1237,16 @@ class MapEditor:
 
         else:
             self.warning(f"Unimplemented tool: '{tool}'")
+
+    # ----------------------------------------------------------------------------------------------------------------------
+
+    def show_window(self) -> None:
+        try:
+            self.app.getFrameWidget("ME_Frame_Buttons")
+        except ItemLookupError:
+            self.create_widgets()
+
+        self.app.showSubWindow("Map_Editor", hide=False)
 
     # ----------------------------------------------------------------------------------------------------------------------
 
@@ -2586,7 +2594,7 @@ class MapEditor:
 
     def redraw_map(self) -> None:
         """
-        Exactly wha you would expect
+        Exactly what you would expect.
         """
         canvas = self.app.getCanvas("ME_Canvas_Map")
 
@@ -2595,6 +2603,7 @@ class MapEditor:
         canvas_index = 0
 
         if self.is_dungeon():
+            # Each dungeon level is 256 bytes long
             first = 256 * self.dungeon_level
             last = first + 256
 
@@ -4085,7 +4094,7 @@ class MapEditor:
 
     def map_edit_tile(self, event: any) -> None:
         """
-        Called when the user clicks on the map canvas
+        Called when the user clicks on the map canvas.
 
         Parameters
         ----------
@@ -4096,8 +4105,8 @@ class MapEditor:
         tile_y = event.y >> 4
 
         # Save coordinates for future editing
-        self._last_tile["x"] = tile_x
-        self._last_tile["y"] = tile_y
+        self._last_tile.x = tile_x
+        self._last_tile.y = tile_y
 
         if self.tool == "draw":
             self.change_tile(tile_x, tile_y, self.selected_tile_id, True)
@@ -4318,8 +4327,8 @@ class MapEditor:
         widget
             The OptionBox where the event occurred
         """
-        tile_x = self._last_tile["x"]
-        tile_y = self._last_tile["y"]
+        tile_x = self._last_tile.x
+        tile_y = self._last_tile.y
 
         try:
             special_id = int(self.app.getOptionBox(widget)[0])
