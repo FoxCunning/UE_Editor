@@ -1,8 +1,9 @@
 __author__ = "Fox Cunning"
 
+from tkinter import Canvas
 from typing import List
 
-from PIL import Image
+from PIL import Image, ImageTk
 
 import colour
 from appJar import gui
@@ -11,6 +12,7 @@ from appJar import gui
 # ----------------------------------------------------------------------------------------------------------------------
 from appJar.appjar import ItemLookupError
 from debug import log
+from palette_editor import PaletteEditor
 from rom import ROM
 
 
@@ -18,9 +20,10 @@ class BattlefieldEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def __init__(self, app: gui, rom: ROM):
+    def __init__(self, app: gui, rom: ROM, palette_editor: PaletteEditor):
         self.app = app
         self.rom = rom
+        self.palette_editor = palette_editor
 
         self._unsaved_changes = False
 
@@ -33,6 +36,11 @@ class BattlefieldEditor:
                                       "Dungeon Entrance", "Town", "Player Ship", "Naval Battle",
                                       "North: Land, South: Ship"]
 
+        # Pattern info
+        self._pattern_info: List[str] = ["Normal", "Normal", "Normal", "Water", "Blocking", "Normal", "Normal",
+                                         "Normal", "Blocking", "Blocking", "Normal", "Normal", "Blocking", "Normal",
+                                         "Normal", "Normal"]
+
         # Map being currently edited. Only modify this in show_window() and close_window().
         self._selected_map = 0
 
@@ -44,16 +52,21 @@ class BattlefieldEditor:
         # Logical map data (i.e. tile indices 0x0-0xF)
         self._map_data: List[int] = []
 
+        self._grid_colour = "#C0C0C0"
+
         # Image cache
-        self._patterns_cache: List[Image] = []
+        self._patterns_cache: List[ImageTk.PhotoImage] = []
 
         # Canvas item IDs
         self._tiles_grid: List[int] = [0] * 16
-        self._tile_items: List[int] = [0] * 8
+        self._tile_items: List[int] = [0] * 16
         self._tile_rectangle: int = 0
-        self._map_grid: List[int] = [0] * 8 * 11
-        self._map_items: List[int] = [0] * 9 * 12
+        self._map_grid: List[int] = [0] * 8 * 12
+        self._map_items: List[int] = [0] * 9 * 13
         self._map_rectangle: int = 0
+
+        self._canvas_tiles: Canvas = Canvas()
+        self._canvas_map: Canvas = Canvas()
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -86,14 +99,28 @@ class BattlefieldEditor:
         else:
             map_index = self._selected_map
 
-        self._read_map_data(self._map_address[map_index])
-
         # Create widgets if needed
         try:
             self.app.getCanvasWidget("BE_Canvas_Map")
         except ItemLookupError:
             self._create_widgets()
-            # TODO Assign event handlers to canvases
+
+        self._canvas_tiles = self.app.getCanvasWidget("BE_Canvas_Tiles")
+        self._canvas_tiles.bind("<Button-1>", self._tiles_left_click, add='')
+
+        self._canvas_map = self.app.getCanvasWidget("BE_Canvas_Map")
+        self._canvas_map.bind("<ButtonPress-1>", self._map_left_down, add='')
+        self._canvas_map.bind("<B1-Motion>", self._map_left_drag, add='')
+        self._canvas_map.bind("<Button-3>", self._map_right_click, add='')
+
+        self._load_patterns()
+        self._read_map_data(self._map_address[map_index])
+
+        self.draw_map()
+
+        # Default selections
+        self.select_map(0)
+        self.select_pattern(0)
 
         self.app.showSubWindow("Battlefield_Editor", hide=False)
 
@@ -117,6 +144,17 @@ class BattlefieldEditor:
         self.app.hideSubWindow("Battlefield_Editor")
         self.app.emptySubWindow("Battlefield_Editor")
 
+        # Clear image cache
+        self._patterns_cache: List[ImageTk.PhotoImage] = []
+
+        # Reset canvas item IDs
+        self._tiles_grid: List[int] = [0] * 16
+        self._tile_items: List[int] = [0] * 16
+        self._tile_rectangle: int = 0
+        self._map_grid: List[int] = [0] * 8 * 12
+        self._map_items: List[int] = [0] * 9 * 13
+        self._map_rectangle: int = 0
+
         return True
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -134,19 +172,166 @@ class BattlefieldEditor:
                                 tooltip="Cancel and Close Window",
                                 sticky="W", row=0, column=1)
 
-            with self.app.frame("BE_Frame_Tiles", padding=[4, 2], row=1, column=0):
+            with self.app.frame("BE_Frame_Controls", padding=[4, 1], row=1, column=0):
+                self.app.checkBox("BE_Check_Grid", True, name="Show grid", change=self.map_input,
+                                  row=0, column=0, sticky="W")
+                self.app.button("BE_Grid_Colour", self.map_input, name="Change Grid Colour", row=0, column=1, font=9)
+
+            with self.app.frame("BE_Frame_Tiles", padding=[4, 2], row=2, column=0):
                 self.app.canvas("BE_Canvas_Tiles", width=256, height=64, row=0, column=0, bg="#808080")
                 self.app.setCanvasCursor("BE_Canvas_Tiles", "hand2")
                 self.app.label("BE_Tile_Info", "", sticky="WE", row=1, column=0, font=10, fg=colour.BLACK)
 
-            with self.app.frame("BE_Frame_Map", padding=[4, 2], row=2, column=0):
-                self.app.canvas("BE_Canvas_Map", width=288, height=384, row=0, column=0, bg="#808080")
+            with self.app.frame("BE_Frame_Map", padding=[4, 2], row=3, column=0):
+                self.app.canvas("BE_Canvas_Map", width=288, height=416, row=0, column=0, colspan=2, bg="#808080")
                 self.app.setCanvasCursor("BE_Canvas_Map", "pencil")
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def _load_patterns(self) -> None:
-        self.warning("Unimplemented function: _load_patterns.")
+        # First, create a list of pattern addresses using the "default" tileset
+        addresses: List[int] = []
+        for p in range(16):
+            addresses.append(0x8A40 + (p * 64))  # Each 2x2 tile is 64 bytes long
+
+        banks: List[int] = [0xA] * 16  # Bank $0A by default
+
+        if self.rom.has_feature("map tilesets"):
+            # v1.09+ map tiles
+
+            # The same substitutions to Town maps apply
+            # The tables at $0A:B600 and $0B:B868 have the same format:
+            # Source address in ROM, destination address in PPU, number of bytes to transfer
+            address = 0xB642
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # Further substitutions are in bank $0B
+            address = 0xB868
+            pattern_address = self.rom.read_word(0xB, address)
+            tile_index = (self.rom.read_word(0xB, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xB, address + 4) >> 6
+            for t in range(tile_count):
+                banks[tile_index] = 0xB
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            address = 0xB86E
+            pattern_address = self.rom.read_word(0xB, address)
+            tile_index = (self.rom.read_word(0xB, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xB, address + 4) >> 6
+            for t in range(tile_count):
+                banks[tile_index] = 0xB
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            address = 0xB874
+            pattern_address = self.rom.read_word(0xB, address)
+            tile_index = (self.rom.read_word(0xB, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xB, address + 4) >> 6
+            for t in range(tile_count):
+                banks[tile_index] = 0xB
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            address = 0xB87A
+            pattern_address = self.rom.read_word(0xB, address)
+            tile_index = (self.rom.read_word(0xB, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xB, address + 4) >> 6
+            for t in range(tile_count):
+                banks[tile_index] = 0xB
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+        else:
+            # TODO Hardcoded tile substitutions
+            # TODO Detect vanilla game and use its hardcoded substitutions + "blank" ship tile
+            pass
+
+        # Now we have a full list of pattern addresses, we can use it to create our images
+        tile_index = 0
+        map_palette = self.palette_editor.palettes[0]
+        self._patterns_cache.clear()
+
+        for a in addresses:
+            # Get palette index for this tile from table in ROM at 0D:856D
+            palette_index = self.rom.read_byte(0x0D, 0x856D + tile_index) * 4
+            colours = []
+            for c in range(palette_index, palette_index + 4):
+                colour_index = map_palette[c]
+                rgb = bytearray(self.palette_editor.get_colour(colour_index))
+                colours.append(rgb[0])  # Red
+                colours.append(rgb[1])  # Green
+                colours.append(rgb[2])  # Blue
+
+            # We will combine the four patterns in a single up-scaled 32x32 image and then cache it
+            tile = Image.new('P', (32, 32), 0)
+            tile.putpalette(colours)
+
+            # Top-left pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(banks[tile_index], a)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image.resize((16, 16), Image.NONE), (0, 0))
+            # Bottom-left pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(banks[tile_index], a + 0x10)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image.resize((16, 16), Image.NONE), (0, 16))
+            # Top-right pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(banks[tile_index], a + 0x20)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image.resize((16, 16), Image.NONE), (16, 0))
+            # Bottom-right pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(banks[tile_index], a + 0x30)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image.resize((16, 16), Image.NONE), (16, 16))
+
+            image = ImageTk.PhotoImage(tile)
+            self._patterns_cache.append(image)
+
+            # Show this tile in the tile pattern canvas (8 x 2 tiles)
+            x = 16 + (32 * (tile_index % 8))
+            y = 16 + (32 * (tile_index >> 3))
+            if self._tile_items[tile_index] > 0:
+                self._canvas_tiles.itemconfigure(self._tile_items[tile_index], image=image)
+            else:
+                self._tile_items[tile_index] = self.app.addCanvasImage("BE_Canvas_Tiles", x, y, image)
+
+            # Next tile
+            tile_index = tile_index + 1
+
+        # Show / create grid lines
+        grid_index = 0
+        # 7 vertical lines
+        for x in range(1, 8):
+            if self._tiles_grid[grid_index] > 0:
+                self._canvas_tiles.tag_raise(self._tiles_grid[grid_index])
+            else:
+                left = x << 5
+                self._tiles_grid[grid_index] = self._canvas_tiles.create_line(left, 0, left, 64, fill=self._grid_colour)
+
+            # Next item
+            grid_index = grid_index + 1
+
+        # Just 1 horizontal line is needed
+        if self._tiles_grid[grid_index] > 0:
+            self._canvas_tiles.tag_raise(self._tiles_grid[grid_index])
+        else:
+            self._tiles_grid[grid_index] = self._canvas_tiles.create_line(0, 32, 256, 32, fill=self._grid_colour)
+
+        # TODO Raise / create selection rectangle
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -163,6 +348,35 @@ class BattlefieldEditor:
     def map_input(self, widget: str) -> None:
         if widget == "BE_Button_Cancel":
             self.close_window()
+
+        elif widget == "BE_Grid_Colour":
+            # Pick a new colour
+            self._grid_colour = self.app.colourBox(self._grid_colour, parent="Battlefield_Editor")
+            # Update both grids
+            for item in self._tiles_grid:
+                if item > 0:
+                    self._canvas_tiles.itemconfigure(item, fill=self._grid_colour)
+            for item in self._map_grid:
+                if item > 0:
+                    self._canvas_map.itemconfigure(item, fill=self._grid_colour)
+
+        elif widget == "BE_Check_Grid":
+            if self.app.getCheckBox(widget) is True:
+                # Show grid items
+                for item in self._tiles_grid:
+                    if item > 0:
+                        self._canvas_tiles.itemconfigure(item, state="normal")
+                for item in self._map_grid:
+                    if item > 0:
+                        self._canvas_map.itemconfigure(item, state="normal")
+            else:
+                # Hide grid items
+                for item in self._tiles_grid:
+                    if item > 0:
+                        self._canvas_tiles.itemconfigure(item, state="hidden")
+                for item in self._map_grid:
+                    if item > 0:
+                        self._canvas_map.itemconfigure(item, state="hidden")
 
         else:
             self.warning(f"Unimplemented input from map widget: '{widget}'.")
@@ -224,4 +438,167 @@ class BattlefieldEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def draw_map(self) -> None:
-        pass
+        """
+        Populates the map canvas with patterns and draws /creates the grid if required.
+        """
+        tile_index = 0
+        for y in range(13):
+            for x in range(9):
+                tile_id = self._map_data[tile_index]
+
+                # If this item already existed, only change the image
+                if self._map_items[tile_index] > 0:
+                    self._canvas_map.itemconfigure(self._map_items[tile_index], image=self._patterns_cache[tile_id])
+                else:
+                    self._map_items[tile_index] = self._canvas_map.create_image(x << 5, y << 5,
+                                                                                image=self._patterns_cache[tile_id],
+                                                                                anchor="nw")
+                # Next tile
+                tile_index = tile_index + 1
+
+        # Show / create / hide grid as needed
+        if self.app.getCheckBox("BE_Check_Grid") is True:
+            # Show / create
+            grid_index = 0
+            # 8 vertical lines
+            for x in range(1, 9):
+                if self._map_grid[grid_index] > 0:
+                    self._canvas_map.itemconfigure(self._map_grid[grid_index], state="normal")
+                    self._canvas_map.tag_raise(self._map_grid[grid_index])
+                else:
+                    left = x << 5
+                    self._map_grid[grid_index] = self._canvas_map.create_line(left, 0, left, 416,
+                                                                              fill=self._grid_colour)
+
+                # Next line
+                grid_index = grid_index + 1
+
+            # 12 horizontal lines
+            for y in range(1, 13):
+                if self._map_grid[grid_index] > 0:
+                    self._canvas_map.itemconfigure(self._map_grid[grid_index], state="normal")
+                    self._canvas_map.tag_raise(self._map_grid[grid_index])
+                else:
+                    top = y << 5
+                    self._map_grid[grid_index] = self._canvas_map.create_line(0, top, 288, top,
+                                                                              fill=self._grid_colour)
+
+                # Next line
+                grid_index = grid_index + 1
+
+        # Raise selection rectangle if it exists
+        if self._tile_rectangle > 0:
+            self._canvas_tiles.tag_raise(self._tile_rectangle)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def select_pattern(self, tile_index: int) -> None:
+        """
+        Moves the selection rectangle around the given tile and shows info about the selection.
+        The selection rectangle will be created if needed.
+        """
+        self._selected_tile = tile_index
+
+        # Calculate coordinates on the canvas, keep in mind there are 8x2 patterns, 32x32 pixels each
+        x = (tile_index % 8) << 5
+        y = (tile_index >> 3) << 5
+
+        if self._tile_rectangle > 0:
+            # Update coordinates of existing rectangle
+            self._canvas_tiles.coords(self._tile_rectangle, x + 1, y + 1, x + 31, y + 31)
+        else:
+            # Create a rectangle at the selection's coordinates
+            self._tile_rectangle = self._canvas_tiles.create_rectangle(x + 1, y + 1, x + 31, y + 31,
+                                                                       width=2, outline="#FF3030")
+
+        self.app.setLabel("BE_Tile_Info", f"Selected: {self._pattern_info[tile_index]} tile #0x{tile_index:02X}")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def select_map(self, selection_index: int) -> None:
+        """
+        Moves the selection rectangle around the given map square.
+        The selection rectangle will be created if needed.
+        """
+        self._last_edited = selection_index
+
+        # Calculate coordinates on the canvas, keep in mind there are 9x13 patterns, 32x32 pixels each
+        x = (selection_index % 9) << 5
+        y = (int(selection_index / 9)) << 5
+
+        if self._map_rectangle > 0:
+            # Update coordinates of existing rectangle
+            self._canvas_map.coords(self._map_rectangle, x + 1, y + 1, x + 31, y + 31)
+        else:
+            # Create a rectangle at the selection's coordinates
+            self._map_rectangle = self._canvas_map.create_rectangle(x + 1, y + 1, x + 31, y + 31,
+                                                                    width=2, outline="#FF3030")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _tiles_left_click(self, event: any) -> None:
+        """
+        Callback for left mouse click on the tile picker canvas.
+        """
+        # Calculate tile index depending on position
+        x = event.x >> 5
+        y = event.y >> 5
+        self.select_pattern(x + (y << 3))
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _map_left_drag(self, event: any) -> None:
+        # Prevent dragging outside the canvas
+        if event.x < 0 or event.x >= 288 or event.y < 0 or event.y >= 416:
+            return
+
+        # Calculate tile index
+        x = event.x >> 5
+        y = event.y >> 5
+        t = x + (y * 9)
+
+        # Avoid re-editing same tile we are already on
+        if t == self._last_edited:
+            return
+
+        self._map_edit_tile(t)
+
+        # Move selection rectangle
+        if self._map_rectangle > 0:
+            x = (x << 5) + 1
+            y = (y << 5) + 1
+            self._canvas_map.coords(self._map_rectangle, x, y, x + 30, y + 30)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _map_left_down(self, event: any) -> None:
+        # Calculate tile index
+        x = event.x >> 5
+        y = event.y >> 5
+        t = x + (y * 9)
+        self._last_edited = t
+        self._map_edit_tile(t)
+
+        # Move selection rectangle
+        if self._map_rectangle > 0:
+            x = (x << 5) + 1
+            y = (y << 5) + 1
+            self._canvas_map.coords(self._map_rectangle, x, y, x + 30, y + 30)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _map_right_click(self, event: any) -> None:
+        # Calculate tile index
+        x = event.x >> 5
+        y = event.y >> 5
+        t = x + (y * 9)
+
+        self.select_map(t)
+        self.select_pattern(self._map_data[t])
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _map_edit_tile(self, tile: int) -> None:
+        self._map_data[tile] = self._selected_tile
+        if self._map_items[tile] > 0:
+            self._canvas_map.itemconfigure(self._map_items[tile], image=self._patterns_cache[self._selected_tile])

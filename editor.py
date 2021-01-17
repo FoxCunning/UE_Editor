@@ -562,7 +562,7 @@ def open_rom(file_name: str) -> None:
         music_editor = MusicEditor(rom)
 
         # Battlefield map editor
-        battlefield_editor = BattlefieldEditor(app, rom)
+        battlefield_editor = BattlefieldEditor(app, rom, palette_editor)
         app.changeOptionBox("Battlefield_Option_Map", battlefield_editor.get_map_names(), 0, callFunction=False)
         app.changeOptionBox("Battlefield_Option_Music", music_editor.read_music_titles(), 0, callFunction=False)
 
@@ -2378,7 +2378,7 @@ if __name__ == "__main__":
             app.label("ME_Label_temp", "...")
 
         # Battlefield Editor Sub-Window --------------------------------------------------------------------------------
-        with app.subWindow("Battlefield_Editor", "Battlefield Editor", size=[320, 540], modal=False, resizable=False,
+        with app.subWindow("Battlefield_Editor", "Battlefield Editor", size=[320, 612], modal=False, resizable=False,
                            padding=0, inPadding=0, guiPadding=0, bg=colour.PALE_BROWN):
             app.label("BE_Label_temp", "...")
 

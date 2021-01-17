@@ -465,6 +465,7 @@ class MapEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _load_tile_patterns(self, map_palette: List[int]) -> None:
+        # Get the index of the tileset for this map
         tileset = self.tileset_table[self.map_index]
 
         # First, create a list of pattern addresses using the "default" tileset
@@ -1923,7 +1924,7 @@ class MapEditor:
                 self.app.button("ME_Button_Info", self.map_input, name="Info", image="res/zoom.gif",
                                 tooltip="Tile Info", height=32, row=0, column=3)
                 self.app.canvas("ME_Canvas_Tiles", row=0, column=4, width=128, height=32, stretch='NONE', map=None,
-                                bg="black").bind("<Button-1>", self.map_pick_tile, add="+")
+                                bg="black").bind("<Button-1>", self.map_pick_tile, add="")
                 self.app.setCanvasCursor("ME_Canvas_Tiles", "hand2")
 
             # Tile info frame
@@ -1960,7 +1961,7 @@ class MapEditor:
             with self.app.scrollPane("ME_Scroll_Pane", row=4, column=0, stretch='BOTH', padding=[0, 0], sticky='NEWS'):
                 # Map Canvas
                 self.app.canvas("ME_Canvas_Map", row=0, column=0, width=1024, height=1024, map=None,
-                                bg="black").bind("<Button-1>", self.map_edit_tile, add="+")
+                                bg="black").bind("<Button-1>", self.map_edit_tile, add="")
 
                 # Dungeon tools
                 with self.app.frame("ME_Frame_Dungeon_Tools", row=0, column=1, padding=[8, 0], sticky='SEWN',
