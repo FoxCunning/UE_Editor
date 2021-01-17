@@ -30,11 +30,12 @@ class BattlefieldEditor:
         self._map_address: List[int] = []
 
         # TODO Maybe read these from a customised (optional) text file
-        self._map_names: List[str] = ["Grass", "Brush", "Forest", "North: Water, South: Land",
-                                      "North: Ship, South: Land", "Door", "Stone Floor 1", "Lava",
+        self._map_names: List[str] = ["Grass", "Brush", "Forest", "Player vs Sea Monsters",
+                                      "Player vs Pirate Ship", "Door", "Stone Floor 1", "Lava",
                                       "Wall", "Table", "Chest", "Stone Floor 2", "Wall Top", "Castle / Dungeon",
-                                      "Dungeon Entrance", "Town", "Player Ship", "Naval Battle",
-                                      "North: Land, South: Ship"]
+                                      "Dungeon Entrance", "Town", "Player Ship vs Sea Monsters",
+                                      "Player Ship vs Pirate Ship",
+                                      "Player Ship vs Land Enemies"]
 
         # Pattern info
         self._pattern_info: List[str] = ["Normal", "Normal", "Normal", "Water", "Blocking", "Normal", "Normal",
@@ -254,6 +255,8 @@ class BattlefieldEditor:
 
         else:
             # TODO Hardcoded tile substitutions
+            self.app.warningBox("Battlefield Editor", "Tile substitutions not implemented for this ROM.",
+                                parent="Battlefield_Editor")
             # TODO Detect vanilla game and use its hardcoded substitutions + "blank" ship tile
             pass
 
@@ -331,7 +334,27 @@ class BattlefieldEditor:
         else:
             self._tiles_grid[grid_index] = self._canvas_tiles.create_line(0, 32, 256, 32, fill=self._grid_colour)
 
-        # TODO Raise / create selection rectangle
+        if self._tile_rectangle > 0:
+            self._canvas_tiles.tag_raise(self._tile_rectangle)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _get_selection_index(self, widget: str) -> int:
+        """
+
+        Returns
+        -------
+        int:
+            The index of the currently selected option from an OptionBox widget
+        """
+        value = "(nothing)"
+        try:
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            return box.options.index(value)
+        except ValueError as error:
+            self.error(f"ERROR: Getting selection index for '{value}' in '{widget}': {error}.")
+            return 0
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -341,12 +364,42 @@ class BattlefieldEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def save_tab_data(self) -> None:
-        self.warning("Unimplemented function: save_tab_data.")
+        """
+        Saves battle music ID and table with map pointers.
+        """
+        # Save address table
+        if self.rom.read_byte(0xF, 0xC7ED) == 0xBD:
+            table_address = self.rom.read_word(0xF, 0xC7EE)
+        else:
+            if self.app.yesNoBox("Battlefield Editor", "Couldn't read battlefield maps address table pointer.\n" +
+                                 "Do you want to continue using default value?", parent="Battlefield_Editor") is True:
+                table_address = 0xCEAC
+            else:
+                table_address = -1
+
+        if table_address >= 0xC000:
+            for a in range(19):
+                self.rom.write_word(0xF, table_address, self._map_address[a])
+                table_address = table_address + 2
+
+        elif table_address != -1:
+            # Don't warn if action cancelled
+            self.warning(f"Invalid address for battlefield map pointers: 0x{table_address:04X}.")
+
+        # Save battle music ID
+        if self.rom.read_byte(0xF, 0xC7F7) == 0xA9:
+            music_id = self._get_selection_index("Battlefield_Option_Music")
+            self.rom.write_byte(0xF, 0xC7F8, music_id | 0x80)
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def map_input(self, widget: str) -> None:
         if widget == "BE_Button_Cancel":
+            self.close_window()
+
+        if widget == "BE_Button_Save":
+            self.save_map_data()
+            self.app.soundWarning()
             self.close_window()
 
         elif widget == "BE_Grid_Colour":
@@ -384,6 +437,9 @@ class BattlefieldEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def read_tab_data(self) -> None:
+        """
+        Reads battle music ID and table with map pointers.
+        """
         if self.rom.read_byte(0xF, 0xC7ED) == 0xBD:
             table_address = self.rom.read_word(0xF, 0xC7EE)
         else:
@@ -413,6 +469,17 @@ class BattlefieldEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def set_map_address(self, address: int, map_index: int = -1) -> None:
+        if map_index == -1:
+            map_index = self._selected_map
+
+        if address < 0x8000 or address > 0xBFFF:
+            self.warning(f"Invalid address 0x{address:04X} for battlefield map #{map_index}.")
+
+        self._map_address[map_index] = address
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _read_map_data(self, address: int) -> None:
         # Clear previous data
         self._map_data.clear()
@@ -434,6 +501,33 @@ class BattlefieldEditor:
                 tile = self.rom.read_byte(0x4, address) & 0x0F
                 self._map_data.append(tile)
                 address = address + 1
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def save_map_data(self) -> None:
+        address = self._map_address[self._selected_map]
+
+        # Skip the first row
+        address = address + 16
+        t = 0
+        # We will also skip the first column, and anything after the first 10 tiles in each row
+        for y in range(13):
+            for x in range(16):
+                if x == 0:
+                    # Skip first column
+                    address = address + 1
+                    continue
+
+                if x > 9:
+                    # Skip last 6 bytes
+                    address = address + 1
+                    continue
+
+                self.rom.write_byte(0x4, address, self._map_data[t])
+                t = t + 1
+                address = address + 1
+
+        self._unsaved_changes = False
 
     # ------------------------------------------------------------------------------------------------------------------
 

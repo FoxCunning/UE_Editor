@@ -10,7 +10,7 @@ __credits__ = ["Fox Cunning"]
 __license__ = "Apache 2.0"
 
 __maintainer__ = "Fox Cunning"
-__email__ = ""
+__email__ = "fox.cunning@mail.co.uk"
 __status__ = "Development"
 
 import ast
@@ -1681,6 +1681,11 @@ def main_input(widget: str) -> bool:
         map_index = get_option_index("MapInfo_Select", app.getOptionBox("MapInfo_Select"))
         map_editor.tileset_table[map_index] = set_index
 
+    elif widget == "Battlefield_Apply":
+        battlefield_editor.save_tab_data()
+        app.soundWarning()
+        app.setStatusbar("Battlefield data saved.")
+
     elif widget == "Battlefield_Option_Map":
         # Show the address of the selected map
         map_index = get_option_index(widget, app.getOptionBox(widget))
@@ -1696,8 +1701,10 @@ def main_input(widget: str) -> bool:
     elif widget == "Battlefield_Map_Address":
         try:
             value = int(app.getEntry(widget), 16)
-            if 0x8000 <= value <= 0xFFFF:
+            if 0x8000 <= value <= 0xBFFF:
+                map_index = get_option_index("Battlefield_Option_Map", app.getOptionBox("Battlefield_Option_Map"))
                 app.entry(widget, fg=colour.BLACK)
+                battlefield_editor.set_map_address(value, map_index)
             else:
                 app.entry(widget, fg=colour.MEDIUM_RED)
         except ValueError:
