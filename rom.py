@@ -437,7 +437,7 @@ class ROM:
 
     def read_sprite(self, bank: int, address: int, colours: List[int]) -> Image.Image:
         """
-        Reads 8x8 sprite data from ROM
+        Reads 8x8 pattern data from ROM.
 
         Parameters
         ----------

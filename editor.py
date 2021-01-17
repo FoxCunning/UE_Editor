@@ -988,7 +988,7 @@ def select_map(sel: str) -> None:
     global selected_map
     global map_compression
 
-    selected_map = int(app.getOptionBox(sel)[:4], 16)
+    selected_map = get_option_index(sel, app.getOptionBox(sel))     # int(app.getOptionBox(sel)[:4], 16)
     log(4, "EDITOR", f"Selected map# {selected_map}")
 
     map_data = map_editor.map_table[selected_map]
@@ -1633,7 +1633,7 @@ def main_input(widget: str) -> bool:
                 app.setStatusbar("Emulator launch failed!")
                 app.errorBox("Launch Emulator", f"Could not start Emulator process.\nCommand line: '{path} {params}'")
             else:
-                app.setStatusbar("Emulator process started")
+                app.setStatusbar("Emulator process started.")
 
         else:
             app.setStatusbar("Emulator launch failed!")
@@ -1643,6 +1643,11 @@ def main_input(widget: str) -> bool:
     elif widget == "ME_Option_Map_Type":
         map_type = get_option_index(widget, app.getOptionBox(widget))
         app.selectFrame("Map_Types", map_type, callFunction=True)
+
+    elif widget == "Map_Apply":
+        map_editor.save_map_tables()
+        app.soundWarning()
+        app.setStatusbar("Map tables saved.")
 
     elif widget == "Map_Edit":
         edit_map()
@@ -1670,6 +1675,11 @@ def main_input(widget: str) -> bool:
             app.setEntry("MapInfo_Flags", f"0x{value:02X}")
         except ValueError:
             pass
+
+    elif widget == "MapInfo_Tileset":
+        set_index = get_option_index(widget, app.getOptionBox(widget))
+        map_index = get_option_index("MapInfo_Select", app.getOptionBox("MapInfo_Select"))
+        map_editor.tileset_table[map_index] = set_index
 
     elif widget == "Battlefield_Option_Map":
         # Show the address of the selected map
@@ -1780,16 +1790,16 @@ if __name__ == "__main__":
                     for i in range(0, 0x1A):
                         maps_list.append(f"0x{i:02X}")
 
-                    with app.frame("Map_TopFrame", row=0, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_BROWN):
+                    with app.frame("Map_TopFrame", row=0, column=0, sticky="NEW", stretch='BOTH', bg=colour.PALE_BROWN):
                         app.label("MapInfo_SelectLabel", value="Map:", row=0, column=0, sticky='E')
                         app.optionBox("MapInfo_Select", maps_list, change=select_map, sticky='WE', width=20,
-                                      stretch='ROW', row=0, column=1, font=11)
+                                      stretch="ROW", row=0, column=1, font=11)
                         app.radioButton("MapInfo_Advanced_Option", "Basic", change=main_input, sticky="E",
                                         row=0, column=2)
                         app.radioButton("MapInfo_Advanced_Option", "Advanced", change=main_input, sticky="W",
                                         row=0, column=3)
 
-                    with app.frame("Map_MidFrame", row=1, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_OLIVE):
+                    with app.frame("Map_MidFrame", row=1, column=0, sticky="NEW", stretch='BOTH', bg=colour.PALE_OLIVE):
 
                         # Basic info
                         with app.frame("MapInfo_Frame_Basic", row=0, column=0, padding=[8, 0], stretch='BOTH'):
@@ -1811,25 +1821,31 @@ if __name__ == "__main__":
                             app.spinBox("MapInfo_Basic_ID", list(range(31, -1, -1)), change=main_input, row=1, column=3)
 
                         # Advanced info
-                        with app.frame("MapInfo_Frame_Advanced", row=1, column=0, padding=[8, 0], stretch='BOTH'):
-                            app.label("MapInfo_h0", value="Bank Number", row=0, column=0, sticky='NEW', stretch='ROW')
-                            app.label("MapInfo_h1", value="Data Address", row=0, column=1, sticky='NEW', stretch='ROW')
-                            app.label("MapInfo_h2", value="NPC Table", row=0, column=2, sticky='NEW', stretch='ROW')
+                        with app.frame("MapInfo_Frame_Advanced", row=1, column=0, padding=[4, 0], stretch='BOTH'):
+                            app.label("MapInfo_h0", "Bank Number", row=0, column=0, sticky="NEW", stretch="ROW")
+                            app.label("MapInfo_h1", "Data Address", row=0, column=1, sticky="NEW", stretch="ROW")
+                            app.label("MapInfo_h2", "NPC Table", row=0, column=2, sticky="NEW", stretch="ROW")
 
                             # Map bank number
-                            app.entry("MapInfo_Bank", row=1, column=0, stretch='ROW', sticky='NEW', width=12)
+                            app.entry("MapInfo_Bank", row=1, column=0, stretch="ROW", sticky="NEW", width=8)
                             # Map data address
-                            app.entry("MapInfo_DataPtr", row=1, column=1, stretch='ROW', sticky='NEW', width=12)
+                            app.entry("MapInfo_DataPtr", row=1, column=1, stretch="ROW", sticky="NEW", width=8)
                             # NPC table address / starting facing position in a dungeon (v1.09+)
-                            app.entry("MapInfo_NPCPtr", row=1, column=2, stretch='ROW', sticky='NEW', width=12)
-                            app.label("MapInfo_h3", value="Party Entry X, Y", row=2, sticky='NEW', column=0, colspan=2,
-                                      stretch='ROW')
-                            app.label("MapInfo_h4", value="Flags/ID", row=2, column=2, sticky='NEW', stretch='ROW')
+                            app.entry("MapInfo_NPCPtr", row=1, column=2, stretch="ROW", sticky="NEW", width=8)
+                            app.label("MapInfo_h3", "Party Entry X, Y", stretch="ROW", sticky="NEW",
+                                      row=2, column=0, colspan=2)
+                            app.label("MapInfo_h4", "Flags/ID", row=2, column=2, sticky="NEW", stretch="ROW")
+                            app.label("MapInfo_h5", "Tile Set", row=2, column=3, sticky="NEW", stretch="COLUMN")
                             # Party entry coordinates
-                            app.entry("MapInfo_EntryX", row=3, column=0, stretch='ROW', sticky='NEW', width=12)
-                            app.entry("MapInfo_EntryY", row=3, column=1, stretch='ROW', sticky='NEW', width=12)
+                            app.entry("MapInfo_EntryX", row=3, column=0, stretch="ROW", sticky="NEW", width=8)
+                            app.entry("MapInfo_EntryY", row=3, column=1, stretch="ROW", sticky="NEW", width=8)
                             # Flags / ID
-                            app.entry("MapInfo_Flags", row=3, column=2, stretch='ROW', sticky='NEW', width=12)
+                            app.entry("MapInfo_Flags", row=3, column=2, stretch="ROW", sticky="NEW", width=8)
+                            # Tileset
+                            tilesets_list = ["Continent 1", "Continent 2", "Castle 1", "Castle 2", "Town"]
+                            app.optionBox("MapInfo_Tileset", tilesets_list, change=main_input,
+                                          row=3, column=3, sticky="NEW", stretch="COLUMN", width=9, font=10)
+                            del tilesets_list
 
                     # Show "Basic" info by default
                     app.setRadioButton("MapInfo_Advanced_Option", "Basic", callFunction=False)
@@ -1839,13 +1855,13 @@ if __name__ == "__main__":
                                    bg=colour.PALE_LIME):
                         app.button("Map_Apply", image="res/floppy.gif", value=main_input, width=32, height=32,
                                    tooltip="Save the changes to the values in this tab",
-                                   sticky='NEW', row=0, column=0)
+                                   sticky="NEW", row=0, column=0)
                         app.button("Map_Edit", image="res/brush.gif", value=main_input, width=128, height=32,
                                    tooltip="Edit the selected map",
-                                   sticky='NEW', row=0, column=1)
-                        app.label("MapInfo_SelectCompression", "Compression:", sticky='NEW', row=0, column=2)
+                                   sticky="NEW", row=0, column=1)
+                        app.label("MapInfo_SelectCompression", "Compression:", sticky="NEW", row=0, column=2)
                         app.optionBox("Map_Compression", ["none", "LZSS", "RLE"], change=select_compression,
-                                      sticky='NEW', callFunction=True, row=0, column=3)
+                                      sticky="NEW", callFunction=True, row=0, column=3)
 
                 with app.frame("Map_Frame_1", padding=[4, 2], inPadding=[4, 4], sticky="NEWS", stretch="BOTH",
                                row=0, column=0):
@@ -1911,7 +1927,7 @@ if __name__ == "__main__":
             # Left
             with app.frame("ET_Frame_Left", bg=colour.PALE_RED, stretch='BOTH', sticky='NWS', row=0, column=0):
                 app.optionBox("ET_Option_Enemies", ["- Select an Enemy -", "0x00"], row=0, column=0,
-                              width=22, change=enemy_editor_input, stretch='ROW', sticky='EW')
+                              width=22, change=enemy_editor_input, stretch="ROW", sticky='EW')
 
                 with app.frame("ET_Frame_Encounters", row=1, column=0):
                     app.label("ET_Label_h0", "Encounters:", row=0, column=0)
@@ -1927,40 +1943,40 @@ if __name__ == "__main__":
             # Right - Enemy
             with app.frame("ET_Frame_Enemy", bg=colour.PALE_TEAL, stretch='BOTH', sticky='NEWS', row=0, column=1):
                 # Row 0
-                app.label("ET_Label_h1", "Gfx Addr.:", sticky='NEW', row=0, column=0)
+                app.label("ET_Label_h1", "Gfx Addr.:", sticky="NEW", row=0, column=0)
                 app.checkBox("ET_Big_Sprite", name="4x4 Sprite", change=enemy_editor_input, row=0, column=1)
                 # Row 1 - sprite
                 app.entry("ET_Sprite_Address", value="0x0000", change=enemy_editor_input, width=5, fg=colour.DARK_OLIVE,
                           row=1, column=0)
-                app.canvas("ET_Canvas_Sprite", map=None, width=32, height=32, sticky='NEW', bg=colour.MEDIUM_GREY,
+                app.canvas("ET_Canvas_Sprite", map=None, width=32, height=32, sticky="NEW", bg=colour.MEDIUM_GREY,
                            row=1, column=1)
                 # Row 2 - HP
-                app.label("ET_Label_HP", "Base HP:", sticky='NEW', row=2, column=0)
-                app.entry("ET_Base_HP", "0", change=enemy_editor_input, sticky='NEW', row=2, width=4, column=1)
+                app.label("ET_Label_HP", "Base HP:", sticky="NEW", row=2, column=0)
+                app.entry("ET_Base_HP", "0", change=enemy_editor_input, sticky="NEW", row=2, width=4, column=1)
                 # Row 3 - XP
-                app.label("ET_Label_XP", "Base XP:", sticky='NEW', row=3, column=0)
-                app.entry("ET_Base_XP", "0", change=enemy_editor_input, sticky='NEW', width=4, row=3, column=1)
+                app.label("ET_Label_XP", "Base XP:", sticky="NEW", row=3, column=0)
+                app.entry("ET_Base_XP", "0", change=enemy_editor_input, sticky="NEW", width=4, row=3, column=1)
                 # Rows 4, 5, 6 - colours
                 # Colour selection, for vanilla game
                 colours: List[str] = []
                 for i in range(0x40):
                     colours.append(f"0x{i:02X}")
-                app.label("ET_Label_Colour_1", "Colour 1", sticky='NEW', row=4, column=0)
-                app.optionBox("ET_Colour_1", colours, change=enemy_editor_input, sticky='NEW', width=4,
+                app.label("ET_Label_Colour_1", "Colour 1", sticky="NEW", row=4, column=0)
+                app.optionBox("ET_Colour_1", colours, change=enemy_editor_input, sticky="NEW", width=4,
                               row=4, column=1)
-                app.label("ET_Label_Colour_2", "Colour 2", sticky='NEW', row=5, column=0)
-                app.optionBox("ET_Colour_2", colours, change=enemy_editor_input, sticky='NEW', width=4,
+                app.label("ET_Label_Colour_2", "Colour 2", sticky="NEW", row=5, column=0)
+                app.optionBox("ET_Colour_2", colours, change=enemy_editor_input, sticky="NEW", width=4,
                               row=5, column=1)
-                app.label("ET_Label_Colour_3", "Colour 3", sticky='NEW', row=6, column=0)
-                app.optionBox("ET_Colour_3", colours, change=enemy_editor_input, sticky='NEW', width=4,
+                app.label("ET_Label_Colour_3", "Colour 3", sticky="NEW", row=6, column=0)
+                app.optionBox("ET_Colour_3", colours, change=enemy_editor_input, sticky="NEW", width=4,
                               row=6, column=1)
                 # Palette selection, for hacked game
                 app.optionBox("ET_Palette_1", ["00", "01", "02", "03"], change=enemy_editor_input,
-                              sticky='NEW', width=4, row=4, column=1)
+                              sticky="NEW", width=4, row=4, column=1)
                 app.optionBox("ET_Palette_2", ["00", "01", "02", "03"], change=enemy_editor_input,
-                              sticky='NEW', width=4, row=5, column=1)
+                              sticky="NEW", width=4, row=5, column=1)
                 # Row 7 - abilities
-                app.label("ET_Label_Ability", "Ability:", sticky='NEW', row=7, column=0)
+                app.label("ET_Label_Ability", "Ability:", sticky="NEW", row=7, column=0)
                 app.optionBox("ET_Ability", ["None", "Steal", "Poison Atk", "Fireball", "Magic Poison"], width=5,
                               change=enemy_editor_input, row=7, column=1)
                 del colours
@@ -1977,7 +1993,7 @@ if __name__ == "__main__":
             with app.frame("ET_Frame_Encounter", bg=colour.PALE_TEAL, stretch='BOTH', sticky='NEWS', row=0, column=2):
                 app.label("ET_Label_Level", "Level/Type", row=0, column=0)
                 app.label("ET_Label_h3", "Encounters Table #0", row=1, column=0)
-                with app.frame("ET_Frame_Encounters_List", sticky='NEW', padding=[4, 4], row=2, column=0):
+                with app.frame("ET_Frame_Encounters_List", sticky="NEW", padding=[4, 4], row=2, column=0):
                     app.entry("ET_Encounter_0", "0x00", change=encounter_input, width=4, row=0, column=1)
                     app.entry("ET_Encounter_1", "0x00", change=encounter_input, width=4, row=0, column=2)
                     app.entry("ET_Encounter_2", "0x00", change=encounter_input, width=4, row=0, column=3)
@@ -1986,7 +2002,7 @@ if __name__ == "__main__":
                     app.entry("ET_Encounter_5", "0x00", change=encounter_input, width=4, row=1, column=2)
                     app.entry("ET_Encounter_6", "0x00", change=encounter_input, width=4, row=1, column=3)
                     app.entry("ET_Encounter_7", "0x00", change=encounter_input, width=4, row=1, column=4)
-                with app.labelFrame("ET_Frame_Special", name="Special", sticky='NEW', padding=[2, 2], row=3, column=0):
+                with app.labelFrame("ET_Frame_Special", name="Special", sticky="NEW", padding=[2, 2], row=3, column=0):
                     tiles_list: List[str] = []
                     for i in range(16):
                         tiles_list.append(f"0x{i:02X}")
@@ -2002,7 +2018,7 @@ if __name__ == "__main__":
             with app.frame("TextEditor_Left", row=0, column=0, padding=[2, 2], inPadding=[0, 0],
                            sticky='NW', bg=colour.PALE_OLIVE):
                 app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky='NW', stretch='NONE', font=10)
-                app.textArea("Text_Preview", row=1, column=0, colspan=2, sticky='NEW', stretch='ROW', scroll=True,
+                app.textArea("Text_Preview", row=1, column=0, colspan=2, sticky="NEW", stretch="ROW", scroll=True,
                              end=False, height=10, rowspan=2).setFont(family="Consolas", size=11)
                 app.button("Text_Apply", name="Apply Changes", value=text_editor_input, row=3, column=0,
                            sticky='NW', stretch='NONE')
@@ -2351,7 +2367,7 @@ if __name__ == "__main__":
                 # noinspection PyArgumentList
                 app.setStopFunction(no_stop)
 
-                app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE',
+                app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch="ROW", sticky='WE',
                           font=16)
                 app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
                           fill=colour.MEDIUM_BLUE)
@@ -2372,14 +2388,14 @@ if __name__ == "__main__":
             app.setStopFunction(text_editor_stop)
 
             # Buttons
-            with app.frame("TE_Frame_Top", row=0, colspan=2, sticky='NEW', stretch='ROW', padding=[8, 2]):
+            with app.frame("TE_Frame_Top", row=0, colspan=2, sticky="NEW", stretch="ROW", padding=[8, 2]):
                 app.button("TE_Button_Accept", text_editor_input, name="Accept and Close", image="res/floppy.gif",
                            tooltip="Apply Changes and Close", row=0, column=0, sticky='W')
                 app.button("TE_Button_Close", text_editor_input, name=" Cancel ", image="res/close.gif",
                            tooltip="Discard Changes and Close", row=0, column=2, sticky='E')
 
             # Text
-            with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.MEDIUM_GREY, sticky='NEW', stretch='COLUMN',
+            with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.MEDIUM_GREY, sticky="NEW", stretch='COLUMN',
                            padding=[2, 2]):
                 app.label("TE_Label_Text", "Unpacked string:", row=0, column=0)
                 app.textArea("TE_Text", "", width=22, stretch='BOTH', sticky='NEWS', scroll=True,
@@ -2397,7 +2413,7 @@ if __name__ == "__main__":
             with app.frame("TE_Frame_Bottom", row=2, colspan=2, sticky='SEW', stretch='COLUMN',
                            padding=[2, 2]):
                 with app.labelFrame("Dialogue Properties", 0, 0, padding=[4, 4]):
-                    with app.frame("TE_Frame_Dialogue_Left", row=0, column=0, bg=colour.WHITE, sticky='NEW',
+                    with app.frame("TE_Frame_Dialogue_Left", row=0, column=0, bg=colour.WHITE, sticky="NEW",
                                    stretch='COLUMN'):
                         app.label("TE_Label_Name", "NPC Name: ", row=0, column=0)
                         app.optionBox("TE_Option_Name", ["(0xFF) No Name"], row=0, column=1, width=20)
@@ -2407,9 +2423,9 @@ if __name__ == "__main__":
                             portrait_options.append(f"{p:02d}")
                         app.optionBox("TE_Option_Portrait", portrait_options, change=select_portrait, row=1, column=1)
 
-                    with app.frame("TE_Frame_Dialogue_Right", row=0, column=1, bg=colour.MEDIUM_GREY, sticky='NEW',
+                    with app.frame("TE_Frame_Dialogue_Right", row=0, column=1, bg=colour.MEDIUM_GREY, sticky="NEW",
                                    stretch='COLUMN'):
-                        app.canvas("TE_Canvas_Portrait", width=40, height=48, bg=colour.BLACK, map=None, sticky='NEW',
+                        app.canvas("TE_Canvas_Portrait", width=40, height=48, bg=colour.BLACK, map=None, sticky="NEW",
                                    stretch='NONE')
 
     del maps_list

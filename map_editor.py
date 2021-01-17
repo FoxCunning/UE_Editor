@@ -112,10 +112,11 @@ class MapEditor:
 
         # Map data table from 0F:FEA0-FF6F
         self.map_table: List[MapTableEntry] = []
-        self.read_map_table()
 
         # 1 byte per map in table at $FB9F (1.09+)
-        self.tileset_table: bytearray = rom.read_bytes(0xF, 0xFB9F, 32)
+        self.tileset_table: bytearray = bytearray()
+
+        self.read_map_tables()
 
         # Compression methods used in each bank
         self.bank_compression: List[str] = ["LZSS", "none", "RLE", "none", "none", "none", "none", "none",
@@ -245,7 +246,7 @@ class MapEditor:
 
     def load_tiles(self, map_index: int = -1, map_colour: int = -1) -> None:
         """
-        Loads and caches tile graphics for this map
+        Loads and caches tile graphics for the selected map.
 
         Parameters
         ----------
@@ -256,8 +257,6 @@ class MapEditor:
         """
         # Clear the tiles palette and image cache
         self.app.clearCanvas("ME_Canvas_Tiles")
-        # for i in range(0, len(self.tiles)):
-        #    self.tiles[i] = None
         self.tiles.clear()
 
         if map_index < 0:
@@ -458,6 +457,297 @@ class MapEditor:
         self.app.changeOptionBox("ME_Option_Map_Colours", options=colours_list, index=self.map_colour,
                                  callFunction=False)
 
+        if self.rom.has_feature("map tilesets"):
+            self._load_tile_patterns(map_palette)
+        else:
+            self._load_tile_patterns_hardcoded(map_palette)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _load_tile_patterns(self, map_palette: List[int]) -> None:
+        tileset = self.tileset_table[self.map_index]
+
+        # First, create a list of pattern addresses using the "default" tileset
+        addresses: List[int] = []
+        for p in range(16):
+            addresses.append(0x8A40 + (p * 64))     # Each 2x2 tile is 64 bytes long
+
+        # The first tile will be at PPU address $1A40, the last one at $1E40
+
+        # Each entry in the table at $0A:B600 has the format: source address in bank $0A, destination address in PPU,
+        # number of bytes to copy
+
+        # Tile index is: (PPU address - $1A40) / 64
+        # Number of tiles in this entry: (bytes to copy) / 64
+
+        # Now replicate the subroutine at 0A:9D90 to enact the substitutions
+        if tileset == 0:        # Continent 1 (e.g. Sosaria)
+            # $B606
+            address = 0xB606
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B60C
+            address = 0xB60C
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $BC36
+            address = 0xB636
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B63C
+            address = 0xB63C
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+        elif tileset == 1:      # Continent 2 (e.g. Ambrosia)
+            # $B612
+            address = 0xB612
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B618
+            address = 0xB618
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B636
+            address = 0xB636
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B63C
+            address = 0xB63C
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B654
+            address = 0xB654
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # B630
+            address = 0xB630
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+        elif tileset == 2:      # Castle 1 (e.g. Castle British, Shrines)
+            # $B61E
+            address = 0xB61E
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B64E
+            address = 0xB64E
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B624
+            address = 0xB624
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B642
+            address = 0xB642
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+        elif tileset == 3:      # Castle 2 (e.g. Castle Exodus)
+            # $B61E
+            address = 0xB61E
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B65A
+            address = 0xB65A
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B64E
+            address = 0xB64E
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+            # $B642
+            address = 0xB642
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+        else:                   # Town / default
+            # $B642
+            address = 0xB642
+            pattern_address = self.rom.read_word(0xA, address)
+            tile_index = (self.rom.read_word(0xA, address + 2) - 0x1A40) >> 6
+            tile_count = self.rom.read_word(0xA, address + 4) >> 6
+
+            for t in range(tile_count):
+                addresses[tile_index] = pattern_address
+                pattern_address = pattern_address + 64
+                tile_index = tile_index + 1
+
+        # Now we have a full list of pattern addresses, we can use it to create our images
+        tile_index = 0
+        for a in addresses:
+            # Get palette index for this tile from table in ROM at 0D:856D
+            palette_index = self.rom.read_byte(0x0D, 0x856D + tile_index) * 4
+            colours = []
+            for c in range(palette_index, palette_index + 4):
+                colour_index = map_palette[c]
+                rgb = bytearray(self.palette_editor.get_colour(colour_index))
+                colours.append(rgb[0])  # Red
+                colours.append(rgb[1])  # Green
+                colours.append(rgb[2])  # Blue
+
+            # We will combine the four patterns in a single 16x16 image and then cache it
+            tile = Image.new('P', (16, 16), 0)
+            tile.putpalette(colours)
+
+            # Top-left pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(0x0A, a)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image, (0, 0))
+            # Bottom-left pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(0x0A, a + 0x10)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image, (0, 8))
+            # Top-right pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(0x0A, a + 0x20)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image, (8, 0))
+            # Bottom-right pattern
+            pixels = bytes(bytearray(self.rom.read_pattern(0x0A, a + 0x30)))
+            image = Image.frombytes('P', (8, 8), pixels)
+            image.putpalette(colours)
+            tile.paste(image, (8, 8))
+
+            image = ImageTk.PhotoImage(tile)
+            self.tiles.append(image)
+
+            # Show this tile in the tile palette
+            x = 8 + (16 * (tile_index % 8))
+            y = 8 + (16 * (tile_index >> 3))
+            self.app.addCanvasImage("ME_Canvas_Tiles", x, y, image)
+
+            # Next tile
+            tile_index = tile_index + 1
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _load_tile_patterns_hardcoded(self, map_palette: List[int]) -> None:
+
         # Cache the 16 tiles used in this map
         for tile_index in range(16):
             # Load map palettes
@@ -478,8 +768,7 @@ class MapEditor:
 
             actual_tile_index = tile_index
 
-            # TODO Use the table at 0A:B600 if the version of the game supports it
-            # TODO Also detect vanilla game and use hardcoded vanilla substitutions
+            # TODO Detect vanilla game and use hardcoded vanilla substitutions
 
             # Some maps use alternative tiles, like the Force Field used in castle maps
             if self.map_index == 0:  # ---[ Sosaria ]---
@@ -652,8 +941,9 @@ class MapEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def read_map_table(self) -> None:
-        """Reads the maps data table from ROM
+    def read_map_tables(self) -> None:
+        """
+        Reads the maps data table from ROM.
         """
         # Clear previous data if any
         if len(self.map_table) > 0:
@@ -661,7 +951,7 @@ class MapEditor:
             self.map_table = []
 
         address = 0xFEA0
-        for count in range(0, 0x20):
+        for count in range(self.max_maps()):
             data = MapTableEntry()
             # Bank number
             data.bank = self.rom.read_byte(0xF, address)
@@ -683,6 +973,41 @@ class MapEditor:
             address += 1
 
             self.map_table.append(data)
+
+        if self.rom.has_feature("map tilesets"):
+            self.tileset_table = self.rom.read_bytes(0xF, 0xFB9F, 32)
+        else:
+            self.tileset_table = [0] * 32
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def save_map_tables(self) -> None:
+        """
+        Saves map table data to the ROM buffer.
+        """
+        address = 0xFEA0
+        for m in range(self.max_maps()):
+            # Byte 0: bank number
+            self.rom.write_byte(0xF, address, self.map_table[m].bank)
+            address = address + 1
+            # Bytes 1, 2: map data pointer
+            self.rom.write_word(0xF, address, self.map_table[m].data_pointer)
+            address = address + 2
+            # Bytes 3, 4: NPC data pointer
+            self.rom.write_word(0xF, address, self.map_table[m].npc_pointer)
+            address = address + 2
+            # Byte 5: party entry Y
+            self.rom.write_byte(0xF, address, self.map_table[m].entry_y)
+            address = address + 1
+            # Byte 6: party entry X
+            self.rom.write_byte(0xF, address, self.map_table[m].entry_x)
+            address = address + 1
+            # Byte 7: flags/ID
+            self.rom.write_byte(0xF, address, self.map_table[m].flags)
+            address = address + 1
+
+        if self.rom.has_feature("map tilesets"):
+            self.rom.write_bytes(0xF, 0xFB9F, self.tileset_table[:self.max_maps()])
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -1336,7 +1661,7 @@ class MapEditor:
         # Get index of selected map
 
         try:
-            map_index = int(self.app.getOptionBox("MapInfo_Select")[:4], base=16)
+            map_index = self._get_selection_index("MapInfo_Select")
         except IndexError:
             value = self.app.getOptionBox("MapInfo_Select")
             log(3, "EDITOR", f"Error getting map index from: '{value}'.")
@@ -1422,6 +1747,12 @@ class MapEditor:
         self.app.setEntry("MapInfo_EntryX", f"{map_data.entry_x}", False)
         self.app.setEntry("MapInfo_EntryY", f"{map_data.entry_y}", False)
         self.app.setEntry("MapInfo_Flags", f"0x{map_data.flags:02X}", False)
+
+        if self.rom.has_feature("map tilesets") is True:
+            self.app.enableOptionBox("MapInfo_Tileset")
+            self.app.setOptionBox("MapInfo_Tileset", self.tileset_table[map_index], callFunction=False)
+        else:
+            self.app.disableOptionBox("MapInfo_Tileset")
 
     # ----------------------------------------------------------------------------------------------------------------------
 
