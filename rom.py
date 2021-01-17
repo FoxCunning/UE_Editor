@@ -18,7 +18,8 @@ feature_names = ["custom map colours",
                  "extra menu strings",
                  "enhanced party",
                  "new profession gfx",
-                 "weapon gfx"]
+                 "weapon gfx",
+                 "map tilesets"]
 
 
 class ROM:
@@ -52,7 +53,8 @@ class ROM:
                           "extra menu strings": False,  # True if there is room for extra text in bank $0C (no pre-made)
                           "enhanced party": False,      # True if the new varied race/class attributes are supported
                           "new profession gfx": False,  # True if profession gfx for Status is 32x32 instead of 48x48
-                          "weapon gfx": False           # True if weapon gfx is shown when choosing attack direction
+                          "weapon gfx": False,          # True if weapon gfx is shown when choosing attack direction
+                          "map tilesets": False         # True if the ROM implements the tileset table (1 entry/map)
                           }
 
     # --- ROM.open() ---
@@ -138,6 +140,11 @@ class ROM:
             self._features["weapon gfx"] = True
         else:
             self._features["weapon gfx"] = False
+
+        if self.read_word(0xA, 0x9DA9) == 0xFB9F:
+            self._features["map tilesets"] = True
+        else:
+            self._features["map tilesets"] = False
 
         print(f"ROM Features:\n{self._features}")
 

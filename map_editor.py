@@ -44,11 +44,11 @@ class MapTableEntry:
     8 bytes per entry
     """
     bank: int = 0  # 1 byte ROM bank number
-    data_pointer: int = 0  # 2 bytes address of map data
-    npc_pointer: int = 0  # 2 bytes address of NPC data
-    entry_y: int = 0  # 1 byte player entry point Y
-    entry_x: int = 0  # 1 byte player entry point X
-    flags: int = 0  # 1 byte flags/ID (bit 7 set = dungeon)
+    data_pointer: int = 0   # 2 bytes address of map data
+    npc_pointer: int = 0    # 2 bytes address of NPC data
+    entry_y: int = 0    # 1 byte player entry point Y
+    entry_x: int = 0    # 1 byte player entry point X
+    flags: int = 0      # 1 byte flags/ID (bit 7 set = dungeon)
 
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -113,6 +113,9 @@ class MapEditor:
         # Map data table from 0F:FEA0-FF6F
         self.map_table: List[MapTableEntry] = []
         self.read_map_table()
+
+        # 1 byte per map in table at $FB9F (1.09+)
+        self.tileset_table: bytearray = rom.read_bytes(0xF, 0xFB9F, 32)
 
         # Compression methods used in each bank
         self.bank_compression: List[str] = ["LZSS", "none", "RLE", "none", "none", "none", "none", "none",

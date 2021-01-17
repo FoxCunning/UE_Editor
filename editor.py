@@ -22,6 +22,7 @@ import colour
 from typing import List
 
 from appJar import gui
+from battlefield_editor import BattlefieldEditor
 from editor_settings import EditorSettings
 from cutscene_editor import CutsceneEditor
 from debug import log
@@ -56,6 +57,7 @@ enemy_editor: EnemyEditor
 party_editor: PartyEditor
 cutscene_editor: CutsceneEditor
 music_editor: MusicEditor
+battlefield_editor: BattlefieldEditor
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -391,7 +393,7 @@ def close_rom() -> None:
     for idx in range(1, 9):
         app.setLabel(f"RomInfo_{idx}", "")
     # Hide features list
-    for feature in range(9):
+    for feature in range(11):
         app.hideCheckBox(f"Feature_{feature}")
     # Close all sub-windows
     app.hideAllSubWindows(False)
@@ -451,6 +453,7 @@ def open_rom(file_name: str) -> None:
     global party_editor
     global cutscene_editor
     global music_editor
+    global battlefield_editor
 
     app.setStatusbar(f"Opening ROM file '{file_name}'", field=0)
     val = rom.open(file_name)
@@ -557,6 +560,16 @@ def open_rom(file_name: str) -> None:
 
         # Music editor
         music_editor = MusicEditor(rom)
+
+        # Battlefield map editor
+        battlefield_editor = BattlefieldEditor(app, rom)
+        app.changeOptionBox("Battlefield_Option_Map", battlefield_editor.get_map_names(), 0, callFunction=False)
+        app.changeOptionBox("Battlefield_Option_Music", music_editor.read_music_titles(), 0, callFunction=False)
+
+        battlefield_editor.read_tab_data()
+
+        # Default selection
+        app.setOptionBox("Battlefield_Option_Map", 0, callFunction=True)
 
         # Party editor
         party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
@@ -1627,6 +1640,10 @@ def main_input(widget: str) -> bool:
             app.warningBox("Launch Emulator", f"Invalid emulator path '{path}'.\n"
                                               "Please go to Settings and choose the correct path.")
 
+    elif widget == "ME_Option_Map_Type":
+        map_type = get_option_index(widget, app.getOptionBox(widget))
+        app.selectFrame("Map_Types", map_type, callFunction=True)
+
     elif widget == "Map_Edit":
         edit_map()
 
@@ -1653,6 +1670,28 @@ def main_input(widget: str) -> bool:
             app.setEntry("MapInfo_Flags", f"0x{value:02X}")
         except ValueError:
             pass
+
+    elif widget == "Battlefield_Option_Map":
+        # Show the address of the selected map
+        map_index = get_option_index(widget, app.getOptionBox(widget))
+        address = battlefield_editor.get_map_address(map_index)
+        app.clearEntry("Battlefield_Map_Address", callFunction=False, setFocus=False)
+        app.setEntry("Battlefield_Map_Address", f"0x{address:04X}", callFunction=False)
+
+    elif widget == "Battlefield_Edit":
+        # TODO Ask to save changes first? If cancelled, re-read selected map address
+        map_index = get_option_index("Battlefield_Option_Map", app.getOptionBox("Battlefield_Option_Map"))
+        battlefield_editor.show_window(map_index)
+
+    elif widget == "Battlefield_Map_Address":
+        try:
+            value = int(app.getEntry(widget), 16)
+            if 0x8000 <= value <= 0xFFFF:
+                app.entry(widget, fg=colour.BLACK)
+            else:
+                app.entry(widget, fg=colour.MEDIUM_RED)
+        except ValueError:
+            app.entry(widget, fg=colour.MEDIUM_RED)
 
     else:
         log(3, "EDITOR", f"Unimplemented button: {widget}")
@@ -1720,79 +1759,129 @@ if __name__ == "__main__":
                 app.label("RomInfo_8", value="", row=8, sticky='W')  # Extra Data
 
             with app.labelFrame("Features", row=0, column=1, stretch='BOTH', sticky='NEWS'):
-                for f in range(9):
-                    app.checkBox(f"Feature_{f}", name=feature_names[f], value=False, row=f, column=0, font=9,
+                for f in range(11):
+                    app.checkBox(f"Feature_{f}", name=feature_names[f], value=False, row=f, column=0, font=8,
                                  fg=colour.DARK_BLUE)
                     app.disableCheckBox(f"Feature_{f}")
                     app.hideCheckBox(f"Feature_{f}")
 
         # MAP Tab ------------------------------------------------------------------------------------------------------
-        with app.tab("Map", padding=[4, 0]):
+        with app.tab("Map", padding=[4, 2]):
 
-            maps_list = list()
-            for i in range(0, 0x1A):
-                maps_list.append(f"0x{i:02X}")
+            app.optionBox("ME_Option_Map_Type", ["World and Dungeon Maps", "Battlefield Maps"], sticky="NEW",
+                          tooltip="Select the type of map you want to edit", change=main_input,
+                          stretch="COLUMN", row=0, column=0, font=11)
 
-            with app.frame("Map_TopFrame", row=0, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_BROWN):
-                app.label("MapInfo_SelectLabel", value="Map:", row=0, column=0, sticky='E')
-                app.optionBox("MapInfo_Select", maps_list, change=select_map, sticky='WE', width=20,
-                              stretch='ROW', row=0, column=1, font=11)
-                app.radioButton("MapInfo_Advanced_Option", "Basic", change=main_input, row=0, column=2, sticky="E")
-                app.radioButton("MapInfo_Advanced_Option", "Advanced", change=main_input, row=0, column=3, sticky="W")
+            with app.frameStack("Map_Types", inPadding=[4, 4], start=0, sticky="NEWS", stretch="BOTH", row=1, column=0):
 
-            with app.frame("Map_MidFrame", row=1, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_OLIVE):
+                with app.frame("Map_Frame_0", padding=[4, 2], inPadding=[4, 4], sticky="NEWS", stretch="BOTH",
+                               row=0, column=0):
+                    maps_list = list()
+                    for i in range(0, 0x1A):
+                        maps_list.append(f"0x{i:02X}")
 
-                # Basic info
-                with app.frame("MapInfo_Frame_Basic", row=0, column=0, padding=[8, 0], stretch='BOTH'):
-                    app.label("MapInfo_Basic_h0", "Map type: ", sticky='E', row=0, column=0, colspan=2)
-                    app.optionBox("MapInfo_Basic_Type", ["6: Continent (No Guards)", "2: Continent (w/Guards)",
-                                                         "4: Town / Castle (No Guards)", "0: Town / Castle (w/Guards)",
-                                                         "8: Dungeon"], width=26, sticky='W', row=0, column=2,
-                                  colspan=2, change=main_input, font=11)
+                    with app.frame("Map_TopFrame", row=0, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_BROWN):
+                        app.label("MapInfo_SelectLabel", value="Map:", row=0, column=0, sticky='E')
+                        app.optionBox("MapInfo_Select", maps_list, change=select_map, sticky='WE', width=20,
+                                      stretch='ROW', row=0, column=1, font=11)
+                        app.radioButton("MapInfo_Advanced_Option", "Basic", change=main_input, sticky="E",
+                                        row=0, column=2)
+                        app.radioButton("MapInfo_Advanced_Option", "Advanced", change=main_input, sticky="W",
+                                        row=0, column=3)
 
-                    app.label("MapInfo_Basic_h1", "Bank: ", sticky='E', row=1, column=0)
-                    banks_list = []
-                    for i in range(0, 16):
-                        banks_list.append(f"{i}")
-                    app.optionBox("MapInfo_Basic_Bank", banks_list, sticky='W', row=1, column=1,
-                                  change=main_input)
-                    del banks_list
+                    with app.frame("Map_MidFrame", row=1, column=0, sticky='NEW', stretch='BOTH', bg=colour.PALE_OLIVE):
 
-                    app.label("MapInfo_Basic_h2", "ID: ", sticky='E', row=1, column=2)
-                    app.spinBox("MapInfo_Basic_ID", list(range(31, -1, -1)), change=main_input, row=1, column=3)
+                        # Basic info
+                        with app.frame("MapInfo_Frame_Basic", row=0, column=0, padding=[8, 0], stretch='BOTH'):
+                            app.label("MapInfo_Basic_h0", "Map type: ", sticky='E', row=0, column=0, colspan=2)
+                            app.optionBox("MapInfo_Basic_Type", ["6: Continent (No Guards)", "2: Continent (w/Guards)",
+                                                                 "4: Town / Castle (No Guards)",
+                                                                 "0: Town / Castle (w/Guards)", "8: Dungeon"],
+                                          width=26, sticky='W', row=0, column=2, colspan=2, change=main_input, font=11)
 
-                # Advanced info
-                with app.frame("MapInfo_Frame_Advanced", row=1, column=0, padding=[8, 0], stretch='BOTH'):
-                    app.label("MapInfo_h0", value="Bank Number", row=0, column=0, sticky='NEW', stretch='ROW')
-                    app.label("MapInfo_h1", value="Data Address", row=0, column=1, sticky='NEW', stretch='ROW')
-                    app.label("MapInfo_h2", value="NPC Table", row=0, column=2, sticky='NEW', stretch='ROW')
+                            app.label("MapInfo_Basic_h1", "Bank: ", sticky='E', row=1, column=0)
+                            banks_list = []
+                            for i in range(0, 16):
+                                banks_list.append(f"{i}")
+                            app.optionBox("MapInfo_Basic_Bank", banks_list, sticky='W', row=1, column=1,
+                                          change=main_input)
+                            del banks_list
 
-                    # Map bank number
-                    app.entry("MapInfo_Bank", row=1, column=0, stretch='ROW', sticky='NEW', width=12)
-                    # Map data address
-                    app.entry("MapInfo_DataPtr", row=1, column=1, stretch='ROW', sticky='NEW', width=12)
-                    # NPC table address / starting facing position in a dungeon (v1.09+)
-                    app.entry("MapInfo_NPCPtr", row=1, column=2, stretch='ROW', sticky='NEW', width=12)
-                    app.label("MapInfo_h3", value="Party Entry X, Y", row=2, sticky='NEW', column=0, colspan=2,
-                              stretch='ROW')
-                    app.label("MapInfo_h4", value="Flags/ID", row=2, column=2, sticky='NEW', stretch='ROW')
-                    # Party entry coordinates
-                    app.entry("MapInfo_EntryX", row=3, column=0, stretch='ROW', sticky='NEW', width=12)
-                    app.entry("MapInfo_EntryY", row=3, column=1, stretch='ROW', sticky='NEW', width=12)
-                    # Flags / ID
-                    app.entry("MapInfo_Flags", row=3, column=2, stretch='ROW', sticky='NEW', width=12)
+                            app.label("MapInfo_Basic_h2", "ID: ", sticky='E', row=1, column=2)
+                            app.spinBox("MapInfo_Basic_ID", list(range(31, -1, -1)), change=main_input, row=1, column=3)
 
-            # Show "Basic" info by default
-            app.setRadioButton("MapInfo_Advanced_Option", "Basic", callFunction=False)
-            app.hideFrame("MapInfo_Frame_Advanced")
+                        # Advanced info
+                        with app.frame("MapInfo_Frame_Advanced", row=1, column=0, padding=[8, 0], stretch='BOTH'):
+                            app.label("MapInfo_h0", value="Bank Number", row=0, column=0, sticky='NEW', stretch='ROW')
+                            app.label("MapInfo_h1", value="Data Address", row=0, column=1, sticky='NEW', stretch='ROW')
+                            app.label("MapInfo_h2", value="NPC Table", row=0, column=2, sticky='NEW', stretch='ROW')
 
-            with app.frame("Map_BtmFrame", row=4, column=0, sticky='NEWS', stretch='BOTH', padding=[4, 8],
-                           bg=colour.PALE_LIME):
-                app.button("Map_Apply", name="Apply Changes", value=main_input, sticky='NEW', row=0, column=0)
-                app.button("Map_Edit", name="Edit Map", value=main_input, sticky='NEW', row=0, column=1)
-                app.label("MapInfo_SelectCompression", "Compression:", sticky='NEW', row=0, column=2)
-                app.optionBox("Map_Compression", ["none", "LZSS", "RLE"], change=select_compression, sticky='NEW',
-                              callFunction=True, row=0, column=3)
+                            # Map bank number
+                            app.entry("MapInfo_Bank", row=1, column=0, stretch='ROW', sticky='NEW', width=12)
+                            # Map data address
+                            app.entry("MapInfo_DataPtr", row=1, column=1, stretch='ROW', sticky='NEW', width=12)
+                            # NPC table address / starting facing position in a dungeon (v1.09+)
+                            app.entry("MapInfo_NPCPtr", row=1, column=2, stretch='ROW', sticky='NEW', width=12)
+                            app.label("MapInfo_h3", value="Party Entry X, Y", row=2, sticky='NEW', column=0, colspan=2,
+                                      stretch='ROW')
+                            app.label("MapInfo_h4", value="Flags/ID", row=2, column=2, sticky='NEW', stretch='ROW')
+                            # Party entry coordinates
+                            app.entry("MapInfo_EntryX", row=3, column=0, stretch='ROW', sticky='NEW', width=12)
+                            app.entry("MapInfo_EntryY", row=3, column=1, stretch='ROW', sticky='NEW', width=12)
+                            # Flags / ID
+                            app.entry("MapInfo_Flags", row=3, column=2, stretch='ROW', sticky='NEW', width=12)
+
+                    # Show "Basic" info by default
+                    app.setRadioButton("MapInfo_Advanced_Option", "Basic", callFunction=False)
+                    app.hideFrame("MapInfo_Frame_Advanced")
+
+                    with app.frame("Map_BtmFrame", row=4, column=0, sticky='NEWS', stretch='BOTH', padding=[4, 8],
+                                   bg=colour.PALE_LIME):
+                        app.button("Map_Apply", image="res/floppy.gif", value=main_input, width=32, height=32,
+                                   tooltip="Save the changes to the values in this tab",
+                                   sticky='NEW', row=0, column=0)
+                        app.button("Map_Edit", image="res/brush.gif", value=main_input, width=128, height=32,
+                                   tooltip="Edit the selected map",
+                                   sticky='NEW', row=0, column=1)
+                        app.label("MapInfo_SelectCompression", "Compression:", sticky='NEW', row=0, column=2)
+                        app.optionBox("Map_Compression", ["none", "LZSS", "RLE"], change=select_compression,
+                                      sticky='NEW', callFunction=True, row=0, column=3)
+
+                with app.frame("Map_Frame_1", padding=[4, 2], inPadding=[4, 4], sticky="NEWS", stretch="BOTH",
+                               row=0, column=0):
+                    with app.frame("Battlefield_Top_Frame", inPadding=[4, 4], padding=[4, 0], bg=colour.PALE_BLUE,
+                                   sticky="NEWS", stretch="BOTH", row=0, column=0):
+                        battlefields = ["(Unused)", "Grass", "Brush", "Forest", "North: Water, South: Land",
+                                        "North: Ship, South: Land", "Stone Floor 1", "City / Dungeon",
+                                        "Ship in the Sea", "Naval Battle", "North: Land, South: Ship"]
+                        app.label("Battlefield_Label_Map", "Map:", sticky="E", row=0, column=0, font=11)
+                        app.optionBox("Battlefield_Option_Map", battlefields, change=main_input,
+                                      sticky="W", row=0, column=1, font=10)
+
+                    with app.frame("Battlefield_Middle_Frame", inPadding=[4, 4], padding=[4, 0], bg=colour.PALE_BLUE,
+                                   sticky="NEWS", stretch="BOTH", row=1, column=0):
+                        app.label("Battlefield_Label_Address", "Address: ", sticky="E", row=0, column=0, font=11)
+                        app.entry("Battlefield_Map_Address", "", change=main_input, fg=colour.BLACK, sticky="W",
+                                  width=8, row=0, column=1, font=10)
+
+                    with app.frame("Battlefield_Bottom_Frame", inPadding=[4, 4], padding=[4, 2], bg=colour.PALE_BROWN,
+                                   sticky="NEWS", stretch="BOTH", row=2, column=0):
+                        app.label("Battlefield_Label_Music", "Battle Music (all maps):", sticky="E",
+                                  row=0, column=0, font=11)
+                        app.optionBox("Battlefield_Option_Music", ["- None -"], sticky="W", width=16,
+                                      row=0, column=1, font=10)
+
+                    with app.frame("Battlefield_Buttons_Frame", row=3, column=0, sticky="NWS",
+                                   padding=[4, 4], bg=colour.PALE_LIME):
+                        app.button("Battlefield_Apply", image="res/floppy.gif", value=main_input, width=32, height=32,
+                                   tooltip="Save all changes to the values for this map",
+                                   sticky="E", row=0, column=0)
+                        app.button("Battlefield_Reload", image="res/reload.gif", value=main_input, width=32, height=32,
+                                   tooltip="Reload all values from ROM buffer",
+                                   sticky="W", row=0, column=1)
+                        app.button("Battlefield_Edit", image="res/brush.gif", value=main_input, width=128, height=32,
+                                   tooltip="Edit the selected map",
+                                   sticky="W", row=0, column=2)
 
         # MISC Tab ----------------------------------------------------------------------------------------------------
         with app.tab("Misc"):
@@ -2271,6 +2360,11 @@ if __name__ == "__main__":
         with app.subWindow("Map_Editor", "Map Editor", size=[512, 480], modal=False, resizable=False, padding=0,
                            inPadding=0, guiPadding=0, bg=colour.WHITE):
             app.label("ME_Label_temp", "...")
+
+        # Battlefield Editor Sub-Window --------------------------------------------------------------------------------
+        with app.subWindow("Battlefield_Editor", "Battlefield Editor", size=[320, 540], modal=False, resizable=False,
+                           padding=0, inPadding=0, guiPadding=0, bg=colour.PALE_BROWN):
+            app.label("BE_Label_temp", "...")
 
         # Text Editor Sub-Window ---------------------------------------------------------------------------------------
         with app.subWindow("Text_Editor", "Text Editor", size=[420, 380], modal=False, resizable=False):
