@@ -62,7 +62,7 @@ battlefield_editor: BattlefieldEditor
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def get_option_index(widget: str, value: str) -> int:
+def get_option_index(widget: str, value: str = "") -> int:
     """
     Retrieves the index of the desired item from an OptionBox
 
@@ -71,13 +71,16 @@ def get_option_index(widget: str, value: str) -> int:
     widget: str
         Name of the OptionBox widget
     value: str
-        Value of the item whose index is to be retrieved
+        Value of the item whose index is to be retrieved, if empty use the currently selected value
 
     Returns
     -------
     int
         The index of the item; rises ValueError if not found
     """
+    if value == "":
+        value = app.getOptionBox(widget)
+
     box = app.getOptionBoxWidget(widget)
     return box.options.index(value)
 
@@ -559,17 +562,18 @@ def open_rom(file_name: str) -> None:
         app.hideFrame("ET_Frame_Encounter")
 
         # Music editor
-        music_editor = MusicEditor(rom)
+        music_editor = MusicEditor(app, rom)
 
         # Battlefield map editor
         battlefield_editor = BattlefieldEditor(app, rom, palette_editor)
         app.changeOptionBox("Battlefield_Option_Map", battlefield_editor.get_map_names(), 0, callFunction=False)
-        app.changeOptionBox("Battlefield_Option_Music", music_editor.read_music_titles(), 0, callFunction=False)
+        app.changeOptionBox("Battlefield_Option_Music", music_editor.read_track_titles(), 0, callFunction=False)
 
         battlefield_editor.read_tab_data()
 
         # Default selection
         app.setOptionBox("Battlefield_Option_Map", 0, callFunction=True)
+        app.setOptionBox("ST_Music_Bank", 0, callFunction=True)
 
         # Party editor
         party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
@@ -938,7 +942,7 @@ def read_cutscene_data(scene: int) -> None:
             app.disableOptionBox("CE_Param_2_00")
         else:
             app.enableOptionBox("CE_Param_2_00")
-            app.changeOptionBox("CE_Param_2_00", music_editor.read_music_titles(), callFunction=False)
+            app.changeOptionBox("CE_Param_2_00", music_editor.read_track_titles(), callFunction=False)
             app.setOptionBox("CE_Param_2_00", data[1] & 0x7F, callFunction=False)
 
         addresses = [0xB907, 0xB90B, 0xB90F, 0xB913]
@@ -1529,6 +1533,45 @@ def party_editor_stop() -> bool:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def instrument_editor_stop() -> bool:
+    return music_editor.close_instrument_editor()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+def sound_tab_input(widget: str) -> None:
+    if widget == "ST_Music_Bank":
+        value = get_option_index(widget)
+        if value == 0:  # Bank 8
+            bank = 8
+
+        else:           # Bank 9
+            bank = 9
+
+        app.setButton("ST_Import_Instruments", text=f"Import from bank {9 - value}")
+
+        # Show how many instruments are in this bank
+        if bank == 8:
+            tracks_list = music_editor.track_titles[0:10]
+            value = 50
+        else:
+            tracks_list = music_editor.track_titles[10:]
+            value = 0
+            log(4, "MUSIC EDITOR", "Bank 9 not yet implemented.")
+
+        app.setLabel("ST_Label_Instruments", f"Instruments in this bank: {value}")
+        app.changeOptionBox("ST_Option_Music", tracks_list, 0, callFunction=False)
+
+    elif widget == "ST_Edit_Instruments":
+        bank = 8 + get_option_index("ST_Music_Bank")
+        music_editor.show_instrument_editor(bank)
+
+    else:
+        log(3, "MUSIC EDITOR", f"Unimplemented callback for widget '{widget}'.")
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 # noinspection PyArgumentList
 def main_input(widget: str) -> bool:
     """
@@ -1849,7 +1892,7 @@ if __name__ == "__main__":
                             # Flags / ID
                             app.entry("MapInfo_Flags", row=3, column=2, stretch="ROW", sticky="NEW", width=8)
                             # Tileset
-                            tilesets_list = ["Continent 1", "Continent 2", "Castle 1", "Castle 2", "Town"]
+                            tilesets_list: List[str] = ["Continent 1", "Continent 2", "Castle 1", "Castle 2", "Town"]
                             app.optionBox("MapInfo_Tileset", tilesets_list, change=main_input,
                                           row=3, column=3, sticky="NEW", stretch="COLUMN", width=9, font=10)
                             del tilesets_list
@@ -2219,8 +2262,8 @@ if __name__ == "__main__":
                 with app.frame("CE_Frame_Cutscene_2", bg=colour.PALE_VIOLET):
                     # Parameters
                     with app.frame("CE_Frame_Parameters_2", row=0, column=0, padding=[4, 1], sticky="NEW"):
-                        app.label("CE_Label_2_00", "Music ID", sticky="E", row=0, column=0, font=11)
-                        app.optionBox("CE_Param_2_00", ["- File not loaded -"], change=cutscene_input,
+                        app.label("CE_Label_2_00", "Music", sticky="E", row=0, column=0, font=11)
+                        app.optionBox("CE_Param_2_00", ["- File not loaded -"], change=None,
                                       sticky="W", row=0, column=1, colspan=2, font=10, fg=colour.BLACK)
 
                         app.label("CE_Label_2_01", "Text Position (X)", row=1, column=0, sticky="NE")
@@ -2293,10 +2336,40 @@ if __name__ == "__main__":
 
         # SFX / MUSIC Tab ----------------------------------------------------------------------------------------------
         with app.tab("\u266B", padding=[4, 2]):
-            app.button("SFX", row=0, column=0)
-            app.button("Music", row=1, column=0)
+
+            # --- Music Frame
+            with app.labelFrame("ST_Frame_Music", name="Music", padding=[4, 2], sticky="NEW", bg=colour.PALE_ORANGE,
+                                row=0, column=0):
+                app.optionBox("ST_Music_Bank", ["Bank 8", "Bank 9"], change=sound_tab_input, width=12, sticky="W",
+                              row=0, column=0, font=10)
+
+                with app.frame("ST_Frame_Instruments", padding=[2, 1], sticky="NEWS", row=1, column=0):
+                    app.label("ST_Label_Instruments", "Instruments in this bank: 0", sticky="WE",
+                              row=0, column=0, font=11)
+                    app.button("ST_Import_Instruments", sound_tab_input, text="Import from bank 9", sticky="E",
+                               bg=colour.WHITE, row=0, column=1, font=10)
+
+                    app.button("ST_Edit_Instruments", sound_tab_input, text="Edit Instruments", sticky="E",
+                               bg=colour.WHITE, tooltip="Open the Instrument Editor",
+                               width=12, row=0, column=2, font=10)
+
+                with app.frame("ST_Frame_Music", padding=[2, 1], sticky="NEWS", row=2, column=0):
+                    app.label("ST_Label_Tracks", "Music in this bank:", sticky="E", row=0, column=0, font=11)
+                    app.optionBox("ST_Option_Music", ["- No Tracks -"], width=24, sticky="W", row=0, column=1, font=10)
+
+                    app.button("ST_Edit_Music", sound_tab_input, text="Edit Track", sticky="W",
+                               bg=colour.WHITE, tooltip="Open the Track Editor",
+                               width=12, row=0, column=2, font=10)
+
+            # --- SFX Frame
+            with app.labelFrame("ST_Frame_SFX", name="Sound Effects", padding=[4, 2], sticky="SEW",
+                                bg=colour.PALE_BROWN, row=1, column=0):
+                app.optionBox("ST_Option_SFX", ["- Unimplemented -"], sticky="E", row=0, column=0, font=10)
+                app.button("ST_Edit_SFX", sound_tab_input, text="Edit SFX", tooltip="Open the Sound Effect editor",
+                           bg=colour.WHITE, sticky="W", row=0, column=1, font=10)
 
         #       ##### End of tab definitions #####
+
         app.stopTabbedFrame()
 
         # Deactivate tabs until ROM is loaded
@@ -2315,7 +2388,16 @@ if __name__ == "__main__":
 
         #       ##### Sub-Windows #####
 
-        # Screen Editor Sub-Window -----------------------------------------------------------------------------------
+        # Instrument Editor Sub-Window ---------------------------------------------------------------------------------
+        with app.subWindow("Instrument_Editor", title="Instrument Editor", size=[800, 420], padding=[2, 0],
+                           modal=False, resizable=False, inPadding=0, guiPadding=0,
+                           bg=colour.DARK_ORANGE, fg=colour.WHITE):
+            # noinspection PyArgumentList
+            app.setStopFunction(instrument_editor_stop)
+
+            app.label("IE_Label_Temp", "...")
+
+        # Screen Editor Sub-Window -------------------------------------------------------------------------------------
         with app.subWindow("Cutscene_Editor", title="Screen Editor", size=[800, 402], padding=[2, 0], modal=False,
                            resizable=False, inPadding=0, guiPadding=0, bg=colour.DARK_GREY):
             # noinspection PyArgumentList

@@ -1576,7 +1576,7 @@ class PartyEditor:
         # Resize the scroll pane to fill the window
         self.app.getScrollPaneWidget("PE_Pane_Parameters").canvas.configure(width=474)
 
-        # Select the definition files that matches the current ROM, if there is one
+        # Select the definition file that matches the current ROM, if there is one
         definition = 0
         if len(self.routine_definitions) > 0:
             # If any definition filename matches the currently loaded ROM filename, then use that one
@@ -2974,7 +2974,7 @@ class PartyEditor:
 
         if len(definitions_list) < 1:
             self.app.errorBox("Spell Editor", "ERROR: Could not find any spell definitions.\n" +
-                              "Make sure at least one spells_xxx.ini file is present in the editor's directory.",
+                              "Make sure at least one spells_xxx.def file is present in the editor's directory.",
                               "Party_Editor")
             definitions_list.append("- No Spell Definitions Found -")
 
