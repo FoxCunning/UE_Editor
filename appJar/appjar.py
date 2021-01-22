@@ -7982,6 +7982,7 @@ class gui(object):
         selected = kwargs.pop("selected", None)
         first = kwargs.pop("first", False)
         callFunction = kwargs.pop("callFunction", True)
+        fixed_scrollbar = kwargs.pop("fixed_scrollbar", False)
 
         # select=select, deselect=??, toggle=??, clear=??, rename=set, replace=update, delete=remove
         if value is None: mode = 'get'
@@ -8050,13 +8051,18 @@ class gui(object):
 
     def _listBoxMaker(self, name, values=None, row=None, column=0, colspan=0, rowspan=0, **kwargs):
         """ internal wrapper to hide kwargs from original add functions """
-        return self.addListBox(name, values, row, column, colspan, rowspan)
+        fixed_scrollbar = kwargs.pop("fixedScrollbar", True)
+        return self.addListBox(name, values, row, column, colspan, rowspan, fixed_scrollbar)
 
-    def addListBox(self, name, values=None, row=None, column=0, colspan=0, rowspan=0):
+    def addListBox(self, name, values=None, row=None, column=0, colspan=0, rowspan=0, fixed_scrollbar=False):
         ''' adds a list box, with the the specified list of values '''
         self.widgetManager.verify(WIDGET_NAMES.ListBox, name)
         container = self.makeListBoxContainer()(self.getContainer())
-        vscrollbar = AutoScrollbar(container)
+        if fixed_scrollbar:
+            vscrollbar = Scrollbar(container)
+        else:
+            vscrollbar = AutoScrollbar(container)
+
         hscrollbar = AutoScrollbar(container, orient=HORIZONTAL)
 
         container.lb = Listbox(container,
