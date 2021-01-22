@@ -17,6 +17,8 @@ import ast
 import os
 import shlex
 import subprocess
+import sys
+
 import colour
 
 from typing import List
@@ -2389,7 +2391,7 @@ if __name__ == "__main__":
         #       ##### Sub-Windows #####
 
         # Instrument Editor Sub-Window ---------------------------------------------------------------------------------
-        with app.subWindow("Instrument_Editor", title="Instrument Editor", size=[800, 420], padding=[2, 0],
+        with app.subWindow("Instrument_Editor", title="Instrument Editor", size=[872, 456], padding=[2, 0],
                            modal=False, resizable=False, inPadding=0, guiPadding=0,
                            bg=colour.DARK_ORANGE, fg=colour.WHITE):
             # noinspection PyArgumentList
@@ -2520,3 +2522,5 @@ if __name__ == "__main__":
     del maps_list
     del portrait_options
     del tiles_list
+
+    sys.setswitchinterval(500)
