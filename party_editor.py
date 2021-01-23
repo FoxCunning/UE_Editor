@@ -788,9 +788,9 @@ class PartyEditor:
         definition = 0
         if len(self.routine_definitions) > 0:
             # If any definition filename matches the currently loaded ROM filename, then use that one
-            rom_name = os.path.basename(self.rom.path).rsplit('.')[0].lower()
+            rom_name = os.path.basename(self.rom.path).rsplit('.')[0]
             for d in range(len(self.routine_definitions)):
-                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0].lower()
+                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0]
                 if definition_name == rom_name:
                     definition = d
                     break
@@ -1491,9 +1491,9 @@ class PartyEditor:
         definition = 0
         if len(self.routine_definitions) > 0:
             # If any definition filename matches the currently loaded ROM filename, then use that one
-            rom_name = os.path.basename(self.rom.path).rsplit('.')[0].lower()
+            rom_name = os.path.basename(self.rom.path).rsplit('.')[0]
             for d in range(len(self.routine_definitions)):
-                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0].lower()
+                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0]
                 if definition_name == rom_name:
                     definition = d
                     break
@@ -1580,9 +1580,9 @@ class PartyEditor:
         definition = 0
         if len(self.routine_definitions) > 0:
             # If any definition filename matches the currently loaded ROM filename, then use that one
-            rom_name = os.path.basename(self.rom.path).rsplit('.')[0].lower()
+            rom_name = os.path.basename(self.rom.path).rsplit('.')[0]
             for d in range(len(self.routine_definitions)):
-                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0].lower()
+                definition_name = os.path.basename(self.routine_definitions[d]).rsplit('.')[0]
                 if definition_name == rom_name:
                     definition = d
                     break

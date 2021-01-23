@@ -566,6 +566,18 @@ def open_rom(file_name: str) -> None:
         # Music editor
         music_editor = MusicEditor(app, rom)
 
+        # Try to detect envelope bug
+        data = rom.read_bytes(0x8, 0x8248, 3)
+        if data[0] == 0x18:     # Bug detected
+            if settings.get("fix envelope bug"):
+                app.setCheckBox("ST_Fix_Envelope_Bug", ticked=True, callFunction=False)
+            else:
+                app.setCheckBox("ST_Fix_Envelope_Bug", ticked=False, callFunction=False)
+        elif data[0] == 0xEA:   # Fix already present
+            app.setCheckBox("ST_Fix_Envelope_Bug", ticked=True, callFunction=False)
+        else:                   # Custom / unrecognised music driver code
+            app.disableCheckBox("ST_Fix_Envelope_Bug")
+
         # Battlefield map editor
         battlefield_editor = BattlefieldEditor(app, rom, palette_editor)
         app.changeOptionBox("Battlefield_Option_Map", battlefield_editor.get_map_names(), 0, callFunction=False)
@@ -2342,8 +2354,12 @@ if __name__ == "__main__":
             # --- Music Frame
             with app.labelFrame("ST_Frame_Music", name="Music", padding=[4, 2], sticky="NEW", bg=colour.PALE_ORANGE,
                                 row=0, column=0):
-                app.optionBox("ST_Music_Bank", ["Bank 8", "Bank 9"], change=sound_tab_input, width=12, sticky="W",
-                              row=0, column=0, font=10)
+
+                with app.frame("ST_Frame_Bank", padding=[4, 1], sticky="NEWS", row=0, column=0):
+                    app.optionBox("ST_Music_Bank", ["Bank 8", "Bank 9"], change=sound_tab_input, width=12, sticky="W",
+                                  row=0, column=0, font=10)
+                    app.checkBox("ST_Fix_Envelope_Bug", name="Fix Envelope Bug", sticky="WE",
+                                 row=0, column=1, font=10)
 
                 with app.frame("ST_Frame_Instruments", padding=[2, 1], sticky="NEWS", row=1, column=0):
                     app.label("ST_Label_Instruments", "Instruments in this bank: 0", sticky="WE",
@@ -2391,7 +2407,7 @@ if __name__ == "__main__":
         #       ##### Sub-Windows #####
 
         # Instrument Editor Sub-Window ---------------------------------------------------------------------------------
-        with app.subWindow("Instrument_Editor", title="Instrument Editor", size=[872, 456], padding=[2, 0],
+        with app.subWindow("Instrument_Editor", title="Instrument Editor", size=[900, 456], padding=[2, 0],
                            modal=False, resizable=False, inPadding=0, guiPadding=0,
                            bg=colour.DARK_ORANGE, fg=colour.WHITE):
             # noinspection PyArgumentList

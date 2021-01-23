@@ -1,5 +1,6 @@
 __author__ = "Fox Cunning"
 
+import configparser
 import os
 import threading
 import time
@@ -22,11 +23,15 @@ _notes: List[int] = []
 
 # TODO Make an array of strings and create note names based on the period (with approximation)
 
+# This is to quickly get a duty representation based on the register's value
+_DUTY = ["12.5%", "  25%", "  50%", "  75%"]
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
 @dataclass(init=True, repr=False)
 class Instrument:
+    name: str = ""
     # Keep track of the address so we can more easily write data back to the ROM buffer
     envelope_address: List[int] = field(default_factory=list)
     envelope: List[bytearray] = field(default_factory=list)
@@ -177,7 +182,8 @@ class MusicEditor:
 
         # Threading
         self._play_thread: threading.Thread = threading.Thread()
-        self._stop_event: threading.Event = threading.Event()
+        self._stop_event: threading.Event = threading.Event()   # Signals the playback thread that it should stop
+        self._slow_event: threading.Event = threading.Event()   # Used by the playback thread to signal slow processing
 
         # Read notes period table
         _notes.clear()
@@ -291,6 +297,9 @@ class MusicEditor:
         if self._play_thread.is_alive():
             self._stop_event.set()
             self._play_thread.join()
+            if self._slow_event.is_set():
+                self.warning("Slow playback detected! This may be due to too many non-note events in a track, or " +
+                             "a slow machine, or slow audio host API.")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -316,16 +325,11 @@ class MusicEditor:
             self.app.showSubWindow("Instrument_Editor")
             return
 
-        if bank == 8:
-            count = 50
-        else:
-            self.info("Bank 9 not yet implemented.")
-            return
+        self.read_instrument_data()
 
-        # TODO Use user-defined instrument names
         instruments_list: List[str] = []
-        for i in range(count):
-            instruments_list.append(f"0x{i:02X} (no name)")
+        for i in range(len(self._instruments)):
+            instruments_list.append(f"{i:02X} {self._instruments[i].name}")
 
         with self.app.subWindow("Instrument_Editor"):
 
@@ -341,9 +345,11 @@ class MusicEditor:
             # Selection / Name
             with self.app.frame("IE_Frame_Selection", padding=[2, 1], sticky="NEW", row=1, column=0):
                 self.app.listBox("IE_List_Instrument", instruments_list, change=self._instruments_input, multi=False,
-                                 sticky="SW", width=26, height=6, row=0, column=0, colspan=2, font=10)
+                                 group=True, sticky="SW", width=28, height=8, row=0, column=0, colspan=2, font=9)
+                self.app.getListBoxWidget("IE_List_Instrument").configure(font="TkFixedFont")
 
-                self.app.entry("IE_Instrument_Name", "(no name)", width=22, sticky="SW", row=1, column=0, font=10)
+                self.app.entry("IE_Instrument_Name", "(no name)", submit=self._update_instrument_name,
+                               sticky="SEW", row=1, column=0, font=10)
                 self.app.button("IE_Update_Name", self._instruments_input, image="res/reload-small.gif",
                                 sticky="S", width=16, height=16, tooltip="Update list", row=1, column=1)
 
@@ -384,42 +390,54 @@ class MusicEditor:
 
             # Full Volume / Duty cycle graph
             with self.app.frame("IE_Frame_Graph", padding=[2, 1], sticky="NEW", row=1, column=2):
-                self.app.canvas("IE_Canvas_Graph", width=420, height=160, row=0, column=0, bg=colour.BLACK)
+                self.app.canvas("IE_Canvas_Graph", width=456, height=160, row=0, column=0, bg=colour.BLACK)
                 self._canvas_graph = self.app.getCanvasWidget("IE_Canvas_Graph")
 
             # Envelope data
-            with self.app.frame("IE_Frame_Envelope_Data", padding=[8, 1], sticky="NWS", row=2, column=0, colspan=3):
-                canvas_width = 140
+            with self.app.frame("IE_Frame_Envelope_Data", padding=[4, 1], sticky="NWS", row=2, column=0, colspan=3):
+                canvas_width = 162
                 list_width = 12
 
                 for e in range(3):
-                    self.app.label(f"IE_Label_Envelope_{e}", f"Envelope {e}", sticky="W", row=0, column=e*2, font=10)
+                    # List
+                    c = e * 2
+                    self.app.label(f"IE_Label_Envelope_{e}", f"Envelope {e}", sticky="W", row=0, column=c, font=10)
                     self.app.listBox(f"IE_List_Envelope_{e}", None, width=list_width, height=8, rows=8,
                                      change=self._instruments_input, fixed_scrollbar=True,
                                      multi=False, group=True, bg=colour.DARK_GREY, fg=colour.WHITE,
-                                     sticky="S", row=1, column=e*2, font=9)
+                                     sticky="S", row=1, column=c, font=9)
                     self.app.getListBoxWidget(f"IE_List_Envelope_{e}").configure(font="TkFixedFont")
 
+                    # Buttons
+                    self.app.button(f"IE_Move_Left_{e}", self._instruments_input, image="res/arrow_left-long.gif",
+                                    tooltip="Move value to the previous envelope",
+                                    height=16, sticky="SEW", row=2, column=c, bg=colour.MEDIUM_GREY)
+                    self.app.button(f"IE_Move_Right_{e}", self._instruments_input, image="res/arrow_right-long.gif",
+                                    tooltip="Move value to the next envelope",
+                                    height=16, sticky="NEW", row=3, column=c, bg=colour.MEDIUM_GREY)
+
+                    # Canvas and controls
                     self.app.canvas(f"IE_Canvas_Envelope_{e}", width=canvas_width, height=140, bg=colour.BLACK,
-                                    sticky="S", row=1, column=(e * 2) + 1)
+                                    sticky="S", row=1, column=c + 1)
 
-                    self.app.label(f"IE_Label_Duty_{e}", "Duty", fg=colour.PALE_RED,
-                                   sticky="E", row=2, column=e*2, font=10)
-                    self.app.label(f"IE_Label_Volume_{e}", "Volume", fg=colour.PALE_BLUE,
-                                   sticky="E", row=3, column=e*2, font=10)
+                    with self.app.frame(f"IE_Frame_Controls_{e}", padding=[1, 1], sticky="NEWS", stretch="BOTH",
+                                        expand="BOTH",
+                                        row=2, column=c + 1, rowspan=2):
+                        self.app.image(f"IE_Image_Duty_{e}", "res/duty-small.gif",
+                                       sticky="W", row=0, column=0)
+                        self.app.image(f"IE_Image_Volume_{e}", "res/volume-small.gif",
+                                       sticky="W", row=1, column=0)
 
-                    self.app.option(f"IE_Duty_{e}", ["12.5%", "25%", "50%", "75%"], change=self._instruments_input,
-                                    bg=colour.DARK_RED, fg=colour.PALE_RED,
-                                    sticky="WE", row=2, column=(e * 2) + 1, font=9)
-                    self.app.scale(f"IE_Volume_{e}", range=(0, 8), change=self._instruments_input,
-                                   bg=colour.DARK_RED, fg=colour.PALE_BLUE,
-                                   sticky="WE", row=3, column=(e * 2) + 1, font=9)
+                        self.app.option(f"IE_Duty_{e}", ["12.5%", "25%", "50%", "75%"], change=self._instruments_input,
+                                        bg=colour.DARK_RED, fg=colour.PALE_RED,
+                                        width=12, sticky="WE", row=0, column=1, font=9)
+                        self.app.scale(f"IE_Volume_{e}", range=(0, 8), change=self._instruments_input,
+                                       bg=colour.DARK_RED, fg=colour.PALE_BLUE,
+                                       sticky="WE", row=1, column=1, font=9)
                     self.app.showScaleIntervals(f"IE_Volume_{e}", 1)
                     self.app.getScaleWidget(f"IE_Volume_{e}").bind("<ButtonRelease-1>", self._draw_full_graph, add='+')
 
                     self._canvas_envelope.append(self.app.getCanvasWidget(f"IE_Canvas_Envelope_{e}"))
-
-        self.read_instrument_data()
 
         self._selected_instrument = 0
         self.instrument_info()
@@ -427,7 +445,41 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def save_instrument_data(self) -> bool:
+        success = True
+
+        parser = configparser.ConfigParser()
+        parser.add_section("NAMES")
+        section = parser["NAMES"]
+
+        for i in range(len(self._instruments)):
+            # Save envelopes
+            for e in range(3):
+                address = self._instruments[i].envelope_address[e]
+                self.rom.write_bytes(self._bank, address, self._instruments[i].envelope[e])
+
+            # Add name to ini file
+            name = self._instruments[i].name
+            if name != "(no name)":
+                section[f"{i}"] = self._instruments[i].name
+
+        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_instruments.ini"
+        try:
+            with open(file_name, "w") as names_file:
+                parser.write(names_file, False)
+        except IOError as error:
+            self.app.warningBox("Instrument Editor", f"Could not write instrument names to file:\n{error.strerror}")
+
+        # TODO Save actual data to ROM buffer
+
+        return success
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def read_instrument_data(self) -> None:
+        """
+        Reads instrument data from ROM buffer, and instrument names from ini file.
+        """
         bank = self._bank
 
         if bank == 8:
@@ -437,6 +489,12 @@ class MusicEditor:
         else:
             self.info("Bank 9 not yet implemented.")
             return
+
+        # Open names file, if there is one
+        parser = configparser.ConfigParser()
+        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_instruments.ini"
+        if os.path.exists(file_name):
+            parser.read(file_name)
 
         # Clear previous instruments
         self._instruments.clear()
@@ -456,6 +514,8 @@ class MusicEditor:
                 data = self.rom.read_bytes(bank, envelope_address, size + 1)
                 instrument.envelope.append(data)
 
+            instrument.name = parser.get("NAMES", f"{i}", fallback="(no name)")[:24]
+
             self._instruments.append(instrument)
 
             # Next instrument
@@ -468,6 +528,9 @@ class MusicEditor:
     def instrument_info(self) -> None:
         instrument = self._instruments[self._selected_instrument]
 
+        self.app.clearEntry("IE_Instrument_Name", callFunction=False, setFocus=False)
+        self.app.setEntry("IE_Instrument_Name", instrument.name, callFunction=False)
+
         # List this instrument's envelope values
         for e in range(3):
             self.app.clearListBox(f"IE_List_Envelope_{e}")
@@ -475,7 +538,7 @@ class MusicEditor:
             for i in range(1, envelope[0] + 1):
                 duty = envelope[i] >> 6
                 volume = (envelope[i] & 0x3F) >> 1
-                self.app.addListItem(f"IE_List_Envelope_{e}", f"{i-1} - D:{duty} V:{volume}", None, False)
+                self.app.addListItem(f"IE_List_Envelope_{e}", f"{(i - 1):02X} {_DUTY[duty]} v{volume}", None, False)
 
             # Select first item in each list
             self.app.selectListItemAtPos(f"IE_List_Envelope_{e}", 0, True)
@@ -493,14 +556,119 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _update_instrument_name(self, widget: str) -> None:
+        name = self.app.getEntry(widget)[:24]
+        if len(name) < 1:
+            name = "(no name)"
+        self._instruments[self._selected_instrument].name = name
+
+        # Update entry in the list
+        self.app.setListItemAtPos("IE_List_Instrument", self._selected_instrument,
+                                  f"{self._selected_instrument:02X} {name}")
+        self.app.selectListItemAtPos("IE_List_Instrument", self._selected_instrument, callFunction=False)
+
+        self._unsaved_changes_instrument = True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _move_envelope(self, src: int, dst: int, item: int) -> None:
+        """
+        Moves an element between two envelopes in the currently selected instrument.
+
+        Parameters
+        ----------
+        src: int
+            Index of the source envelope (0-2)
+        dst: int
+            Index of the destination envelope (0-2)
+        item: int
+            Index of the item to transfer
+        """
+        instrument = self._instruments[self._selected_instrument]
+
+        # Don't allow removing the last element
+        if instrument.envelope[src][0] < 2:
+            return
+
+        # Remove from source envelope
+        value = instrument.envelope[src].pop(item)
+        # Decrement count
+        instrument.envelope[src][0] -= 1
+
+        # Add to destination envelope
+        instrument.envelope[dst].append(value)
+        # Increment count
+        instrument.envelope[dst][0] += 1
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _instruments_input(self, widget: str) -> None:
-        if widget == "IE_Button_Cancel":
+        if widget == "IE_Button_Apply":
+            self.save_instrument_data()
+            self._unsaved_changes_instrument = False
+            self.close_instrument_editor()
+
+        elif widget == "IE_Button_Cancel":
             self.close_instrument_editor()
 
         elif widget == "IE_List_Instrument":
-            self._selected_instrument = self.app.getListBoxPos(widget)[0]
+            selection = self.app.getListBoxPos(widget)
+            if len(selection) < 1:
+                return
+            self._selected_instrument = selection[0]
+            self.instrument_info()
+            self._restart_instrument_test()
+
+        elif widget == "IE_Update_Name":
+            self._update_instrument_name("IE_Instrument_Name")
+
+        # Move envelope entry to previous envelope
+        elif widget[:13] == "IE_Move_Left_":
+            src = int(widget[-1], 10)   # Index of source envelope
+            dst = (src - 1) % 3         # Index of destination envelope
+
+            # Index of the selected element in the list
+            selection = self.app.getListBoxPos(f"IE_List_Envelope_{src}")
+
+            if len(selection) < 1:
+                # Empty list
+                return
+
+            instrument = self._instruments[self._selected_instrument]
+
+            # Don't allow removing the last element
+            if instrument.envelope[src][0] < 2:
+                return
+
+            self._move_envelope(src, dst, selection[0] + 1)
+
+            # Update UI
             self.instrument_info()
 
+        # Move envelope entry to next envelope
+        elif widget[:13] == "IE_Move_Right":
+            src = int(widget[-1], 10)  # Index of source envelope
+            dst = (src + 1) % 3  # Index of destination envelope
+
+            # Index of the selected element in the list
+            selection = self.app.getListBoxPos(f"IE_List_Envelope_{src}")
+
+            if len(selection) < 1:
+                # Empty list
+                return
+
+            instrument = self._instruments[self._selected_instrument]
+
+            # Don't allow removing the last element
+            if instrument.envelope[src][0] < 2:
+                return
+
+            self._move_envelope(src, dst, selection[0] + 1)
+
+            # Update UI
+            self.instrument_info()
+
+        # Envelope entry selected
         elif widget[:17] == "IE_List_Envelope_":
             envelope_id = int(widget[-1], 10)
             instrument = self._instruments[self._selected_instrument]
@@ -538,11 +706,13 @@ class MusicEditor:
             envelope[item] = volume | (value << 6)
             # Update list
             self.app.setListItemAtPos(f"IE_List_Envelope_{envelope_id}", selection[0],
-                                      f"{selection[0]} - D:{value} V:{volume >> 1}")
+                                      f"{selection[0]:02X} {_DUTY[value]} v{volume >> 1}")
             self.app.selectListItemAtPos(f"IE_List_Envelope_{envelope_id}", selection[0], callFunction=False)
             # Update graphs
             self._draw_duty_graph(envelope_id)
             self._draw_full_graph()
+
+            self._unsaved_changes_instrument = True
 
         elif widget[:10] == "IE_Volume_":
             envelope_id = int(widget[-1], 10)
@@ -561,65 +731,76 @@ class MusicEditor:
             envelope[item] = duty | ((value & 0x1F) << 1)
             # Update list
             self.app.setListItemAtPos(f"IE_List_Envelope_{envelope_id}", selection[0],
-                                      f"{selection[0]} - D:{duty >> 6} V:{value}")
+                                      f"{selection[0]:02X} {_DUTY[duty >> 6]} v{value}")
             self.app.selectListItemAtPos(f"IE_List_Envelope_{envelope_id}", selection[0], callFunction=False)
             # Update graph
             self._draw_volume_graph(envelope_id)
             # Don't update the full graph here: the button release callback will take care of that
+
+            self._unsaved_changes_instrument = True
 
         elif widget == "IE_Button_Semiquaver":
             self._test_speed = 0
             self.app.button("IE_Button_Semiquaver", bg=colour.WHITE)
             self.app.button("IE_Button_Crotchet", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Minim", bg=colour.DARK_GREY)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_Crotchet":
             self._test_speed = 1
             self.app.button("IE_Button_Semiquaver", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Crotchet", bg=colour.WHITE)
             self.app.button("IE_Button_Minim", bg=colour.DARK_GREY)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_Minim":
             self._test_speed = 2
             self.app.button("IE_Button_Semiquaver", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Crotchet", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Minim", bg=colour.WHITE)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_One_Note":
             self._test_notes = 0
             self.app.button("IE_Button_One_Note", bg=colour.WHITE)
             self.app.button("IE_Button_Scale", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Arpeggio", bg=colour.DARK_GREY)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_Scale":
             self._test_notes = 1
             self.app.button("IE_Button_One_Note", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Scale", bg=colour.WHITE)
             self.app.button("IE_Button_Arpeggio", bg=colour.DARK_GREY)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_Arpeggio":
             self._test_notes = 2
             self.app.button("IE_Button_One_Note", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Scale", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Arpeggio", bg=colour.WHITE)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_Treble":
             self._test_octave = 0
             self.app.button("IE_Button_Treble", bg=colour.WHITE)
             self.app.button("IE_Button_Alto", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Bass", bg=colour.DARK_GREY)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_Alto":
             self._test_octave = 1
             self.app.button("IE_Button_Treble", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Alto", bg=colour.WHITE)
             self.app.button("IE_Button_Bass", bg=colour.DARK_GREY)
+            self._restart_instrument_test()
 
         elif widget == "IE_Button_Bass":
             self._test_octave = 2
             self.app.button("IE_Button_Treble", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Alto", bg=colour.DARK_GREY)
             self.app.button("IE_Button_Bass", bg=colour.WHITE)
+            self._restart_instrument_test()
 
         elif widget == "IE_Play_Stop":
             if self._play_thread.is_alive():
@@ -668,7 +849,9 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _draw_full_graph(self, *kwargs) -> None:
+    def _draw_full_graph(self, event: any = None) -> None:     # noqa
+        # Ignore the event parameter, it's there just so we can use this as a callback for Tkinter widgets
+
         width = self._canvas_graph.winfo_reqwidth()
 
         base_height = self._canvas_graph.winfo_reqheight() - 10
@@ -697,7 +880,7 @@ class MusicEditor:
         _____|   |_____
         trail     tail
         _______________
-        length
+            length
         """
 
         points = []
@@ -832,6 +1015,16 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _restart_instrument_test(self) -> None:
+        """
+        Restarts playback, if it was running, applying any new options.
+        """
+        if self._play_thread.is_alive():
+            self.stop_playback()
+            self._instruments_input("IE_Play_Stop")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _play_loop(self) -> None:
         if self._sound_server.getIsBooted() < 1:
             self._sound_server.boot()
@@ -848,12 +1041,13 @@ class MusicEditor:
 
         # Pre-build square wave tables
         # 12.5% duty
-        # table_d0 = [(0, 0), (1, 1), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0)]
-        table_d0 = []
-        for t in range(16):
-            table_d0.append((t, 0))
-        table_d0[1] = (1, 1)
-        table_d0[8] = (8, 1)
+        table_d0 = [(0, 0), (1, 1), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
+                    (8, 0), (9, 1), (10, 0), (11, 0), (12, 0), (13, 0), (14, 0), (15, 0)]
+        # table_d0 = []
+        # for t in range(16):
+        #    table_d0.append((t, 0))
+        # table_d0[1] = (1, 1)
+        # table_d0[8] = (8, 1)
 
         # 25% duty / 75%
         # table_d1 = [(0, 0), (1, 1), (2, 1), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0)]
@@ -872,7 +1066,7 @@ class MusicEditor:
         # Pre-calculated volume levels table
         volumes = [0, 0.12, 0.25, 0.37, 0.5, 0.62, 0.75, 0.87, 1]
 
-        square0_table = pyo.LinTable(table_d2, size=32)
+        square0_table = pyo.LinTable(table_d2, size=64)
         # square0_table.view()
 
         square0_instrument = 0
@@ -890,7 +1084,10 @@ class MusicEditor:
         self._track_counter[0] = 1      # Count down from here
         self._track_position[0] = 0     # Start from the first item in the track
 
+        self._slow_event.clear()
+
         while not self._stop_event.is_set():
+            start_time = time.time()
             # --- Square Wave 0 ---
 
             # Decrease counter
@@ -985,11 +1182,14 @@ class MusicEditor:
                     table_d1[9] = (9, volume)
                     square0_table.replace(table_d1)
 
-            time.sleep(frame_interval)
+            interval = frame_interval - (time.time() - start_time)
+            if interval < 0:
+                self._slow_event.set()
+            else:
+                time.sleep(interval)
+            # time.sleep(frame_interval)
 
         square0_out.stop()
 
-        self.info("Sound playback thread terminated.")
+        # self.info("Sound playback thread terminated.")
         self._sound_server.stop()
-
-        # self._sound_server.gui(locals(), exit=True)
