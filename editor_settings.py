@@ -21,7 +21,8 @@ class EditorSettings:
              "last map import path": "",
              "last map export path": "",
              "editor fonts": "Consolas",
-             "sync npc sprites": True
+             "sync npc sprites": True,
+             "fix envelope bug": True
              }
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -132,12 +133,7 @@ class EditorSettings:
 
         try:
             # Some settings should not be treated as strings
-            if key == "make backups":
-                if value.lower() == "true" or value == "1" or value.lower() == "yes":
-                    value = True
-                else:
-                    value = False
-            elif key == "sync npc sprites":
+            if key == "make backups" or key == "sync npc sprites" or key == "fix envelope bug":
                 if value.lower() == "true" or value == "1" or value.lower() == "yes":
                     value = True
                 else:
