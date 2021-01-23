@@ -289,6 +289,32 @@ class ROM:
             count = count - 1
         return output
 
+    # --- read_signed_word() ---
+
+    def read_signed_word(self, bank: int, address: int) -> int:
+        """
+        Reads a signed word (two bytes) of data from the specified bank at the specified address (0x8000-0xFFFF)
+
+        Parameters
+        ----------
+        bank: int
+            ROM Bank number
+        address: int
+            Address in ROM
+
+        Returns
+        -------
+        int
+            The two-bytes value at the desired bank:address as a signed int
+        """
+        ofs = self._get_offset(bank, address)
+
+        if ofs < (self.size - 1):
+            value = bytearray([self._buf[ofs], self._buf[ofs + 1]])
+            return int.from_bytes(value, "little", signed=True)
+        else:
+            raise Exception("Address/ bank out of range")
+
     # --- read_word() ---
 
     def read_word(self, bank: int, address: int) -> int:
@@ -313,7 +339,7 @@ class ROM:
             hi = int(self._buf[ofs + 1])
             return (hi << 8) | (lo & 0xFF)
         else:
-            raise Exception('Address / bank out of range')
+            raise Exception("Address/ bank out of range")
 
     # --- ROM._get_offset() ---
 
