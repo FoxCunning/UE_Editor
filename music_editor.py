@@ -26,6 +26,9 @@ _notes: List[int] = []
 # This is to quickly get a duty representation based on the register's value
 _DUTY = ["12.5%", "  25%", "  50%", "  75%"]
 
+# Same for volume levels, they go from 0x0 to 0xF
+_VOLUME = [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
+           0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -356,34 +359,34 @@ class MusicEditor:
             # Play buttons
             with self.app.frame("IE_Frame_Play_Buttons", padding=[2, 2], sticky="NEW", row=1, column=1):
                 self.app.button("IE_Button_Semiquaver", self._instruments_input, image="res/semiquaver.gif",
-                                tooltip="Short notes",
-                                sticky="W", row=0, column=1, bg=colour.WHITE)
+                                bg=colour.WHITE if self._test_speed == 0 else colour.DARK_GREY,
+                                tooltip="Short notes", sticky="W", row=0, column=1)
                 self.app.button("IE_Button_Crotchet", self._instruments_input, image="res/crotchet.gif",
-                                tooltip="Medium length notes",
-                                sticky="W", row=0, column=2, bg=colour.DARK_GREY)
+                                bg=colour.WHITE if self._test_speed == 1 else colour.DARK_GREY,
+                                tooltip="Medium length notes", sticky="W", row=0, column=2)
                 self.app.button("IE_Button_Minim", self._instruments_input, image="res/minim.gif",
-                                tooltip="Long notes",
-                                sticky="W", row=0, column=3, bg=colour.DARK_GREY)
+                                bg=colour.WHITE if self._test_speed == 2 else colour.DARK_GREY,
+                                tooltip="Long notes", sticky="W", row=0, column=3)
 
                 self.app.button("IE_Button_One_Note", self._instruments_input, image="res/one_note.gif",
-                                tooltip="Loop single note",
-                                sticky="W", row=2, column=1, bg=colour.WHITE)
+                                bg=colour.WHITE if self._test_notes == 0 else colour.DARK_GREY,
+                                tooltip="Loop single note", sticky="W", row=2, column=1)
                 self.app.button("IE_Button_Scale", self._instruments_input, image="res/scale.gif",
-                                tooltip="Play scales",
-                                sticky="W", row=2, column=2, bg=colour.DARK_GREY)
+                                bg=colour.WHITE if self._test_notes == 1 else colour.DARK_GREY,
+                                tooltip="Play scales", sticky="W", row=2, column=2)
                 self.app.button("IE_Button_Arpeggio", self._instruments_input, image="res/arpeggio.gif",
-                                tooltip="Play arpeggios",
-                                sticky="W", row=2, column=3, bg=colour.DARK_GREY)
+                                bg=colour.WHITE if self._test_notes == 2 else colour.DARK_GREY,
+                                tooltip="Play arpeggios", sticky="W", row=2, column=3)
 
                 self.app.button("IE_Button_Treble", self._instruments_input, image="res/treble.gif",
-                                tooltip="Use higher octaves",
-                                sticky="W", row=3, column=1, bg=colour.WHITE)
+                                bg=colour.WHITE if self._test_octave == 0 else colour.DARK_GREY,
+                                tooltip="Use higher octaves", sticky="W", row=3, column=1)
                 self.app.button("IE_Button_Alto", self._instruments_input, image="res/alto.gif",
-                                tooltip="Use middle octaves",
-                                sticky="W", row=3, column=2, bg=colour.DARK_GREY)
+                                bg=colour.WHITE if self._test_octave == 1 else colour.DARK_GREY,
+                                tooltip="Use middle octaves", sticky="W", row=3, column=2)
                 self.app.button("IE_Button_Bass", self._instruments_input, image="res/bass.gif",
-                                tooltip="Use lower octaves",
-                                sticky="W", row=3, column=3, bg=colour.DARK_GREY)
+                                bg=colour.WHITE if self._test_octave == 2 else colour.DARK_GREY,
+                                tooltip="Use lower octaves", sticky="W", row=3, column=3)
 
                 self.app.button("IE_Play_Stop", self._instruments_input, image="res/play.gif",
                                 width=32, height=32, bg=colour.MEDIUM_GREY, sticky="E", row=3, column=0)
@@ -1102,6 +1105,7 @@ class MusicEditor:
                 # Interpret this data
                 if track_data.function == TrackData.CHANNEL_VOLUME:
                     self._track_volume[0] = track_data.channel_volume
+                    square0_out.setMul(_VOLUME[self._track_volume[0] & 0xF])
                     # Note that counter will be 0 now, so we will read another segment
 
                 elif track_data.function == TrackData.REWIND:
@@ -1118,8 +1122,6 @@ class MusicEditor:
                     # Frequency
                     square0_out.setFreq(track_data.note_value.frequency)
 
-                    # Volume
-                    square0_out.setMul(self._track_volume[0] / 15)
                     instrument = self._instruments[square0_instrument]
 
                     # Envelope trigger points for the current instrument
