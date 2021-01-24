@@ -546,7 +546,7 @@ class TextEditor:
         string_id: int
             Index of the text to edit
         string_type: str
-            The type of string to edit: "Dialogue", "Special", "NPC Names" or "Enemy Names"
+            The type of string to edit: "Dialogue", "Special", "NPC Names" or "Enemy Names" or "Menu / Intro"
         """
         self.index = string_id
         self.type = string_type

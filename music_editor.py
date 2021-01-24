@@ -9,7 +9,7 @@ import pyo
 
 from dataclasses import dataclass, field
 from tkinter import Canvas
-from typing import List
+from typing import List, Tuple
 
 import colour
 from appJar import gui
@@ -21,7 +21,12 @@ from rom import ROM
 # Note definitions as read from ROM
 _notes: List[int] = []
 
-# TODO Make an array of strings and create note names based on the period (with approximation)
+# TODO Create note names based on the period (with approximation)
+_NOTE_NAMES = ["C2 ", "C#2", "D2 ", "D#2", "E2 ", "F2 ", "F#2", "G2 ", "G#2", "A2 ", "A#2", "B2 ",
+               "C3 ", "C#3", "D3 ", "D#3", "E3 ", "F3 ", "F#3", "G3 ", "G#3", "A3 ", "A#3", "B3 ",
+               "C4 ", "C#4", "D4 ", "D#4", "E4 ", "F4 ", "F#4", "G4 ", "G#4", "A4 ", "A#4", "B4 ",
+               "C5 ", "C#5", "D5 ", "D#5", "E5 ", "F5 ", "F#5", "G5 ", "G#5", "A5 ", "A#5", "B5 ",
+               "C6 ", "C#6", "D6 ", "D#6", "E6 ", "F6 ", "F#6", "G6 ", "G#6", "A6 ", "A#6", "B6 "]
 
 # This is to quickly get a duty representation based on the register's value
 _DUTY = ["12.5%", "  25%", "  50%", "  75%"]
@@ -29,6 +34,7 @@ _DUTY = ["12.5%", "  25%", "  50%", "  75%"]
 # Same for volume levels, they go from 0x0 to 0xF
 _VOLUME = [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
            0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -90,7 +96,7 @@ class Note:
         else:
             period = 0x6AB  # A default value to use until notes are loaded
 
-        self.frequency: float = self.CPU_FREQ / ((period + 1) << 4)
+        self.frequency: int = int(self.CPU_FREQ / ((period + 1) << 4))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -118,24 +124,49 @@ class TrackData:
 
     channel_volume: int = 0
     instrument_index: int = 0
+    # Index of the item to loop from
     loop_position: int = 0
+    vibrato_speed: int = 0
+    vibrato_factor: int = 0
+    rest_duration: int = 0
+    # Play notes 12 semitones higher if True
+    triangle_octave: bool = False
     note_value: Note = Note()
+
+    # How many bytes does this entry take
+    size: int = 1
+
+    # Raw bytes forming this entry
+    raw: bytearray = bytearray()
 
     @classmethod
     def volume(cls, level: int):
-        return cls(function=cls.CHANNEL_VOLUME, channel_volume=level & 0x0F)
+        return cls(function=cls.CHANNEL_VOLUME, channel_volume=level & 0x0F, size=2)
 
     @classmethod
     def instrument(cls, index: int):
-        return cls(function=cls.SELECT_INSTRUMENT, instrument_index=index)
+        return cls(function=cls.SELECT_INSTRUMENT, instrument_index=index, size=2)
 
     @classmethod
-    def note(cls, index: int, duration: int):
-        return cls(function=cls.PLAY_NOTE, note_value=Note(index, duration))
+    def vibrato(cls, higher_octave: bool, speed: int, factor: int):
+        if speed < 2:
+            return cls(function=cls.SET_VIBRATO, triangle_octave=higher_octave, vibrato_speed=0,
+                       vibrato_factor=0, size=4)
+        else:
+            return cls(function=cls.SET_VIBRATO, triangle_octave=higher_octave, vibrato_speed=speed,
+                       vibrato_factor=factor, size=4)
+
+    @classmethod
+    def rest(cls, duration: int):
+        return cls(function=cls.REST, rest_duration=duration, size=2)
 
     @classmethod
     def rewind(cls, position: int):
-        return cls(function=cls.REWIND, loop_position=position)
+        return cls(function=cls.REWIND, loop_position=position, size=4)
+
+    @classmethod
+    def note(cls, index: int, duration: int):
+        return cls(function=cls.PLAY_NOTE, note_value=Note(index, duration), size=2)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -148,6 +179,11 @@ class MusicEditor:
 
         self._bank: int = 8
 
+        # --- Track Editor ---
+        self._track_address: List[int] = [0, 0, 0, 0]
+        self._selected_channel: int = 0
+
+        # --- Instrument Editor ---
         self._instruments: List[Instrument] = []
         self._selected_instrument: int = 0
 
@@ -169,9 +205,10 @@ class MusicEditor:
         self._duty_lines: List[int] = [0, 0, 0]
 
         self._unsaved_changes_instrument: bool = False
+        self._unsaved_changes_track: bool = False
 
         # Used during playback
-        self._square0_track: List[TrackData] = []
+        self._track_data: List[List[TrackData]] = [[], [], [], []]
         self._track_position: List[int] = [0, 0, 0, 0]
         self._track_volume: List[int] = [0, 0, 0, 0]
 
@@ -273,14 +310,29 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def read_track_data(self, track: int):
-        pass
+    def close_track_editor(self) -> bool:
+        if self._unsaved_changes_track is True:
+            if self.app.yesNoBox("Track Editor", "Are you sure you want to close the Track Editor?\n" +
+                                 "Any unsaved changes will be lost.", "Track_Editor") is False:
+                return False
+
+        # If playing test notes, stop and wait for the thread to finish
+        self.stop_playback()
+        if self._sound_server.getIsStarted():
+            self._sound_server.stop()
+        if self._sound_server.getIsBooted():
+            self._sound_server.shutdown()
+
+        self.app.hideSubWindow("Track_Editor")
+        self.app.emptySubWindow("Track_Editor")
+
+        return True
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def close_instrument_editor(self) -> bool:
         if self._unsaved_changes_instrument is True:
-            if self.app.yesNoBox("Instruments Editor", "Are you sure you want to close the Instrument Editor?\n" +
+            if self.app.yesNoBox("Instrument Editor", "Are you sure you want to close the Instrument Editor?\n" +
                                  "Any unsaved changes will be lost.", "Instrument_Editor") is False:
                 return False
 
@@ -296,6 +348,8 @@ class MusicEditor:
 
         return True
 
+    # ------------------------------------------------------------------------------------------------------------------
+
     def stop_playback(self) -> None:
         if self._play_thread.is_alive():
             self._stop_event.set()
@@ -303,6 +357,97 @@ class MusicEditor:
             if self._slow_event.is_set():
                 self.warning("Slow playback detected! This may be due to too many non-note events in a track, or " +
                              "a slow machine, or slow audio host API.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def start_playback(self) -> None:
+        self._stop_event.clear()
+        self._play_thread = threading.Thread(target=self._play_loop, args=())
+        self._play_thread.start()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def show_track_editor(self, bank: int, track: int) -> None:
+        """
+        Shows the Track Editor window and loads the specified track.
+
+        Parameters
+        ----------
+        bank: int
+            ROM bank where the track resides (8 or 9)
+
+        track: int
+            Index of the track *in this bank* (0-10)
+        """
+        self._bank = bank
+
+        try:
+            self.app.getFrameWidget("SE_Frame_Buttons")
+            window_exists = True
+        except ItemLookupError:
+            window_exists = False
+
+        # Get this track's address
+        address = 0x8051 + (track << 3)
+        for t in range(4):
+            self._track_address[t] = self.rom.read_word(bank, address)
+            address += 2
+
+        # Read instrument data
+        if len(self._instruments) < 1:
+            self.read_instrument_data()
+
+        # Read track data for all tracks
+        self.read_track_data(0)
+        self.read_track_data(1)
+        self.read_track_data(2)
+        self.read_track_data(3)
+        # self.info(f"Loading track #{track} from ${bank:02X}:{self._track_address[0]:04X}")
+
+        if window_exists:
+            self.app.showSubWindow("Track_Editor")
+            return
+
+        with self.app.subWindow("Track_Editor"):
+
+            # Buttons
+            with self.app.frame("SE_Frame_Buttons", padding=[4, 2], sticky="NEW", row=0, column=0):
+                # Left
+                with self.app.frame("SE_Frame_File", padding=[4, 2], sticky="NW", row=0, column=0):
+                    self.app.button("SE_Button_Apply", self._track_input, image="res/floppy.gif", width=32, height=32,
+                                    tooltip="Apply changes to all channels", bg=colour.MEDIUM_GREY,
+                                    row=0, column=0)
+                    self.app.button("SE_Button_Reload", self._track_input, image="res/reload.gif", width=32, height=32,
+                                    tooltip="Reload track data from ROM", bg=colour.MEDIUM_GREY,
+                                    row=0, column=1)
+                    self.app.button("SE_Button_Cancel", self._track_input, image="res/close.gif", width=32, height=32,
+                                    tooltip="Cancel / Close window", bg=colour.MEDIUM_GREY,
+                                    row=0, column=2)
+                # Spacer
+                self.app.label("SE_Label_Space", " ", sticky="NEWS", row=0, column=1)
+
+                # Right
+                with self.app.frame("SE_Frame_Play_Controls", padding=[4, 2], sticky="NE", row=0, column=2):
+                    self.app.button("SE_Play_Stop", self._track_input, image="res/play.gif", width=32, height=32,
+                                    tooltip="Start / Stop track playback", bg=colour.MEDIUM_GREY,
+                                    row=0, column=0)
+
+            # Channels
+            with self.app.frame("SE_Frame_Channels", padding=[4, 2], sticky="NEW", row=1, column=0):
+                channel_names = ["Square 0", "Square 1", "Triangle", "Noise"]
+                for c in range(4):
+                    self.app.label(f"SE_Label_Channel_{c}", channel_names[c], sticky="SEW",
+                                   row=0, column=c, font=10)
+                    self.app.listBox(f"SE_List_Channel_{c}", None, multi=False, group=False, fixed_scrollbar=True,
+                                     width=24, height=20, sticky="NEW", bg=colour.BLACK, fg=colour.MEDIUM_GREY,
+                                     row=1, column=c, font=9).configure(font="TkFixedFont")
+
+        self.track_info(0)
+        self.track_info(1)
+        self.track_info(2)
+        self.track_info(3)
+
+        self.app.showSubWindow("Track_Editor")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -337,7 +482,7 @@ class MusicEditor:
         with self.app.subWindow("Instrument_Editor"):
 
             # Buttons
-            with self.app.frame("IE_Frame_Buttons", padding=[4, 2], sticky="NEW", row=0, column=0, colspan=2):
+            with self.app.frame("IE_Frame_Buttons", padding=[4, 2], sticky="NEW", row=0, column=0, colspan=3):
                 self.app.button("IE_Button_Apply", self._instruments_input, image="res/floppy.gif", width=32, height=32,
                                 tooltip="Apply changes to all instruments", bg=colour.MEDIUM_GREY,
                                 row=0, column=0)
@@ -479,6 +624,98 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def read_track_data(self, channel: int) -> List[TrackData]:
+        track: List[TrackData] = []
+
+        address = self._track_address[channel]
+
+        loop_found = False
+
+        while not loop_found:
+            control_byte = self.rom.read_byte(self._bank, address)
+            address = address + 1
+
+            if control_byte == 0xFB:                        # FB - VOLUME
+                value = self.rom.read_byte(self._bank, address)
+                address += 1
+                data = TrackData.volume(value)
+                data.raw = bytearray([0xFB, value])
+
+            elif control_byte == 0xFC:                      # FC - INSTRUMENT
+                value = self.rom.read_byte(self._bank, address)
+                address += 1
+                data = TrackData.instrument(value)
+                data.raw = bytearray([0xFC, value])
+
+            elif control_byte == 0xFD:                      # FD - VIBRATO
+                triangle_octave = self.rom.read_byte(self._bank, address)
+                address += 1
+
+                speed = self.rom.read_byte(self._bank, address)
+                address += 1
+
+                factor = self.rom.read_byte(self._bank, address)
+                address += 1
+
+                data = TrackData.vibrato(triangle_octave < 0xFF, speed, factor)
+                data.raw = bytearray([0xFD, triangle_octave, speed, factor])
+
+            elif control_byte == 0xFE:                      # FE - REST
+                value = self.rom.read_byte(self._bank, address)
+                address += 1
+
+                data = TrackData.rest(value)
+                data.raw = bytearray([0xFE, value])
+
+            elif control_byte == 0xFF:                      # FF - REWIND
+                # Skip next byte (always zero, unused)
+                address += 1
+
+                # Read signed offset (usually negative)
+                offset = self.rom.read_signed_word(self._bank, address)
+                address += 2
+
+                if offset > 0:
+                    self.app.warningBox("Track Editor",
+                                        f"Found positive rewind offset ({offset}) for channel {channel}.\n" +
+                                        "This may have undesired effects.", "Track_Editor")
+
+                # TODO Calculate item index based on each item's size, counting backwards
+                data = TrackData.rewind(0)  # Use 0 for now
+                data.raw = bytearray([0xFF, 0])
+                data.raw += offset.to_bytes(2, "little", signed=True)
+                loop_found = True
+
+            elif control_byte >= 0xF0:                      # F0-FA - IGNORED
+                value = self.rom.read_byte(self._bank, address)
+                address += 1
+
+                data = TrackData(function=value)
+                data.raw = bytearray([value])
+
+            else:                                           # 00-EF - NOTE
+                index = control_byte
+
+                duration = self.rom.read_byte(self._bank, address)
+                address += 1
+
+                if index > len(_notes):
+                    self.warning(
+                        f"Invalid note: ${control_byte:02X} for channel {channel} at ${self._bank:02X}:{address-2:04X}")
+                    data = TrackData.note(0, 0)
+                else:
+                    data = TrackData.note(index, duration)
+
+                data.raw = bytearray([index, duration])
+
+            track.append(data)
+
+        self._track_data[channel] = track
+
+        return track
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def read_instrument_data(self) -> None:
         """
         Reads instrument data from ROM buffer, and instrument names from ini file.
@@ -525,6 +762,66 @@ class MusicEditor:
             address[0] += 2
             address[1] += 2
             address[2] += 2
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def track_info(self, channel: int) -> None:
+        widget = f"SE_List_Channel_{channel}"
+
+        self.app.clearListBox(widget, callFunction=False)
+
+        i = 0
+        for t in self._track_data[channel]:
+            text = f"{i:03X} - {t.raw[0]:02X} - "
+
+            if t.function == TrackData.CHANNEL_VOLUME:
+                text += f"{t.raw[1]:02X} - -- - --"
+                description = f"VOL {t.channel_volume:02}"
+                bg = colour.DARK_BLUE
+                fg = colour.PALE_LIME
+
+            elif t.function == TrackData.SELECT_INSTRUMENT:
+                text += f"{t.raw[1]:02X} - -- - --\n"
+                description = f"INS {self._instruments[t.instrument_index].name[:19]}"
+                bg = colour.DARK_ORANGE
+                fg = colour.PALE_TEAL
+
+            elif t.function == TrackData.SET_VIBRATO:
+                text += f"{t.raw[1]:02X} - {t.raw[2]:02X} - {t.raw[3]:02X}"
+                description = f"VIB {'T^, ' if t.triangle_octave else ''} {t.vibrato_speed}, {t.vibrato_factor}"
+                bg = colour.DARK_VIOLET
+                fg = colour.PALE_PINK
+
+            elif t.function == TrackData.REST:
+                text += f"{t.raw[1]:02X} - -- - --"
+                description = f"REST {t.rest_duration}"
+                bg = colour.DARK_OLIVE
+                fg = colour.PALE_MAGENTA
+
+            elif t.function == TrackData.REWIND:
+                text += f"{t.raw[1]:02X} - {t.raw[2]:02X} - {t.raw[3]:02X}"
+                description = f"RWD {t.loop_position}"
+                bg = colour.DARK_MAGENTA
+                fg = colour.PALE_VIOLET
+
+            elif t.function == TrackData.PLAY_NOTE:
+                text += f"{t.raw[1]:02X} - -- - --"
+                description = f"       {_NOTE_NAMES[t.raw[0]]} {t.raw[1]:02}"
+                bg = "#171717"
+                fg = colour.PALE_ORANGE
+
+            else:
+                text += f"-- - -- - --"
+                description = f"IGNORED"
+                bg = colour.DARK_RED
+                fg = colour.PALE_RED
+
+            self.app.addListItem(widget, text, None, select=False)
+            self.app.addListItem(widget, description, None, select=False)
+            self.app.setListItemAtPosBg(widget, i + 1, bg)
+            self.app.setListItemAtPosFg(widget, i + 1, fg)
+
+            i += 2
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -602,6 +899,20 @@ class MusicEditor:
         instrument.envelope[dst].append(value)
         # Increment count
         instrument.envelope[dst][0] += 1
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _track_input(self, widget: str) -> None:
+        if widget == "SE_Play_Stop":
+            if self._play_thread.is_alive():
+                self.stop_playback()
+                self.app.setButtonImage(widget, "res/play.gif")
+            else:
+                self.start_playback()
+                self.app.setButtonImage(widget, "res/stop.gif")
+
+        else:
+            self.info(f"Unimplemented callback for widget '{widget}'.")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -812,9 +1123,9 @@ class MusicEditor:
             else:
                 note_length = 7 + (self._test_speed << 4)
                 # Build some test data
-                self._square0_track = []
-                self._square0_track.append(TrackData.volume(15))
-                self._square0_track.append(TrackData.instrument(self._selected_instrument))
+                self._track_data[0] = []
+                self._track_data[0].append(TrackData.volume(15))
+                self._track_data[0].append(TrackData.instrument(self._selected_instrument))
                 if self._test_octave == 2:
                     base_note = 0x0C
                 elif self._test_octave == 1:
@@ -823,28 +1134,26 @@ class MusicEditor:
                     base_note = 0x24
 
                 if self._test_notes == 0:
-                    self._square0_track.append(TrackData.note(base_note + 7, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 7, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 7, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 7, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 7, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 7, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 7, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 7, note_length))
                 elif self._test_notes == 1:
-                    self._square0_track.append(TrackData.note(base_note, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 2, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 4, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 5, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 7, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 9, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 11, note_length))
+                    self._track_data[0].append(TrackData.note(base_note, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 2, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 4, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 5, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 7, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 9, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 11, note_length))
                 else:
-                    self._square0_track.append(TrackData.note(base_note, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 4, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 7, note_length))
-                    self._square0_track.append(TrackData.note(base_note + 4, note_length))
-                self._square0_track.append(TrackData.rewind(2))
+                    self._track_data[0].append(TrackData.note(base_note, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 4, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 7, note_length))
+                    self._track_data[0].append(TrackData.note(base_note + 4, note_length))
+                self._track_data[0].append(TrackData.rewind(2))
                 # TODO "Mute" other channels
-                self._stop_event.clear()
-                self._play_thread = threading.Thread(target=self._play_loop, args=())
-                self._play_thread.start()
+                self.start_playback()
                 self.app.setButtonImage(widget, "res/stop.gif")
 
         else:
@@ -1040,12 +1349,12 @@ class MusicEditor:
         self._sound_server.start()
 
         # Approximate NTSC timing
-        frame_interval = 1 / 60
+        frame_interval = 0.0166  # 1 / 60
 
         # Pre-build square wave tables
         # 12.5% duty
-        table_d0 = [(0, 0), (1, 1), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
-                    (8, 0), (9, 1), (10, 0), (11, 0), (12, 0), (13, 0), (14, 0), (15, 0)]
+        table_d0: List[Tuple[int, float]] = [(0, 0), (1, 1), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
+                                             (8, 0), (9, 1), (10, 0), (11, 0), (12, 0), (13, 0), (14, 0), (15, 0)]
         # table_d0 = []
         # for t in range(16):
         #    table_d0.append((t, 0))
@@ -1066,23 +1375,30 @@ class MusicEditor:
         table_d2[10] = (10, 1)
         table_d2[11] = (11, 1)
 
-        # Pre-calculated volume levels table
-        volumes = [0, 0.12, 0.25, 0.37, 0.5, 0.62, 0.75, 0.87, 1]
+        table_flat = table_d0.copy()
+        table_flat[1] = (1, 0)
+        table_flat[9] = (9, 0)
 
-        square0_table = pyo.LinTable(table_d2, size=64)
+        # Pre-calculated volume levels table
+        volumes: List[float] = [0, 0.12, 0.25, 0.37, 0.5, 0.62, 0.75, 0.87, 1]
+
+        wave_table: List[pyo.LinTable] = [pyo.LinTable(table_d2, size=32)] * 4
         # square0_table.view()
 
-        square0_instrument = 0
+        channel_instrument: List[int] = [0] * 4
         # Envelope trigger points
-        square0_triggers: List[int] = [0, 0, 0]
+        channel_triggers: List[int] = [0, 0, 0]
 
-        square0_volume = 0
-        square0_freq = 220
-        square0_out = pyo.Osc(table=square0_table, freq=square0_freq, phase=[0, 0], interp=0,
-                              mul=square0_volume).out()
-        # square0_out = pyo.TableRead(table=square0_table, freq=square0_freq, loop=True, interp=0,
-        #                            mul=square0_volume).out()
-        # square0_out.ctrl()
+        channel_freq: List[int] = [0, 0, 0, 0]
+        channel_oscillator: List[pyo.Osc] = [
+            pyo.Osc(table=wave_table[0], freq=channel_freq[0], phase=[0, 0], interp=0,
+                    mul=_VOLUME[self._track_volume[0]]).out(),
+            pyo.Osc(table=wave_table[1], freq=channel_freq[1], phase=[0, 0], interp=0,
+                    mul=_VOLUME[self._track_volume[1]]).out(),
+            pyo.Osc(table=wave_table[2], freq=channel_freq[2], phase=[0, 0], interp=0,
+                    mul=_VOLUME[self._track_volume[2]]).out(),
+            pyo.Osc(table=wave_table[3], freq=channel_freq[3], phase=[0, 0], interp=0,
+                    mul=_VOLUME[self._track_volume[3]]).out()]
 
         self._track_counter[0] = 1      # Count down from here
         self._track_position[0] = 0     # Start from the first item in the track
@@ -1099,40 +1415,29 @@ class MusicEditor:
 
             # Keep reading data segments until we find a rest or a note
             while self._track_counter[0] < 1:
-                track_data = self._square0_track[self._track_position[0]]
+                track_data = self._track_data[0][self._track_position[0]]
                 self._track_position[0] += 1
 
                 # Interpret this data
-                if track_data.function == TrackData.CHANNEL_VOLUME:
-                    self._track_volume[0] = track_data.channel_volume
-                    square0_out.setMul(_VOLUME[self._track_volume[0] & 0xF])
-                    # Note that counter will be 0 now, so we will read another segment
 
-                elif track_data.function == TrackData.REWIND:
-                    self._track_position[0] = track_data.loop_position
-                    # Counter should now be 0
-
-                elif track_data.function == TrackData.SELECT_INSTRUMENT:
-                    square0_instrument = track_data.instrument_index
-                    # Counter is now 0
-
-                elif track_data.function == TrackData.PLAY_NOTE:
+                # Notes are the most common
+                if track_data.function == TrackData.PLAY_NOTE:
                     self._track_counter[0] = track_data.note_value.duration     # This will end this loop
 
                     # Frequency
-                    square0_out.setFreq(track_data.note_value.frequency)
+                    channel_oscillator[0].setFreq(track_data.note_value.frequency)
 
-                    instrument = self._instruments[square0_instrument]
+                    instrument = self._instruments[channel_instrument[0]]
 
                     # Envelope trigger points for the current instrument
                     # This tell us when to switch to the next envelope
-                    square0_triggers[0] = track_data.note_value.duration
+                    channel_triggers[0] = track_data.note_value.duration
 
-                    square0_triggers[1] = track_data.note_value.duration - instrument.size(0)
-                    if square0_triggers[1] < 0:
-                        square0_triggers[1] = 0
+                    channel_triggers[1] = track_data.note_value.duration - instrument.size(0)
+                    if channel_triggers[1] < 0:
+                        channel_triggers[1] = 0
 
-                    value = square0_triggers[1] - instrument.size(2)
+                    value = channel_triggers[1] - instrument.size(2)
                     if value < 0:
                         value = 0
 
@@ -1140,7 +1445,33 @@ class MusicEditor:
                     if value >= instrument.size(1):
                         value = instrument.size(1)
 
-                    square0_triggers[2] = square0_triggers[1] - value
+                    channel_triggers[2] = channel_triggers[1] - value
+
+                # Rests are the second most common item in any track
+                elif track_data.function == TrackData.REST:
+                    self._track_counter[0] = track_data.rest_duration
+                    # Use flat wave to generate the "silence" rather than lowering the volume
+                    wave_table[0].replace(table_flat)
+
+                elif track_data.function == TrackData.SELECT_INSTRUMENT:
+                    channel_instrument[0] = track_data.instrument_index
+                    # Counter is now 0
+
+                elif track_data.function == TrackData.SET_VIBRATO:
+                    # TODO Implement vibrato / change triangle channel octave offset
+                    pass
+
+                elif track_data.function == TrackData.CHANNEL_VOLUME:
+                    self._track_volume[0] = track_data.channel_volume
+                    channel_oscillator[0].setMul(_VOLUME[self._track_volume[0]])
+                    # Note that counter will be 0 now, so we will read another segment
+
+                elif track_data.function == TrackData.REWIND:
+                    # TODO Terminate playback if loop option unchecked
+                    self._track_position[0] = track_data.loop_position
+                    # Counter should now be 0
+
+                # Ignore anything else ($3C-$FA control bytes)
 
             # Generate / manipulate sound
             if self._track_counter[0] > 1:
@@ -1149,24 +1480,24 @@ class MusicEditor:
                 # Choose one of the 3 envelopes in the current instrument based on trigger points
                 position = self._track_counter[0]
                 envelope = 0
-                if position < square0_triggers[1]:
-                    if position < square0_triggers[2]:
+                if position < channel_triggers[1]:
+                    if position < channel_triggers[2]:
                         envelope = 2
                     else:
                         envelope = 1
 
-                index = square0_triggers[envelope] - position + 1
+                index = channel_triggers[envelope] - position + 1
                 if index < 0:
                     index = 1
-                duty = self._instruments[square0_instrument].duty(envelope, index)
+                duty = self._instruments[channel_instrument[0]].duty(envelope, index)
                 # Use pre-calculated volume levels
                 # volume = self._instruments[square0_instrument].volume(envelope, index) / 8
-                volume = volumes[self._instruments[square0_instrument].volume(envelope, index)]
+                volume = volumes[self._instruments[channel_instrument[0]].volume(envelope, index)]
                 # Update duty cycle and volume according to envelopes
                 if duty == 0:       # 12.5% duty
                     table_d0[1] = (1, volume)
                     table_d0[8] = (8, volume)
-                    square0_table.replace(table_d0)
+                    wave_table[0].replace(table_d0)
                 elif duty == 2:     # 50% duty
                     table_d2[1] = (1, volume)
                     table_d2[2] = (2, volume)
@@ -1176,22 +1507,26 @@ class MusicEditor:
                     table_d2[9] = (9, volume)
                     table_d2[10] = (10, volume)
                     table_d2[11] = (11, volume)
-                    square0_table.replace(table_d2)
+                    wave_table[0].replace(table_d2)
                 else:               # 25% and 75% duty
                     table_d1[1] = (1, volume)
                     table_d1[2] = (2, volume)
                     table_d1[8] = (8, volume)
                     table_d1[9] = (9, volume)
-                    square0_table.replace(table_d1)
+                    wave_table[0].replace(table_d1)
 
             interval = frame_interval - (time.time() - start_time)
-            if interval < 0:
-                self._slow_event.set()
-            else:
+            if interval >= 0:
                 time.sleep(interval)
+            else:
+                self._slow_event.set()
+
             # time.sleep(frame_interval)
 
-        square0_out.stop()
+        channel_oscillator[0].stop()
+        channel_oscillator[1].stop()
+        channel_oscillator[2].stop()
+        channel_oscillator[3].stop()
 
         # self.info("Sound playback thread terminated.")
         self._sound_server.stop()

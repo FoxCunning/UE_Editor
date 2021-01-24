@@ -36,7 +36,6 @@ from rom import ROM, feature_names
 from music_editor import MusicEditor
 from text_editor import TextEditor, read_text
 
-
 # ----------------------------------------------------------------------------------------------------------------------
 
 settings = EditorSettings()
@@ -568,14 +567,14 @@ def open_rom(file_name: str) -> None:
 
         # Try to detect envelope bug
         data = rom.read_bytes(0x8, 0x8248, 3)
-        if data[0] == 0x18:     # Bug detected
+        if data[0] == 0x18:  # Bug detected
             if settings.get("fix envelope bug"):
                 app.setCheckBox("ST_Fix_Envelope_Bug", ticked=True, callFunction=False)
             else:
                 app.setCheckBox("ST_Fix_Envelope_Bug", ticked=False, callFunction=False)
-        elif data[0] == 0xEA:   # Fix already present
+        elif data[0] == 0xEA:  # Fix already present
             app.setCheckBox("ST_Fix_Envelope_Bug", ticked=True, callFunction=False)
-        else:                   # Custom / unrecognised music driver code
+        else:  # Custom / unrecognised music driver code
             app.disableCheckBox("ST_Fix_Envelope_Bug")
 
         # Battlefield map editor
@@ -970,7 +969,7 @@ def read_cutscene_data(scene: int) -> None:
                 app.clearEntry(widget, callFunction=False, setFocus=False)
                 app.setEntry(widget, f"{data[1]}", callFunction=False)
 
-    elif 3 <= scene <= 6:   # Marks
+    elif 3 <= scene <= 6:  # Marks
         address = 0xAD4E
         for param in range(4):
             widget = f"CE_Param_{param + 3}_00"
@@ -978,7 +977,7 @@ def read_cutscene_data(scene: int) -> None:
             app.clearEntry(widget, callFunction=False, setFocus=False)
             app.setEntry(widget, f"0x{value:02X}", callFunction=False)
 
-    elif scene == 7:        # Fountain
+    elif scene == 7:  # Fountain
         data = rom.read_bytes(0xD, 0xAC3D, 2)
 
         if data[0] != 0xA9:
@@ -1006,7 +1005,7 @@ def select_map(sel: str) -> None:
     global selected_map
     global map_compression
 
-    selected_map = get_option_index(sel, app.getOptionBox(sel))     # int(app.getOptionBox(sel)[:4], 16)
+    selected_map = get_option_index(sel, app.getOptionBox(sel))  # int(app.getOptionBox(sel)[:4], 16)
     log(4, "EDITOR", f"Selected map# {selected_map}")
 
     map_data = map_editor.map_table[selected_map]
@@ -1553,13 +1552,19 @@ def instrument_editor_stop() -> bool:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+def track_editor_stop() -> bool:
+    return music_editor.close_track_editor()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 def sound_tab_input(widget: str) -> None:
     if widget == "ST_Music_Bank":
         value = get_option_index(widget)
         if value == 0:  # Bank 8
             bank = 8
 
-        else:           # Bank 9
+        else:  # Bank 9
             bank = 9
 
         app.setButton("ST_Import_Instruments", text=f"Import from bank {9 - value}")
@@ -1579,6 +1584,11 @@ def sound_tab_input(widget: str) -> None:
     elif widget == "ST_Edit_Instruments":
         bank = 8 + get_option_index("ST_Music_Bank")
         music_editor.show_instrument_editor(bank)
+
+    elif widget == "ST_Edit_Music":
+        bank = 8 + get_option_index("ST_Music_Bank")
+        track = get_option_index("ST_Option_Music")
+        music_editor.show_track_editor(bank, track)
 
     else:
         log(3, "MUSIC EDITOR", f"Unimplemented callback for widget '{widget}'.")
@@ -2354,7 +2364,6 @@ if __name__ == "__main__":
             # --- Music Frame
             with app.labelFrame("ST_Frame_Music", name="Music", padding=[4, 2], sticky="NEW", bg=colour.PALE_ORANGE,
                                 row=0, column=0):
-
                 with app.frame("ST_Frame_Bank", padding=[4, 1], sticky="NEWS", row=0, column=0):
                     app.optionBox("ST_Music_Bank", ["Bank 8", "Bank 9"], change=sound_tab_input, width=12, sticky="W",
                                   row=0, column=0, font=10)
@@ -2414,6 +2423,15 @@ if __name__ == "__main__":
             app.setStopFunction(instrument_editor_stop)
 
             app.label("IE_Label_Temp", "...")
+
+        # Track Editor Sub-Window --------------------------------------------------------------------------------------
+        with app.subWindow("Track_Editor", title="Track Editor", size=[900, 456], padding=[2, 0],
+                           modal=False, resizable=False, inPadding=0, guiPadding=0,
+                           bg=colour.DARK_NAVY, fg=colour.WHITE):
+            # noinspection PyArgumentList
+            app.setStopFunction(track_editor_stop)
+
+            app.label("SE_Label_Temp", "...")
 
         # Screen Editor Sub-Window -------------------------------------------------------------------------------------
         with app.subWindow("Cutscene_Editor", title="Screen Editor", size=[800, 402], padding=[2, 0], modal=False,
