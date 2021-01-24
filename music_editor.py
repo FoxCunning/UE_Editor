@@ -31,10 +31,6 @@ _NOTE_NAMES = ["C2 ", "C#2", "D2 ", "D#2", "E2 ", "F2 ", "F#2", "G2 ", "G#2", "A
 # This is to quickly get a duty representation based on the register's value
 _DUTY = ["12.5%", "  25%", "  50%", "  75%"]
 
-# Same for volume levels, they go from 0x0 to 0xF
-_VOLUME = [0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4,
-           0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8]
-
 
 # ----------------------------------------------------------------------------------------------------------------------
 
@@ -188,8 +184,7 @@ class MusicEditor:
         self._selected_instrument: int = 0
 
         # TODO Allow users to choose sample rate, buffer size and Windows host API?
-        self._sound_server: pyo.Server = pyo.Server(sr=44100, nchnls=1, buffersize=512).boot()
-        self._instrument_test: pyo.SquareTable = pyo.SquareTable(size=8)
+        self._sound_server: pyo.Server = pyo.Server(sr=22050, duplex=0, nchnls=1, buffersize=1024).boot()
 
         self.track_titles: List[str] = ["- No Tracks -"]
 
@@ -210,7 +205,6 @@ class MusicEditor:
         # Used during playback
         self._track_data: List[List[TrackData]] = [[], [], [], []]
         self._track_position: List[int] = [0, 0, 0, 0]
-        self._track_volume: List[int] = [0, 0, 0, 0]
 
         # Starts from 1 and is decreased each frame. When 0, read next data segment.
         self._track_counter: List[int] = [1, 1, 1, 1]
@@ -222,8 +216,10 @@ class MusicEditor:
 
         # Threading
         self._play_thread: threading.Thread = threading.Thread()
+        self._update_thread: threading.Thread = threading.Thread()
         self._stop_event: threading.Event = threading.Event()   # Signals the playback thread that it should stop
         self._slow_event: threading.Event = threading.Event()   # Used by the playback thread to signal slow processing
+        self._playing: bool = False
 
         # Read notes period table
         _notes.clear()
@@ -351,8 +347,12 @@ class MusicEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def stop_playback(self) -> None:
+        self._playing = False
+        if self._update_thread.is_alive():
+            self._update_thread.join()
+
         if self._play_thread.is_alive():
-            self._stop_event.set()
+            # self._stop_event.set()
             self._play_thread.join()
             if self._slow_event.is_set():
                 self.warning("Slow playback detected! This may be due to too many non-note events in a track, or " +
@@ -360,10 +360,14 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def start_playback(self) -> None:
-        self._stop_event.clear()
+    def start_playback(self, update_tracker: bool = False) -> None:
+        # self._stop_event.clear()
+        self._playing = True
         self._play_thread = threading.Thread(target=self._play_loop, args=())
         self._play_thread.start()
+        if update_tracker:
+            self._update_thread = threading.Thread(target=self._tracker_update_loop, args=())
+            self._update_thread.start()
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -438,7 +442,7 @@ class MusicEditor:
                 for c in range(4):
                     self.app.label(f"SE_Label_Channel_{c}", channel_names[c], sticky="SEW",
                                    row=0, column=c, font=10)
-                    self.app.listBox(f"SE_List_Channel_{c}", None, multi=False, group=False, fixed_scrollbar=True,
+                    self.app.listBox(f"SE_List_Channel_{c}", None, multi=False, group=True, fixed_scrollbar=True,
                                      width=24, height=20, sticky="NEW", bg=colour.BLACK, fg=colour.MEDIUM_GREY,
                                      row=1, column=c, font=9).configure(font="TkFixedFont")
 
@@ -908,7 +912,7 @@ class MusicEditor:
                 self.stop_playback()
                 self.app.setButtonImage(widget, "res/play.gif")
             else:
-                self.start_playback()
+                self.start_playback(True)
                 self.app.setButtonImage(widget, "res/stop.gif")
 
         else:
@@ -1152,8 +1156,21 @@ class MusicEditor:
                     self._track_data[0].append(TrackData.note(base_note + 7, note_length))
                     self._track_data[0].append(TrackData.note(base_note + 4, note_length))
                 self._track_data[0].append(TrackData.rewind(2))
-                # TODO "Mute" other channels
-                self.start_playback()
+                # "Mute" other channels
+                self._track_data[1] = []
+                self._track_data[1].append(TrackData.volume(0))
+                self._track_data[1].append(TrackData.rest(note_length))
+                self._track_data[1].append(TrackData.rewind(0))
+                self._track_data[2] = []
+                self._track_data[2].append(TrackData.volume(0))
+                self._track_data[2].append(TrackData.rest(note_length))
+                self._track_data[2].append(TrackData.rewind(0))
+                self._track_data[3] = []
+                self._track_data[3].append(TrackData.volume(0))
+                self._track_data[3].append(TrackData.rest(note_length))
+                self._track_data[3].append(TrackData.rewind(0))
+
+                self.start_playback(False)
                 self.app.setButtonImage(widget, "res/stop.gif")
 
         else:
@@ -1337,6 +1354,39 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _tracker_update_loop(self) -> None:
+        # Approximate NTSC timing
+        frame_interval = 0.0166  # 1 / 60
+
+        last_played: List[int] = [self._track_position[0],
+                                  self._track_position[1],
+                                  self._track_position[2],
+                                  self._track_position[3]]
+
+        widgets: List[str] = ["SE_List_Channel_0", "SE_List_Channel_1", "SE_List_Channel_2", "SE_List_Channel_3"]
+
+        self.app.selectListItemAtPos(widgets[0], (last_played[0] << 1) + 1, callFunction=False)
+        self.app.selectListItemAtPos(widgets[1], (last_played[1] << 1) + 1, callFunction=False)
+        self.app.selectListItemAtPos(widgets[2], (last_played[2] << 1) + 1, callFunction=False)
+        self.app.selectListItemAtPos(widgets[3], (last_played[3] << 1) + 1, callFunction=False)
+
+        while self._playing:
+            start_time = time.time()
+
+            for c in range(2):
+                if self._track_position[c] == last_played[c]:
+                    pass
+                else:
+                    # Select currently playing item
+                    last_played[c] = self._track_position[c]
+                    self.app.selectListItemAtPos(widgets[c], (last_played[c] << 1) + 1, callFunction=False)
+
+            interval = frame_interval - (time.time() - start_time)
+            if interval >= 0:
+                time.sleep(interval)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _play_loop(self) -> None:
         if self._sound_server.getIsBooted() < 1:
             self._sound_server.boot()
@@ -1355,11 +1405,6 @@ class MusicEditor:
         # 12.5% duty
         table_d0: List[Tuple[int, float]] = [(0, 0), (1, 1), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
                                              (8, 0), (9, 1), (10, 0), (11, 0), (12, 0), (13, 0), (14, 0), (15, 0)]
-        # table_d0 = []
-        # for t in range(16):
-        #    table_d0.append((t, 0))
-        # table_d0[1] = (1, 1)
-        # table_d0[8] = (8, 1)
 
         # 25% duty / 75%
         # table_d1 = [(0, 0), (1, 1), (2, 1), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0)]
@@ -1379,65 +1424,85 @@ class MusicEditor:
         table_flat[1] = (1, 0)
         table_flat[9] = (9, 0)
 
-        # Pre-calculated volume levels table
-        volumes: List[float] = [0, 0.12, 0.25, 0.37, 0.5, 0.62, 0.75, 0.87, 1]
+        # Pre-calculated volume levels table (volume can be 0-15)
+        volume_tables: List[List[float]] = [[0, 0, 0, 0, 0, 0, 0, 0, 0],                        # 0: Muted
+                                            [0.0] + [round(x / 48, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 44, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 40, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 36, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 32, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 28, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 26, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 24, 2) for x in range(1, 9)],    # 8: Half volume
+                                            [0.0] + [round(x / 22, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 20, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 18, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 16, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 15, 2) for x in range(1, 9)],
+                                            [0.0] + [round(x / 14, 2) for x in range(1, 9)],
+                                            [0.0] + [x / 13 for x in range(1, 9)]]               # 15: Max volume
 
-        wave_table: List[pyo.LinTable] = [pyo.LinTable(table_d2, size=32)] * 4
+        # All channels start muted
+        channel_volume = [volume_tables[0], volume_tables[0], volume_tables[0], volume_tables[0]]
+
+        wave_table: List[pyo.LinTable] = [pyo.LinTable(table_d2, size=32),
+                                          pyo.LinTable(table_d2, size=32),
+                                          pyo.LinTable(table_d2, size=32),
+                                          pyo.LinTable(table_d2, size=32)]
         # square0_table.view()
 
         channel_instrument: List[int] = [0] * 4
         # Envelope trigger points
-        channel_triggers: List[int] = [0, 0, 0]
+        channel_triggers: List[List[int]] = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
 
         channel_freq: List[int] = [0, 0, 0, 0]
         channel_oscillator: List[pyo.Osc] = [
-            pyo.Osc(table=wave_table[0], freq=channel_freq[0], phase=[0, 0], interp=0,
-                    mul=_VOLUME[self._track_volume[0]]).out(),
-            pyo.Osc(table=wave_table[1], freq=channel_freq[1], phase=[0, 0], interp=0,
-                    mul=_VOLUME[self._track_volume[1]]).out(),
-            pyo.Osc(table=wave_table[2], freq=channel_freq[2], phase=[0, 0], interp=0,
-                    mul=_VOLUME[self._track_volume[2]]).out(),
-            pyo.Osc(table=wave_table[3], freq=channel_freq[3], phase=[0, 0], interp=0,
-                    mul=_VOLUME[self._track_volume[3]]).out()]
+            pyo.Osc(table=wave_table[0], freq=channel_freq[0], phase=[0, 0], interp=0).out(),
+            pyo.Osc(table=wave_table[1], freq=channel_freq[1], phase=[0, 0], interp=0).out(),
+            pyo.Osc(table=wave_table[2], freq=channel_freq[2], phase=[0, 0], interp=0).out(),
+            pyo.Osc(table=wave_table[3], freq=channel_freq[3], phase=[0, 0], interp=0).out()]
 
-        self._track_counter[0] = 1      # Count down from here
-        self._track_position[0] = 0     # Start from the first item in the track
+        self._track_counter = [1, 1, 1, 1]      # Count down from here
+        self._track_position = [0, 0, 0, 0]     # Start from the first item in the track
 
         self._slow_event.clear()
 
-        while not self._stop_event.is_set():
+        # while not self._stop_event.is_set():
+        while self._playing:
             start_time = time.time()
-            # --- Square Wave 0 ---
 
+            # Putting these in a loop will slow playback down significantly. Sorry!
+            c = 0
             # Decrease counter
-            # Note that the initial value should be 1, so on the first iteration we immediately read the first segment
-            self._track_counter[0] -= 1
+            # Note that the initial value should be 1, so on the first iteration we immediately read
+            # the first segment
+            self._track_counter[c] -= 1
 
             # Keep reading data segments until we find a rest or a note
-            while self._track_counter[0] < 1:
-                track_data = self._track_data[0][self._track_position[0]]
-                self._track_position[0] += 1
+            while self._track_counter[c] < 1:
+                track_data = self._track_data[c][self._track_position[c]]
+                self._track_position[c] += 1
 
                 # Interpret this data
 
                 # Notes are the most common
                 if track_data.function == TrackData.PLAY_NOTE:
-                    self._track_counter[0] = track_data.note_value.duration     # This will end this loop
+                    self._track_counter[c] = track_data.note_value.duration     # This will end this loop
 
                     # Frequency
-                    channel_oscillator[0].setFreq(track_data.note_value.frequency)
+                    channel_oscillator[c].setFreq(track_data.note_value.frequency)
 
-                    instrument = self._instruments[channel_instrument[0]]
+                    instrument = self._instruments[channel_instrument[c]]
 
                     # Envelope trigger points for the current instrument
                     # This tell us when to switch to the next envelope
-                    channel_triggers[0] = track_data.note_value.duration
+                    channel_triggers[c][0] = track_data.note_value.duration
 
-                    channel_triggers[1] = track_data.note_value.duration - instrument.size(0)
-                    if channel_triggers[1] < 0:
-                        channel_triggers[1] = 0
+                    channel_triggers[c][1] = track_data.note_value.duration - instrument.size(0)
+                    if channel_triggers[c][1] < 0:
+                        channel_triggers[c][1] = 0
 
-                    value = channel_triggers[1] - instrument.size(2)
+                    value = channel_triggers[c][1] - instrument.size(2)
                     if value < 0:
                         value = 0
 
@@ -1445,16 +1510,17 @@ class MusicEditor:
                     if value >= instrument.size(1):
                         value = instrument.size(1)
 
-                    channel_triggers[2] = channel_triggers[1] - value
+                    channel_triggers[c][2] = channel_triggers[c][1] - value
 
                 # Rests are the second most common item in any track
                 elif track_data.function == TrackData.REST:
-                    self._track_counter[0] = track_data.rest_duration
+                    self._track_counter[c] = track_data.rest_duration
                     # Use flat wave to generate the "silence" rather than lowering the volume
-                    wave_table[0].replace(table_flat)
+                    # wave_table[c].replace(table_flat)
+                    channel_oscillator[c].setFreq(0)
 
                 elif track_data.function == TrackData.SELECT_INSTRUMENT:
-                    channel_instrument[0] = track_data.instrument_index
+                    channel_instrument[c] = track_data.instrument_index
                     # Counter is now 0
 
                 elif track_data.function == TrackData.SET_VIBRATO:
@@ -1462,42 +1528,47 @@ class MusicEditor:
                     pass
 
                 elif track_data.function == TrackData.CHANNEL_VOLUME:
-                    self._track_volume[0] = track_data.channel_volume
-                    channel_oscillator[0].setMul(_VOLUME[self._track_volume[0]])
+                    channel_volume[c] = volume_tables[track_data.channel_volume]
                     # Note that counter will be 0 now, so we will read another segment
 
                 elif track_data.function == TrackData.REWIND:
-                    # TODO Terminate playback if loop option unchecked
-                    self._track_position[0] = track_data.loop_position
+                    # TODO Terminate playback if loop option unchecked, something like:
+                    # if not self._loop:
+                    #   self._playing = False
+                    self._track_position[c] = track_data.loop_position
                     # Counter should now be 0
 
                 # Ignore anything else ($3C-$FA control bytes)
 
             # Generate / manipulate sound
-            if self._track_counter[0] > 1:
+            if self._track_counter[c] > 1:
                 # Keep playing the current note
 
                 # Choose one of the 3 envelopes in the current instrument based on trigger points
-                position = self._track_counter[0]
                 envelope = 0
-                if position < channel_triggers[1]:
-                    if position < channel_triggers[2]:
+                if self._track_counter[c] < channel_triggers[c][1]:
+                    if self._track_counter[c] < channel_triggers[c][2]:
                         envelope = 2
                     else:
                         envelope = 1
 
-                index = channel_triggers[envelope] - position + 1
-                if index < 0:
+                index = channel_triggers[c][envelope] - self._track_counter[c] + 1
+                if index > self._instruments[channel_instrument[c]].envelope[envelope][0]:
+                    index = self._instruments[channel_instrument[c]].envelope[envelope][0]
+                elif index < 0:
                     index = 1
-                duty = self._instruments[channel_instrument[0]].duty(envelope, index)
+
+                # duty = self._instruments[channel_instrument[c]].duty(envelope, index)
+                duty = self._instruments[channel_instrument[c]].envelope[envelope][index] >> 6
                 # Use pre-calculated volume levels
-                # volume = self._instruments[square0_instrument].volume(envelope, index) / 8
-                volume = volumes[self._instruments[channel_instrument[0]].volume(envelope, index)]
+                volume = channel_volume[c][(self._instruments[channel_instrument[c]].envelope[envelope][index] &
+                                            0x3F) >> 1]
+
                 # Update duty cycle and volume according to envelopes
                 if duty == 0:       # 12.5% duty
                     table_d0[1] = (1, volume)
                     table_d0[8] = (8, volume)
-                    wave_table[0].replace(table_d0)
+                    wave_table[c].replace(table_d0)
                 elif duty == 2:     # 50% duty
                     table_d2[1] = (1, volume)
                     table_d2[2] = (2, volume)
@@ -1507,13 +1578,130 @@ class MusicEditor:
                     table_d2[9] = (9, volume)
                     table_d2[10] = (10, volume)
                     table_d2[11] = (11, volume)
-                    wave_table[0].replace(table_d2)
+                    wave_table[c].replace(table_d2)
                 else:               # 25% and 75% duty
                     table_d1[1] = (1, volume)
                     table_d1[2] = (2, volume)
                     table_d1[8] = (8, volume)
                     table_d1[9] = (9, volume)
-                    wave_table[0].replace(table_d1)
+                    wave_table[c].replace(table_d1)
+
+            # --- SQUARE WAVE 1 ---
+            c = 1
+            # Decrease counter
+            # Note that the initial value should be 1, so on the first iteration we immediately read
+            # the first segment
+            self._track_counter[c] -= 1
+
+            # Keep reading data segments until we find a rest or a note
+            while self._track_counter[c] < 1:
+                track_data = self._track_data[c][self._track_position[c]]
+                self._track_position[c] += 1
+
+                # Interpret this data
+
+                # Notes are the most common
+                if track_data.function == TrackData.PLAY_NOTE:
+                    self._track_counter[c] = track_data.note_value.duration  # This will end this loop
+
+                    # Frequency
+                    channel_oscillator[c].setFreq(track_data.note_value.frequency)
+
+                    instrument = self._instruments[channel_instrument[c]]
+
+                    # Envelope trigger points for the current instrument
+                    # This tell us when to switch to the next envelope
+                    channel_triggers[c][0] = track_data.note_value.duration
+
+                    channel_triggers[c][1] = track_data.note_value.duration - instrument.size(0)
+                    if channel_triggers[c][1] < 0:
+                        channel_triggers[c][1] = 0
+
+                    value = channel_triggers[c][1] - instrument.size(2)
+                    if value < 0:
+                        value = 0
+
+                    # Take the smallest between this value of the size of the previous envelope
+                    if value >= instrument.size(1):
+                        value = instrument.size(1)
+
+                    channel_triggers[c][2] = channel_triggers[c][1] - value
+
+                # Rests are the second most common item in any track
+                elif track_data.function == TrackData.REST:
+                    self._track_counter[c] = track_data.rest_duration
+                    # Use flat wave to generate the "silence" rather than lowering the volume
+                    # wave_table[c].replace(table_flat)
+                    channel_oscillator[c].setFreq(0)
+
+                elif track_data.function == TrackData.SELECT_INSTRUMENT:
+                    channel_instrument[c] = track_data.instrument_index
+                    # Counter is now 0
+
+                elif track_data.function == TrackData.SET_VIBRATO:
+                    # TODO Implement vibrato / change triangle channel octave offset
+                    pass
+
+                elif track_data.function == TrackData.CHANNEL_VOLUME:
+                    channel_volume[c] = volume_tables[track_data.channel_volume]
+                    # Note that counter will be 0 now, so we will read another segment
+
+                elif track_data.function == TrackData.REWIND:
+                    # TODO Terminate playback if loop option unchecked, something like:
+                    # if not self._loop:
+                    #   self._playing = False
+                    self._track_position[c] = track_data.loop_position
+                    # Counter should now be 0
+
+                # Ignore anything else ($3C-$FA control bytes)
+
+            # Generate / manipulate sound
+            if self._track_counter[c] > 1:
+                # Keep playing the current note
+
+                # Choose one of the 3 envelopes in the current instrument based on trigger points
+                envelope = 0
+                if self._track_counter[c] < channel_triggers[c][1]:
+                    if self._track_counter[c] < channel_triggers[c][2]:
+                        envelope = 2
+                    else:
+                        envelope = 1
+
+                index = channel_triggers[c][envelope] - self._track_counter[c] + 1
+                if index > self._instruments[channel_instrument[c]].envelope[envelope][0]:
+                    index = self._instruments[channel_instrument[c]].envelope[envelope][0]
+                elif index < 0:
+                    index = 1
+
+                # duty = self._instruments[channel_instrument[c]].duty(envelope, index)
+                duty = self._instruments[channel_instrument[c]].envelope[envelope][index] >> 6
+                # Use pre-calculated volume levels
+                volume = channel_volume[c][(self._instruments[channel_instrument[c]].envelope[envelope][index] &
+                                            0x3F) >> 1]
+
+                # Update duty cycle and volume according to envelopes
+                if duty == 0:  # 12.5% duty
+                    table_d0[1] = (1, volume)
+                    table_d0[8] = (8, volume)
+                    wave_table[c].replace(table_d0)
+                elif duty == 2:  # 50% duty
+                    table_d2[1] = (1, volume)
+                    table_d2[2] = (2, volume)
+                    table_d2[3] = (3, volume)
+                    table_d2[4] = (4, volume)
+                    table_d2[8] = (8, volume)
+                    table_d2[9] = (9, volume)
+                    table_d2[10] = (10, volume)
+                    table_d2[11] = (11, volume)
+                    wave_table[c].replace(table_d2)
+                else:  # 25% and 75% duty
+                    table_d1[1] = (1, volume)
+                    table_d1[2] = (2, volume)
+                    table_d1[8] = (8, volume)
+                    table_d1[9] = (9, volume)
+                    wave_table[c].replace(table_d1)
+
+            # --- End of channel data ---
 
             interval = frame_interval - (time.time() - start_time)
             if interval >= 0:
@@ -1521,7 +1709,7 @@ class MusicEditor:
             else:
                 self._slow_event.set()
 
-            # time.sleep(frame_interval)
+        # --- End of playback loop ---
 
         channel_oscillator[0].stop()
         channel_oscillator[1].stop()
