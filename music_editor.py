@@ -1373,7 +1373,7 @@ class MusicEditor:
         while self._playing:
             start_time = time.time()
 
-            for c in range(2):
+            for c in range(3):
                 if self._track_position[c] == last_played[c]:
                     pass
                 else:
@@ -1420,9 +1420,11 @@ class MusicEditor:
         table_d2[10] = (10, 1)
         table_d2[11] = (11, 1)
 
+        """
         table_flat = table_d0.copy()
         table_flat[1] = (1, 0)
         table_flat[9] = (9, 0)
+        """
 
         # Pre-calculated volume levels table (volume can be 0-15)
         volume_tables: List[List[float]] = [[0, 0, 0, 0, 0, 0, 0, 0, 0],                        # 0: Muted
@@ -1445,11 +1447,11 @@ class MusicEditor:
         # All channels start muted
         channel_volume = [volume_tables[0], volume_tables[0], volume_tables[0], volume_tables[0]]
 
-        wave_table: List[pyo.LinTable] = [pyo.LinTable(table_d2, size=32),
-                                          pyo.LinTable(table_d2, size=32),
-                                          pyo.LinTable(table_d2, size=32),
-                                          pyo.LinTable(table_d2, size=32)]
-        # square0_table.view()
+        wave_table = [pyo.LinTable(table_d2, size=32),      # Square wave 0
+                      pyo.LinTable(table_d2, size=32),      # Square wave 1
+                      pyo.TriangleTable(order=1, size=32).mul(0.2),  # Triangle wave, more or less...
+                      pyo.LinTable(table_d2, size=32)]      # Noise wave
+        # wave_table[2].view()
 
         channel_instrument: List[int] = [0] * 4
         # Envelope trigger points
@@ -1467,13 +1469,20 @@ class MusicEditor:
 
         self._slow_event.clear()
 
+        # Triangle channel's notes will go up one octave when this is True
+        # Instead of changing the note index, like in the game, we will halve the frequency when not set
+        triangle_octave = False
+
+        c = 0   # Currently playing channel
+
         # while not self._stop_event.is_set():
         while self._playing:
             start_time = time.time()
 
             # Putting these in a loop will slow playback down significantly. Sorry!
-            c = 0
-            # Decrease counter
+
+            # --- SQUARE WAVE 0 ---
+
             # Note that the initial value should be 1, so on the first iteration we immediately read
             # the first segment
             self._track_counter[c] -= 1
@@ -1524,10 +1533,12 @@ class MusicEditor:
                     # Counter is now 0
 
                 elif track_data.function == TrackData.SET_VIBRATO:
-                    # TODO Implement vibrato / change triangle channel octave offset
-                    pass
+                    # TODO Implement vibrato
+                    # Change triangle channel octave offset
+                    triangle_octave = track_data.triangle_octave
 
                 elif track_data.function == TrackData.CHANNEL_VOLUME:
+                    # The triangle channel is only either on or off
                     channel_volume[c] = volume_tables[track_data.channel_volume]
                     # Note that counter will be 0 now, so we will read another segment
 
@@ -1588,9 +1599,7 @@ class MusicEditor:
 
             # --- SQUARE WAVE 1 ---
             c = 1
-            # Decrease counter
-            # Note that the initial value should be 1, so on the first iteration we immediately read
-            # the first segment
+
             self._track_counter[c] -= 1
 
             # Keep reading data segments until we find a rest or a note
@@ -1598,9 +1607,6 @@ class MusicEditor:
                 track_data = self._track_data[c][self._track_position[c]]
                 self._track_position[c] += 1
 
-                # Interpret this data
-
-                # Notes are the most common
                 if track_data.function == TrackData.PLAY_NOTE:
                     self._track_counter[c] = track_data.note_value.duration  # This will end this loop
 
@@ -1627,7 +1633,6 @@ class MusicEditor:
 
                     channel_triggers[c][2] = channel_triggers[c][1] - value
 
-                # Rests are the second most common item in any track
                 elif track_data.function == TrackData.REST:
                     self._track_counter[c] = track_data.rest_duration
                     # Use flat wave to generate the "silence" rather than lowering the volume
@@ -1636,7 +1641,6 @@ class MusicEditor:
 
                 elif track_data.function == TrackData.SELECT_INSTRUMENT:
                     channel_instrument[c] = track_data.instrument_index
-                    # Counter is now 0
 
                 elif track_data.function == TrackData.SET_VIBRATO:
                     # TODO Implement vibrato / change triangle channel octave offset
@@ -1647,11 +1651,7 @@ class MusicEditor:
                     # Note that counter will be 0 now, so we will read another segment
 
                 elif track_data.function == TrackData.REWIND:
-                    # TODO Terminate playback if loop option unchecked, something like:
-                    # if not self._loop:
-                    #   self._playing = False
                     self._track_position[c] = track_data.loop_position
-                    # Counter should now be 0
 
                 # Ignore anything else ($3C-$FA control bytes)
 
@@ -1701,7 +1701,67 @@ class MusicEditor:
                     table_d1[9] = (9, volume)
                     wave_table[c].replace(table_d1)
 
+            # --- TRIANGLE WAVE ---
+            c = 2
+
+            self._track_counter[c] -= 1
+
+            # Keep reading data segments until we find a rest or a note
+            while self._track_counter[c] < 1:
+                track_data = self._track_data[c][self._track_position[c]]
+                self._track_position[c] += 1
+
+                if track_data.function == TrackData.PLAY_NOTE:
+                    self._track_counter[c] = track_data.note_value.duration  # This will end this loop
+
+                    # Frequency
+                    if triangle_octave is True:
+                        channel_oscillator[c].setFreq(track_data.note_value.frequency << 1)
+                    else:
+                        channel_oscillator[c].setFreq(track_data.note_value.frequency)
+
+                    # This channel does not use instruments / envelopes, because it does not have volume / duty
+
+                elif track_data.function == TrackData.REST:
+                    self._track_counter[c] = track_data.rest_duration
+                    # Use flat wave to generate the "silence" rather than lowering the volume
+                    # wave_table[c].replace(table_flat)
+                    channel_oscillator[c].setFreq(0)
+
+                elif track_data.function == TrackData.SELECT_INSTRUMENT:
+                    channel_instrument[c] = track_data.instrument_index
+
+                elif track_data.function == TrackData.SET_VIBRATO:
+                    # TODO Implement vibrato
+                    # Change triangle channel octave offset
+                    if track_data.raw[1] == 0xFF:
+                        triangle_octave = True
+                    else:
+                        triangle_octave = False
+
+                elif track_data.function == TrackData.CHANNEL_VOLUME:
+                    if track_data.channel_volume == 15:
+                        wave_table[c].setOrder(1)
+                        wave_table[c].mul(0.25)
+                    else:
+                        wave_table[c].setOrder(0)
+                    # Note that counter will be 0 now, so we will read another segment
+
+                elif track_data.function == TrackData.REWIND:
+                    self._track_position[c] = track_data.loop_position
+
+                # Ignore anything else ($3C-$FA control bytes)
+
+            # Generate / manipulate sound
+            if self._track_counter[c] > 1:
+                # Keep playing the current note
+                # TODO Vibrato?
+                pass
+
             # --- End of channel data ---
+
+            # Restart from channel 0
+            c = 0
 
             interval = frame_interval - (time.time() - start_time)
             if interval >= 0:
