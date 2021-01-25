@@ -2,6 +2,7 @@ __author__ = "Fox Cunning"
 
 import configparser
 import os
+import sys
 import threading
 import time
 
@@ -15,6 +16,7 @@ import colour
 from appJar import gui
 from appJar.appjar import ItemLookupError
 from debug import log
+from editor_settings import EditorSettings
 from rom import ROM
 
 
@@ -81,7 +83,7 @@ class Note:
     def __init__(self, index: int = 0, duration: int = 0):
         global _notes
 
-        self._index: int = index
+        self.index: int = index
         self.duration: int = duration
 
         # From the NESDev Wiki:
@@ -92,7 +94,7 @@ class Note:
         else:
             period = 0x6AB  # A default value to use until notes are loaded
 
-        self.frequency: int = int(self.CPU_FREQ / ((period + 1) << 4))
+        self.frequency: int = self.CPU_FREQ // ((period + 1) << 4)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -169,7 +171,7 @@ class TrackData:
 
 class MusicEditor:
 
-    def __init__(self, app: gui, rom: ROM):
+    def __init__(self, app: gui, rom: ROM, settings: EditorSettings):
         self.app = app
         self.rom = rom
 
@@ -183,8 +185,14 @@ class MusicEditor:
         self._instruments: List[Instrument] = []
         self._selected_instrument: int = 0
 
-        # TODO Allow users to choose sample rate, buffer size and Windows host API?
-        self._sound_server: pyo.Server = pyo.Server(sr=22050, duplex=0, nchnls=1, buffersize=1024).boot()
+        # TODO Allow users to choose more options via settings
+        if sys.platform == "win32":
+            self._sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
+                                                        winhost=settings.get("audio host"), buffersize=1024).boot()
+        else:
+            self._sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
+                                                        buffersize=1024).boot()
+        self._sound_server.setAmp(0.2)
 
         self.track_titles: List[str] = ["- No Tracks -"]
 
@@ -349,11 +357,16 @@ class MusicEditor:
     def stop_playback(self) -> None:
         self._playing = False
         if self._update_thread.is_alive():
-            self._update_thread.join()
+            self._update_thread.join(5)
+            if self._update_thread.is_alive():
+                self.warning("Timeout waiting for UI update thread.")
 
         if self._play_thread.is_alive():
-            # self._stop_event.set()
-            self._play_thread.join()
+            self._play_thread.join(5)
+            if self._play_thread.is_alive():
+                self.warning("Timeout waiting for playback thread.")
+                self._sound_server.stop()
+
             if self._slow_event.is_set():
                 self.warning("Slow playback detected! This may be due to too many non-note events in a track, or " +
                              "a slow machine, or slow audio host API.")
@@ -363,11 +376,19 @@ class MusicEditor:
     def start_playback(self, update_tracker: bool = False) -> None:
         # self._stop_event.clear()
         self._playing = True
-        self._play_thread = threading.Thread(target=self._play_loop, args=())
-        self._play_thread.start()
+
+        if self._play_thread.is_alive():
+            self.warning("Playback thread already running!")
+        else:
+            self._play_thread = threading.Thread(target=self._play_loop, args=())
+            self._play_thread.start()
+
         if update_tracker:
-            self._update_thread = threading.Thread(target=self._tracker_update_loop, args=())
-            self._update_thread.start()
+            if self._update_thread.is_alive():
+                self.warning("UI Update thread already running!")
+            else:
+                self._update_thread = threading.Thread(target=self._tracker_update_loop, args=())
+                self._update_thread.start()
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -442,7 +463,7 @@ class MusicEditor:
                 for c in range(4):
                     self.app.label(f"SE_Label_Channel_{c}", channel_names[c], sticky="SEW",
                                    row=0, column=c, font=10)
-                    self.app.listBox(f"SE_List_Channel_{c}", None, multi=False, group=True, fixed_scrollbar=True,
+                    self.app.listBox(f"SE_List_Channel_{c}", None, multi=True, group=True, fixed_scrollbar=True,
                                      width=24, height=20, sticky="NEW", bg=colour.BLACK, fg=colour.MEDIUM_GREY,
                                      row=1, column=c, font=9).configure(font="TkFixedFont")
 
@@ -907,11 +928,25 @@ class MusicEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _track_input(self, widget: str) -> None:
-        if widget == "SE_Play_Stop":
+        if widget == "SE_Button_Cancel":
+            self.close_track_editor()
+
+        elif widget == "SE_Play_Stop":
             if self._play_thread.is_alive():
                 self.stop_playback()
                 self.app.setButtonImage(widget, "res/play.gif")
+                self.app.setListBoxMulti(f"SE_List_Channel_0", multi=True)
+                self.app.setListBoxMulti(f"SE_List_Channel_1", multi=True)
+                self.app.setListBoxMulti(f"SE_List_Channel_2", multi=True)
+                self.app.setListBoxMulti(f"SE_List_Channel_3", multi=True)
+
             else:
+                # Leaving multiple selection active during playback messes up the interface
+                self.app.setListBoxMulti(f"SE_List_Channel_0", multi=False)
+                self.app.setListBoxMulti(f"SE_List_Channel_1", multi=False)
+                self.app.setListBoxMulti(f"SE_List_Channel_2", multi=False)
+                self.app.setListBoxMulti(f"SE_List_Channel_3", multi=False)
+
                 self.start_playback(True)
                 self.app.setButtonImage(widget, "res/stop.gif")
 
@@ -1195,7 +1230,7 @@ class MusicEditor:
         count = instrument.envelope[0][0] + instrument.envelope[1][0] + instrument.envelope[2][0]
 
         # Calculate the width of each segment in our line
-        length = int(width / count)
+        length = width // count
         if length < 8:
             length = 8
             line_width = 1  # Make the line thinner if it gets too crowded
@@ -1269,7 +1304,7 @@ class MusicEditor:
 
         # This will be the length of each "segment" of the line
         canvas_width = canvas.winfo_reqwidth()
-        length = int(canvas_width / envelope[0])
+        length = canvas_width // envelope[0]
         if length < 5:
             length = 5
 
@@ -1308,12 +1343,12 @@ class MusicEditor:
 
         # Each bar's width will depend on how many entries are in this envelope, and how big the canvas is
         # Note: the canvas is 140x140
-        width = int(canvas.winfo_reqwidth() / envelope[0])
+        width = canvas.winfo_reqwidth() // envelope[0]
         if width < 4:
             width = 4
 
         canvas_height = canvas.winfo_reqheight()
-        v_ratio = int(canvas_height / 8) - 4
+        v_ratio = (canvas_height // 8) - 4
         min_height = canvas_height - 4
 
         for v in range(1, len(envelope)):
@@ -1402,23 +1437,22 @@ class MusicEditor:
         frame_interval = 0.0166  # 1 / 60
 
         # Pre-build square wave tables
+        flat_table: List[Tuple[int, float]] = [(x, 0.0) for x in range(16)]
+
         # 12.5% duty
-        table_d0: List[Tuple[int, float]] = [(0, 0), (1, 1), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
-                                             (8, 0), (9, 1), (10, 0), (11, 0), (12, 0), (13, 0), (14, 0), (15, 0)]
+        table_d0 = flat_table.copy()
 
         # 25% duty / 75%
-        # table_d1 = [(0, 0), (1, 1), (2, 1), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0)]
         table_d1 = table_d0.copy()
         table_d1[2] = (2, 1)
-        table_d1[9] = (9, 1)
+        table_d1[9] = (10, 1)
 
         # 50% duty
-        # table_d2 = [(0, 0), (1, 1), (2, 1), (3, 1), (4, 1), (5, 0), (6, 0), (7, 0)]
         table_d2 = table_d1.copy()
         table_d2[3] = (3, 1)
         table_d2[4] = (4, 1)
-        table_d2[10] = (10, 1)
-        table_d2[11] = (11, 1)
+        table_d2[10] = (11, 1)
+        table_d2[11] = (12, 1)
 
         """
         table_flat = table_d0.copy()
@@ -1428,29 +1462,29 @@ class MusicEditor:
 
         # Pre-calculated volume levels table (volume can be 0-15)
         volume_tables: List[List[float]] = [[0, 0, 0, 0, 0, 0, 0, 0, 0],                        # 0: Muted
-                                            [0.0] + [round(x / 48, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 44, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 40, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 36, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 32, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 28, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 26, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 24, 2) for x in range(1, 9)],    # 8: Half volume
-                                            [0.0] + [round(x / 22, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 20, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 18, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 16, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 15, 2) for x in range(1, 9)],
-                                            [0.0] + [round(x / 14, 2) for x in range(1, 9)],
-                                            [0.0] + [x / 13 for x in range(1, 9)]]               # 15: Max volume
+                                            [0.0] + [round(x / 82, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 80, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 78, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 74, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 72, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 70, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 68, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 64, 3) for x in range(1, 9)],    # 8: Half volume
+                                            [0.0] + [round(x / 62, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 60, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 58, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 56, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 54, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 52, 3) for x in range(1, 9)],
+                                            [0.0] + [round(x / 50, 3) for x in range(1, 9)]]    # 15: Max volume
 
         # All channels start muted
         channel_volume = [volume_tables[0], volume_tables[0], volume_tables[0], volume_tables[0]]
 
-        wave_table = [pyo.LinTable(table_d2, size=32),      # Square wave 0
-                      pyo.LinTable(table_d2, size=32),      # Square wave 1
+        wave_table = [pyo.LinTable(flat_table, size=32),      # Square wave 0
+                      pyo.LinTable(flat_table, size=32),      # Square wave 1
                       pyo.TriangleTable(order=1, size=32).mul(0.2),  # Triangle wave, more or less...
-                      pyo.LinTable(table_d2, size=32)]      # Noise wave
+                      pyo.LinTable(flat_table, size=32)]      # Noise wave
         # wave_table[2].view()
 
         channel_instrument: List[int] = [0] * 4
@@ -1534,18 +1568,13 @@ class MusicEditor:
 
                 elif track_data.function == TrackData.SET_VIBRATO:
                     # TODO Implement vibrato
-                    # Change triangle channel octave offset
-                    triangle_octave = track_data.triangle_octave
+                    pass
 
                 elif track_data.function == TrackData.CHANNEL_VOLUME:
-                    # The triangle channel is only either on or off
                     channel_volume[c] = volume_tables[track_data.channel_volume]
                     # Note that counter will be 0 now, so we will read another segment
 
                 elif track_data.function == TrackData.REWIND:
-                    # TODO Terminate playback if loop option unchecked, something like:
-                    # if not self._loop:
-                    #   self._playing = False
                     self._track_position[c] = track_data.loop_position
                     # Counter should now be 0
 
@@ -1573,28 +1602,28 @@ class MusicEditor:
                 duty = self._instruments[channel_instrument[c]].envelope[envelope][index] >> 6
                 # Use pre-calculated volume levels
                 volume = channel_volume[c][(self._instruments[channel_instrument[c]].envelope[envelope][index] &
-                                            0x3F) >> 1]
+                                           0x3F) >> 1]
 
                 # Update duty cycle and volume according to envelopes
                 if duty == 0:       # 12.5% duty
                     table_d0[1] = (1, volume)
-                    table_d0[8] = (8, volume)
+                    table_d0[9] = (9, volume)
                     wave_table[c].replace(table_d0)
                 elif duty == 2:     # 50% duty
                     table_d2[1] = (1, volume)
                     table_d2[2] = (2, volume)
                     table_d2[3] = (3, volume)
                     table_d2[4] = (4, volume)
-                    table_d2[8] = (8, volume)
                     table_d2[9] = (9, volume)
                     table_d2[10] = (10, volume)
                     table_d2[11] = (11, volume)
+                    table_d2[12] = (12, volume)
                     wave_table[c].replace(table_d2)
-                else:               # 25% and 75% duty
+                else:               # 25% / 75% duty
                     table_d1[1] = (1, volume)
                     table_d1[2] = (2, volume)
-                    table_d1[8] = (8, volume)
                     table_d1[9] = (9, volume)
+                    table_d1[10] = (10, volume)
                     wave_table[c].replace(table_d1)
 
             # --- SQUARE WAVE 1 ---
@@ -1643,7 +1672,7 @@ class MusicEditor:
                     channel_instrument[c] = track_data.instrument_index
 
                 elif track_data.function == TrackData.SET_VIBRATO:
-                    # TODO Implement vibrato / change triangle channel octave offset
+                    # TODO Implement vibrato
                     pass
 
                 elif track_data.function == TrackData.CHANNEL_VOLUME:
@@ -1682,23 +1711,23 @@ class MusicEditor:
                 # Update duty cycle and volume according to envelopes
                 if duty == 0:  # 12.5% duty
                     table_d0[1] = (1, volume)
-                    table_d0[8] = (8, volume)
+                    table_d0[9] = (9, volume)
                     wave_table[c].replace(table_d0)
                 elif duty == 2:  # 50% duty
                     table_d2[1] = (1, volume)
                     table_d2[2] = (2, volume)
                     table_d2[3] = (3, volume)
                     table_d2[4] = (4, volume)
-                    table_d2[8] = (8, volume)
                     table_d2[9] = (9, volume)
                     table_d2[10] = (10, volume)
                     table_d2[11] = (11, volume)
+                    table_d2[12] = (12, volume)
                     wave_table[c].replace(table_d2)
                 else:  # 25% and 75% duty
                     table_d1[1] = (1, volume)
                     table_d1[2] = (2, volume)
-                    table_d1[8] = (8, volume)
                     table_d1[9] = (9, volume)
+                    table_d1[10] = (10, volume)
                     wave_table[c].replace(table_d1)
 
             # --- TRIANGLE WAVE ---
@@ -1742,7 +1771,7 @@ class MusicEditor:
                 elif track_data.function == TrackData.CHANNEL_VOLUME:
                     if track_data.channel_volume == 15:
                         wave_table[c].setOrder(1)
-                        wave_table[c].mul(0.25)
+                        wave_table[c].mul(0.5)
                     else:
                         wave_table[c].setOrder(0)
                     # Note that counter will be 0 now, so we will read another segment
