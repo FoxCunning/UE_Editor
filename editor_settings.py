@@ -22,7 +22,9 @@ class EditorSettings:
              "last map export path": "",
              "editor fonts": "Consolas",
              "sync npc sprites": True,
-             "fix envelope bug": True
+             "fix envelope bug": True,
+             "sample rate": 44100,
+             "audio host": "directsound"
              }
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -139,9 +141,12 @@ class EditorSettings:
                 else:
                     value = False
 
+            elif key == "sample rate":
+                value = int(value, 10)
+
             # Assign the value read from file
             self._keys[key] = value
-        except KeyError:
+        except KeyError or ValueError:
             log(2, "EDITOR", f"Invalid setting '{key}' in line '{line}'.")
 
         return
