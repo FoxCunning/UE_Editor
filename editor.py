@@ -2425,7 +2425,7 @@ if __name__ == "__main__":
             app.label("IE_Label_Temp", "...")
 
         # Track Editor Sub-Window --------------------------------------------------------------------------------------
-        with app.subWindow("Track_Editor", title="Track Editor", size=[900, 640], padding=[2, 0],
+        with app.subWindow("Track_Editor", title="Track Editor", size=[900, 720], padding=[2, 0],
                            modal=False, resizable=False, inPadding=0, guiPadding=0,
                            bg=colour.DARK_NAVY, fg=colour.WHITE):
             # noinspection PyArgumentList
