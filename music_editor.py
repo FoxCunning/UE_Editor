@@ -258,6 +258,8 @@ class MusicEditor:
                                                         buffersize=1024).boot()
         self._sound_server.setAmp(0.2)
 
+        self._triangle_volume = 0.2
+
         self.track_titles: List[str] = ["- No Tracks -"]
 
         # These are to quickly access our canvas widgets
@@ -446,13 +448,14 @@ class MusicEditor:
 
     def stop_playback(self) -> None:
         self._playing = False
+
         if self._update_thread.is_alive():
-            self._update_thread.join(5)
+            self._update_thread.join(1)
             if self._update_thread.is_alive():
                 self.warning("Timeout waiting for UI update thread.")
 
         if self._play_thread.is_alive():
-            self._play_thread.join(5)
+            self._play_thread.join(1)
             if self._play_thread.is_alive():
                 self.warning("Timeout waiting for playback thread.")
                 self._sound_server.stop()
@@ -533,37 +536,40 @@ class MusicEditor:
             # Buttons
             with self.app.frame("SE_Frame_Buttons", padding=[4, 2], sticky="NEW", row=0, column=0):
                 # Left
-                with self.app.frame("SE_Frame_File", padding=[4, 2], sticky="NW", row=0, column=0):
-                    self.app.button("SE_Button_Apply", self._track_input, image="res/floppy.gif", width=32, height=32,
-                                    tooltip="Apply changes to all channels", bg=colour.MEDIUM_GREY,
-                                    row=0, column=0)
-                    self.app.button("SE_Button_Reload", self._track_input, image="res/reload.gif", width=32, height=32,
-                                    tooltip="Reload track data from ROM", bg=colour.MEDIUM_GREY,
-                                    row=0, column=1)
-                    self.app.button("SE_Button_Cancel", self._track_input, image="res/close.gif", width=32, height=32,
-                                    tooltip="Cancel / Close window", bg=colour.MEDIUM_GREY,
-                                    row=0, column=2)
+                self.app.button("SE_Button_Apply", self._track_input, image="res/floppy.gif", width=32, height=32,
+                                tooltip="Apply changes to all channels", bg=colour.MEDIUM_GREY,
+                                sticky="W", row=0, column=0)
+                self.app.button("SE_Button_Import", self._track_input, image="res/import.gif", width=32, height=32,
+                                tooltip="Import FamiStudio / FamiTracker text file", bg=colour.MEDIUM_GREY,
+                                sticky="W", row=0, column=1)
+                self.app.button("SE_Button_Export", self._track_input, image="res/import.gif", width=32, height=32,
+                                tooltip="Export to FamiStudio / FamiTracker text file", bg=colour.MEDIUM_GREY,
+                                sticky="W", row=0, column=2)
+                self.app.button("SE_Button_Reload", self._track_input, image="res/reload.gif", width=32, height=32,
+                                tooltip="Reload track data from ROM", bg=colour.MEDIUM_GREY,
+                                sticky="W", row=0, column=3)
+                self.app.button("SE_Button_Cancel", self._track_input, image="res/close.gif", width=32, height=32,
+                                tooltip="Cancel / Close window", bg=colour.MEDIUM_GREY,
+                                sticky="W", row=0, column=4)
+
+                self.app.canvas("SE_Temp", width=250, height=20, row=0, column=5)
 
                 # Right
-                with self.app.frame("SE_Frame_Play_Controls", padding=[4, 2], sticky="NEW", row=0, column=2):
-                    self.app.label("SE_Label_Volume", "Master Volume", sticky="NE", row=0, column=0, font=10)
-                    self.app.scale("SE_Master_Volume", bg=colour.DARK_BLUE, fg=colour.WHITE,
-                                   range=(0, 100), length=250, sticky="NEW", row=0, column=1, font=9).bind(
-                        "<ButtonRelease-1>", self._set_master_volume, add='+')
-                    self.app.showScaleIntervals("SE_Master_Volume", 10)
-                    self.app.showScaleValue("SE_Master_Volume", True)
-
-                    self.app.button("SE_Play_Stop", self._track_input, image="res/play.gif", width=32, height=32,
-                                    tooltip="Start / Stop track playback", bg=colour.MEDIUM_GREY,
-                                    row=0, column=2)
-                    self.app.button("SE_Button_Info", self._track_input, image="res/info.gif", width=32, height=32,
-                                    tooltip="Show track info/statistics", bg=colour.MEDIUM_GREY,
-                                    row=0, column=3)
+                self.app.button("SE_Play_Stop", self._track_input, image="res/play.gif", width=32, height=32,
+                                tooltip="Start / Stop track playback", bg=colour.MEDIUM_GREY,
+                                sticky="E", row=0, column=6)
+                self.app.button("SE_Button_Rewind", self._track_input, image="res/rewind.gif", width=32, height=32,
+                                tooltip="Jump to the first element of each channel", bg=colour.MEDIUM_GREY,
+                                sticky="E", row=0, column=7)
+                self.app.button("SE_Button_Info", self._track_input, image="res/info.gif", width=32, height=32,
+                                tooltip="Show track info/statistics", bg=colour.MEDIUM_GREY,
+                                sticky="E", row=0, column=8)
 
             # Editing
             with self.app.frame("SE_Frame_Editing", sticky="NEWS", row=1, column=0):
                 # Editable track info
-                with self.app.labelFrame("SE_Frame_Track_Info", name="Track Info", padding=[4, 2], row=0, column=0):
+                with self.app.labelFrame("SE_Frame_Track_Info", name="Track Info", padding=[4, 2],
+                                         row=0, column=0, rowspan=2):
                     self.app.entry("SE_Track_Name", f"{self.read_track_titles()[track]}", width=24,
                                    row=0, column=0, colspan=3, font=9)
 
@@ -591,10 +597,15 @@ class MusicEditor:
                                     tooltip="Reload channel from this address",
                                     bg=colour.MEDIUM_BLUE, sticky="W", row=4, column=2)
 
-                # TODO Selection controls
+                # Selection info
+                with self.app.frame("SE_Frame_Selection_Info", padding=[4, 0], row=0, column=1, fg=colour.PALE_ORANGE):
+                    self.app.label("SE_Selection_Info_Channel", "Channel: (no selection)", sticky="W",
+                                   row=0, column=0, font=9)
+                    self.app.label("SE_Selection_Info_Element", "Element: (no selection)", sticky="W",
+                                   row=1, column=0, font=9)
 
                 # Element editing controls
-                with self.app.frameStack("SE_Stack_Editing", start=0, row=0, column=2):
+                with self.app.frameStack("SE_Stack_Editing", start=0, row=1, column=1):
                     with self.app.frame("SE_Frame_Empty", padding=[4, 4], bg=colour.DARK_NAVY, fg=colour.WHITE):
                         self.app.label("SE_Label_No_Selection", "No selection", font=12)
 
@@ -664,11 +675,9 @@ class MusicEditor:
                         self.app.label("SE_Label_Instrument", "EDIT INSTRUMENT", sticky="NW",
                                        row=0, column=0, font=12)
 
-                        self.app.label("SE_Label_Select_Instrument", "Instrument:",
-                                       sticky="W", row=1, column=0, font=10)
                         self.app.listBox("SE_Select_Instrument", instrument_names, change=self._element_input,
                                          bg=colour.DARK_ORANGE, fg=colour.PALE_TEAL, group=True, multi=False,
-                                         fixed_scrollbar=True, width=24, height=10, sticky="W", row=2, column=0, font=9)
+                                         fixed_scrollbar=True, width=27, height=9, sticky="W", row=1, column=0, font=9)
 
                     # Edit rewind
                     with self.app.frame("SE_Frame_Rewind", padding=[4, 4], bg=colour.DARK_MAGENTA,
@@ -703,6 +712,50 @@ class MusicEditor:
                         self.app.button("SE_Semitone_Down", self._element_input, image="res/semitone_down.gif",
                                         bg=colour.DARK_BLUE, sticky="SW", row=2, column=2)
 
+                # Selection controls
+                with self.app.frame("SE_Frame_Selection", padding=[4, 2], row=0, column=2, rowspan=2):
+                    self.app.label("SE_Label_Select", "Select Notes", sticky="NEW", row=0, column=0, font=12)
+
+                    with self.app.frame("SE_Frame_Selection_Buttons", padding=[4, 2], row=1, column=0):
+                        self.app.button("SE_Select_Channel_0", self._track_input, image="res/square_0.gif",
+                                        bg=colour.MEDIUM_GREEN, row=0, column=0)
+                        self.app.button("SE_Select_Channel_1", self._track_input, image="res/square_1.gif",
+                                        bg=colour.DARK_NAVY, row=0, column=1)
+                        self.app.button("SE_Select_Channel_2", self._track_input, image="res/triangle_wave.gif",
+                                        bg=colour.DARK_NAVY, row=0, column=2)
+                        self.app.button("SE_Select_Channel_3", self._track_input, image="res/noise_wave.gif",
+                                        bg=colour.DARK_NAVY, row=0, column=3)
+
+                    with self.app.frame("SE_Frame_Selection_Values", padding=[4, 2], row=2, column=0):
+                        self.app.label("SE_Label_Select_From", "All notes from:", sticky="E", row=0, column=0, font=10)
+                        self.app.entry("SE_Select_From", "C2", change=self._track_input, width=4,
+                                       sticky="W", row=0, column=1, font=9)
+                        self.app.label("SE_Label_Select_To", " to: ", sticky="E", row=0, column=2, font=10)
+                        self.app.entry("SE_Select_To", "C3", change=self._track_input, width=4,
+                                       sticky="W", row=0, column=3, font=9)
+
+                    self.app.button("SE_Apply_Selection", self._track_input, image="res/check_green-small.gif",
+                                    tooltip="Apply Selection",
+                                    bg=colour.DARK_NAVY, sticky="SEW", row=3, column=0)
+                    self.app.button("SE_Clear_Selection", self._track_input, image="res/clear_selection-small.gif",
+                                    tooltip="Clear Selection",
+                                    bg=colour.DARK_VIOLET, sticky="SEW", row=4, column=0)
+
+                # Volume controls
+                with self.app.frame("SE_Frame_Volumes", padding=[8, 2], row=0, column=3, rowspan=2):
+                    self.app.label("SE_Label_Volume", "Master Volume", sticky="NE", row=0, column=0, font=10)
+                    self.app.scale("SE_Master_Volume", bg=colour.DARK_BLUE, fg=colour.WHITE,
+                                   direction="vertical", show=True, interval=20,
+                                   range=(100, 0), length=200, sticky="NEW", row=1, column=0, font=9).bind(
+                        "<ButtonRelease-1>", self._set_master_volume, add='+')
+
+                    self.app.label("SE_Label_Triangle_Volume", "Triangle Channel", sticky="NE",
+                                   row=0, column=1, font=10)
+                    self.app.scale("SE_Triangle_Volume", bg=colour.DARK_BLUE, fg=colour.WHITE,
+                                   direction="vertical", show=True, interval=20,
+                                   range=(100, 0), length=200, sticky="NEW", row=1, column=1, font=9).bind(
+                        "<ButtonRelease-1>", self._set_triangle_volume, add='+')
+
             # Channels
             with self.app.frame("SE_Frame_Channels", padding=[4, 2], sticky="NEW", row=2, column=0):
                 channel_names = ["Square 0", "Square 1", "Triangle", "Noise"]
@@ -730,6 +783,7 @@ class MusicEditor:
 
         # Set the volume slider to the current amp factor
         self.app.setScale("SE_Master_Volume", int(self._sound_server.amp * 100), callFunction=False)
+        self.app.setScale("SE_Triangle_Volume", int(self._triangle_volume * 100), callFunction=False)
 
         # Some operations are better done once the mouse button is released, rather than continuously while it's down
         self.app.getListBoxWidget(f"SE_List_Channel_0").bind("<ButtonRelease-1>",
@@ -1457,14 +1511,20 @@ class MusicEditor:
 
         if len(selection) < 1:      # Nothing selected
             self.app.firstFrame("SE_Stack_Editing", callFunction=False)
+            self.app.setLabel("SE_Selection_Info_Channel", "Channel: (no selection)")
+            self.app.setLabel("SE_Selection_Info_Element", "Element: (no selection)")
         elif len(selection) > 1:    # Multiple selection
             self.app.lastFrame("SE_Stack_Editing", callFunction=False)
+            self.app.setLabel("SE_Selection_Info_Channel", f"Channel: {self._selected_channel}")
             # This will point to the first element selected
             self._selected_element = selection[0] >> 1
         else:
             # Get the index of the selected element, keeping in mind that each occupies two lines
             element = self._track_data[channel][selection[0] >> 1]
             self._selected_element = selection[0] >> 1
+
+            self.app.setLabel("SE_Selection_Info_Channel", f"Channel: {self._selected_channel}")
+            self.app.setLabel("SE_Selection_Info_Element", f"Element: {self._selected_element:03X}")
 
             # Get the type of this element and choose an appropriate frame
             if element.control == TrackDataEntry.PLAY_NOTE:
@@ -1575,7 +1635,9 @@ class MusicEditor:
         elif widget == "SE_Play_Stop":
             if self._play_thread.is_alive():
                 self.stop_playback()
+                self.app.enableScale("SE_Triangle_Volume")
                 self.app.setButtonImage(widget, "res/play.gif")
+
                 self.app.setListBoxMulti(f"SE_List_Channel_0", multi=True)
                 self.app.setListBoxMulti(f"SE_List_Channel_1", multi=True)
                 self.app.setListBoxMulti(f"SE_List_Channel_2", multi=True)
@@ -1596,6 +1658,7 @@ class MusicEditor:
                 self.app.setListBoxGroup(f"SE_List_Channel_2", group=True)
                 self.app.setListBoxGroup(f"SE_List_Channel_3", group=True)
 
+                self.app.disableScale("SE_Triangle_Volume")
                 self.start_playback(True)
                 self.app.setButtonImage(widget, "res/stop.gif")
 
@@ -1896,6 +1959,14 @@ class MusicEditor:
         """
         value = self.app.getScale("SE_Master_Volume") / 100
         self._sound_server.setAmp(value)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _set_triangle_volume(self, _event: any = None) -> None:
+        """
+        Callback for left mouse button release on triangle channel volume widget.
+        """
+        self._triangle_volume = self.app.getScale("SE_Triangle_Volume") / 100
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -2215,7 +2286,7 @@ class MusicEditor:
                     self.app.selectListItemAtPos(widgets[c], (last_played[c] << 1) - 1, callFunction=False)
 
             interval = frame_interval - (time.time() - start_time)
-            if interval >= 0:
+            if interval > 0:
                 time.sleep(interval)
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -2285,7 +2356,7 @@ class MusicEditor:
 
         wave_table = [pyo.LinTable(flat_table, size=32),  # Square wave 0
                       pyo.LinTable(flat_table, size=32),  # Square wave 1
-                      pyo.TriangleTable(order=1, size=32).mul(0.2),  # Triangle wave, more or less...
+                      pyo.TriangleTable(order=1, size=32).mul(self._triangle_volume),  # Triangle wave, more or less...
                       pyo.LinTable(flat_table, size=32)]  # Noise wave
         # wave_table[2].view()
 
@@ -2663,7 +2734,7 @@ class MusicEditor:
                 elif track_data.control == TrackDataEntry.CHANNEL_VOLUME:
                     if track_data.channel_volume == 15:
                         wave_table[c].setOrder(1)
-                        wave_table[c].mul(0.2)
+                        wave_table[c].mul(self._triangle_volume)
                     else:
                         wave_table[c].setOrder(0)
                     # Note that counter will be 0 now, so we will read another segment
