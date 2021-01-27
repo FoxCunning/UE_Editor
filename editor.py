@@ -4,7 +4,7 @@ An extensive editor for the NES version of Ultima III: Exodus and its Remastered
 __version__ = "0.01"
 
 __author__ = "Fox Cunning"
-__copyright__ = "Copyright ©2020, Fox Cunning"
+__copyright__ = "Copyright ©2020-2021 Fox Cunning"
 __credits__ = ["Fox Cunning"]
 
 __license__ = "Apache 2.0"
