@@ -37,24 +37,6 @@ _DUTY = ["12.5%", "  25%", "  50%", "  75%"]
 # ----------------------------------------------------------------------------------------------------------------------
 
 @dataclass(init=True, repr=False)
-class MemoryChunk:
-    """
-    A class used to form a memory map used to allocate space for music tracks.
-
-    Properties
-    ----------
-    channel_pointer: List[int]
-        A list of four pointers, one per channel
-    channel_size: List[int]
-        The size, in bytes, of each channel's data
-    """
-    channel_pointer: List[int] = field(default_factory=list)
-    channel_size: List[int] = field(default_factory=list)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-@dataclass(init=True, repr=False)
 class Instrument:
     name: str = ""
     # Keep track of the address so we can more easily write data back to the ROM buffer
@@ -98,21 +80,30 @@ class Note:
     """
     CPU_FREQ: int = 1789773
 
-    def __init__(self, index: int = 0, duration: int = 0):
+    def __init__(self, index: int = 0, duration: int = 0, name: str = ""):
         global _notes
 
         self.index: int = index
         self.duration: int = duration
 
+        if name != "":
+            if len(name) < 3:
+                name = name + ' '
+            try:
+                self.index = _NOTE_NAMES.index(name.upper())
+            except ValueError:
+                pass
+
         # From the NESDev Wiki:
         # frequency = fCPU/(16*(period+1))
         # fCPU = 1.789773 MHz for NTSC, 1.662607 MHz for PAL, and 1.773448 MHz for Dendy
-        if index < len(_notes):
-            period = _notes[index]
-        else:
-            period = 0x6AB  # A default value to use until notes are loaded
-
-        self.frequency: int = self.CPU_FREQ // ((period + 1) << 4)
+        period = 0x6AB  # A default value to use until notes are loaded
+        try:
+            period = _notes[self.index]
+        except IndexError:
+            pass
+        finally:
+            self.frequency: int = self.CPU_FREQ // ((period + 1) << 4)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -188,7 +179,8 @@ class TrackDataEntry:
     def set_rewind(self, position: int) -> None:
         if self.control == TrackDataEntry.REWIND:
             self.loop_position = position
-        # TODO raw value must be calculated from the instance holding the array with all the elements
+        # NOTE: raw value must be calculated from the instance holding the array with all the elements,
+        #   this at the moment happens before saving to ROM
 
     def set_note(self, index: int, duration: int) -> None:
         if self.control == TrackDataEntry.PLAY_NOTE:
@@ -217,7 +209,7 @@ class TrackDataEntry:
             self.control = new_type
             value = kwargs.get("value", 15)
             self.channel_volume = value & 0x0F
-            self.raw = bytearray([TrackDataEntry.CHANNEL_VOLUME, (value << 4) | 0x0F])
+            self.raw = bytearray([TrackDataEntry.CHANNEL_VOLUME, self.channel_volume])
 
         elif new_type == TrackDataEntry.SELECT_INSTRUMENT:
             self.control = new_type
@@ -249,7 +241,7 @@ class TrackDataEntry:
     @classmethod
     def new_volume(cls, level: int):
         return cls(control=cls.CHANNEL_VOLUME, channel_volume=level & 0x0F, size=2,
-                   raw=bytearray([0xFB, (level << 4) | 0x0F]))
+                   raw=bytearray([0xFB, level & 0x0F]))
 
     @classmethod
     def new_instrument(cls, index: int):
@@ -283,9 +275,14 @@ class TrackDataEntry:
                    raw=bytearray([0xFF, 0, offset & 0x00FF, offset >> 8]))
 
     @classmethod
-    def new_note(cls, index: int, duration: int):
-        return cls(control=cls.PLAY_NOTE, note=Note(index, duration), size=2,
-                   raw=bytearray([index, duration]))
+    def new_note(cls, index: int = 0, duration: int = 0, name: str = ""):
+        if name != "":
+            note = Note(duration=duration, name=name)
+        else:
+            note = Note(index, duration)
+
+        return cls(control=cls.PLAY_NOTE, note=note, size=2,
+                   raw=bytearray([note.index, note.duration]))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -296,10 +293,13 @@ class MusicEditor:
         self.app = app
         self.rom = rom
 
+        # --- Common ---
         self._bank: int = 8
 
         # --- Track Editor ---
         self._track_address: List[int] = [0, 0, 0, 0]
+        # Index of the track in ROM, within the current bank, useful when allocating space
+        self._track_index: int = 0
         self._selected_channel: int = 0
         self._selected_element: int = 0
 
@@ -352,32 +352,6 @@ class MusicEditor:
         self._stop_event: threading.Event = threading.Event()  # Signals the playback thread that it should stop
         self._slow_event: threading.Event = threading.Event()  # Used by the playback thread to signal slow processing
         self._playing: bool = False
-
-        # Read music pointers and calculate size of each track
-        # This will be needed when saving track data to ROM
-        self._memory_map_8: List[MemoryChunk] = []
-
-        base_pointer = 0x8051
-        # There is a maximum of 11 tracks in bank 8
-        for t in range(11):
-            addresses = [self.rom.read_word(0x8, base_pointer), self.rom.read_word(0x8, base_pointer + 2),
-                         self.rom.read_word(0x8, base_pointer + 4), self.rom.read_word(0x8, base_pointer + 6)]
-            size = [self.get_data_size(0x8, addresses[0]), self.get_data_size(0x8, addresses[1]),
-                    self.get_data_size(0x8, addresses[1]), self.get_data_size(0x8, addresses[2])]
-            self._memory_map_8.append(MemoryChunk(addresses, size))
-            base_pointer += 8
-
-        # ...and there is room for 9 pointers in bank 9
-        self._memory_map_9: List[MemoryChunk] = []
-        base_pointer = 0x8051
-        # There is a maximum of 11 tracks in bank 8
-        for t in range(9):
-            addresses = [self.rom.read_word(0x9, base_pointer), self.rom.read_word(0x9, base_pointer + 2),
-                         self.rom.read_word(0x9, base_pointer + 4), self.rom.read_word(0x9, base_pointer + 6)]
-            size = [self.get_data_size(0x9, addresses[0]), self.get_data_size(0x9, addresses[1]),
-                    self.get_data_size(0x9, addresses[1]), self.get_data_size(0x9, addresses[2])]
-            self._memory_map_9.append(MemoryChunk(addresses, size))
-            base_pointer += 8
 
         # Read notes period table
         _notes.clear()
@@ -556,6 +530,8 @@ class MusicEditor:
             Index of the track *in this bank* (0-10)
         """
         self._bank = bank
+
+        self._track_index = track
 
         try:
             self.app.getFrameWidget("SE_Frame_Buttons")
@@ -1069,7 +1045,187 @@ class MusicEditor:
         except IOError as error:
             self.app.warningBox("Instrument Editor", f"Could not write instrument names to file:\n{error.strerror}")
 
-        # TODO Save actual data to ROM buffer
+        return success
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def save_track_data(self) -> bool:
+        success: bool = True
+
+        # We will need to re-allocate space for all the tracks in the current bank
+        if self._bank == 8:
+            track_count = 11
+
+            # "Muted" tracks will point to this address
+            muted_address = 0x8639
+
+            pointer_table = 0x8051
+
+            # (start address, size)
+            memory_map = [(0x87C7, 1528), (0x8EAA, 1054), (0x9342, 1038), (0x9833, 1419), (0x9EAB, 1036), (0xA35E, 640),
+                          (0xA74B, 694), (0xAA52, 720), (0xADC1, 1704), (0xB4FA, 1164), (0xB968, 1562), (0xBFD0, 32)]
+
+        elif self._bank == 9:
+            track_count = 5
+
+            muted_address = 0x863C
+
+            pointer_table = 0x8052
+
+            memory_map = [(0x8797, 4124), (0x9840, 78), (0x98D1, 44), (0xAC5A, 200), (0xADB3, 1164), (0xB2DE, 1020),
+                          (0x98FD, 14), (0x991B, 138), (0x99A5, 494), (0x9B93, 558)]
+
+        else:
+            # Other banks are not supported
+            return False
+
+        # Some channels will share the same address between different songs
+        # For this reason, we keep track of where has each address been moved to, and keep them in sync
+        # (old address, new address, data)
+        processed: List[Tuple[int, int, bytearray]] = [(-1, -1, bytearray())]
+
+        for i in range(track_count):
+
+            # Pointers, one per channel
+            channel_address: List[int] = []
+            for c in range(4):
+                if i == self._track_index:
+                    # The edited track won't be read from ROM of course. Instead, we generate byte data from it.
+
+                    # Before creating the buffer, we need to calculate the correct value for the rewind point
+                    if self._track_data[c][-1].control != TrackDataEntry.REWIND:
+                        self.warning(f"Channel {c} does not end with a REWIND element!")
+                        loop_position = 0
+                        self._track_data.append(TrackDataEntry.new_rewind(0))
+                    else:
+                        loop_position = self._track_data[c][-1].loop_position
+
+                    # Go through the data from the last element to the first, counting bytes until we reach our target
+                    #   element
+                    offset: int = 4
+                    position: int = len(self._track_data[c])
+                    for element in reversed(self._track_data[c]):
+                        if position == loop_position:
+                            break
+                        else:
+                            offset -= len(element.raw)
+                        position -= 1
+
+                    if offset > 0:
+                        offset = 0
+
+                    self._track_data[c][-1].raw = bytearray([0xFF, 00]) +\
+                        bytearray(offset.to_bytes(2, "little", signed=True))
+
+                    buffer: bytearray = bytearray()
+                    for element in self._track_data[c]:
+                        buffer += element.raw
+
+                    # Allocate memory for the current track: discard addresses and re-allocate
+                    channel_address.append(-1)
+
+                    # Also read the address from the entry widget to see if this is a "muted" track
+                    try:
+                        address = int(self.app.getEntry(f"SE_Channel_Address_{c}"), 16)
+                        if address == muted_address:
+                            # Make sure this is actually a muted channel, don't just rely on size:
+                            #   data should be FC 00 FB 08 FE 40 FF 00 FE FF
+                            if len(self._track_data[c]) == 4:
+                                if (self._track_data[c][0].raw[0] == 0xFC and
+                                   self._track_data[c][1].raw[1] == 0xFB and
+                                   self._track_data[c][2].raw[2] == 0xFE and
+                                   self._track_data[c][3].raw[3] == 0xFF):
+                                    channel_address[c] = muted_address
+
+                    except ValueError:
+                        pass
+
+                else:
+                    pointer = self.rom.read_word(self._bank, pointer_table + (2 * c) + (8 * i))
+                    channel_address.append(pointer)
+
+                    # Buffer all channels
+                    buffer: bytearray = bytearray()
+                    while 1:
+                        command = self.rom.read_byte(self._bank, pointer)
+                        buffer.append(command)
+                        pointer += 1
+
+                        # One-byte commands
+                        if command <= 0xF0 == 0xFB or command == 0xFC or command == 0xFE:
+                            buffer.append(self.rom.read_byte(self._bank, pointer))
+                            pointer += 1
+
+                        # Three-byte command
+                        elif command == 0xFD:
+                            buffer += self.rom.read_bytes(self._bank, pointer, 3)
+                            pointer += 3
+
+                        # The Rewind command is the last: read its parameters and end the loop
+                        elif command == 0xFF:
+                            buffer += self.rom.read_bytes(self._bank, pointer, 3)
+                            break
+
+                        # Everything else is ignored
+
+                # Now we have data and pointers
+                # First, we make sure this isn't a "muted" track
+                if channel_address[c] == muted_address:
+                    continue
+
+                # Now let's see if a track with the same address had already been processed
+                already_processed = False
+                for p in processed:
+                    if p[0] != -1 and p[0] == channel_address[c] and p[1] != 0:
+                        # A match has been found: let's simply update the pointer
+                        channel_address[c] = p[1]
+                        already_processed = True
+
+                if not already_processed:
+                    # No matches: find the smallest space this would fit into
+                    size = len(buffer)
+                    chunk: int = -1
+                    smallest: int = 65535
+                    for m in range(len(memory_map)):
+                        difference = memory_map[m][1] - size
+                        if difference < 0:
+                            # Won't fit
+                            continue
+                        elif difference == 0:
+                            # Perfect fit, stop here
+                            chunk = m
+                            break
+                        else:
+                            if difference < smallest:
+                                # Best so far, but keep looking
+                                smallest = difference
+                                chunk = m
+
+                    if chunk == -1:
+                        # This channel won't fit anywhere
+                        self.error(f"Channel {c} of track {i} does not fit in ROM.")
+                        success = False
+                    else:
+                        # Save this channel to its new address
+                        new_address = memory_map[chunk][0]
+                        if 0xBFF0 >= channel_address[c] >= 0x8000:
+                            processed.append((channel_address[c], new_address, buffer))
+                        channel_address[c] = new_address
+
+                        # self.info(f"DEBUG: Allocating track {i} channel {c} to: 0x{new_address:04X}.")
+
+                        # Reduce the chunk size and advance its start address
+                        memory_map[chunk] = (memory_map[chunk][0] + size, memory_map[chunk][1] - size)
+
+                # Channel has been processed: update the pointer table with its new address
+                self.rom.write_word(self._bank, pointer_table + (2 * c) + (8 * i), channel_address[c])
+
+        if success:
+            for p in processed:
+                if p[0] < 0 or len(p[2]) < 1:
+                    continue
+                # self.info(f"DEBUG: Saving from 0x{p[0]:04X} to: 0x{p[1]:04X}.")
+                self.rom.write_bytes(self._bank, p[1], p[2])
 
         return success
 
@@ -1131,8 +1287,18 @@ class MusicEditor:
                                         f"Found positive rewind offset ({offset}) for channel {channel}.\n" +
                                         "This may have undesired effects.", "Track_Editor")
 
-                # TODO Calculate item index based on each item's size, counting backwards
-                data = TrackDataEntry.new_rewind(0)  # Use 0 for now
+                # Calculate item index based on each item's size, counting backwards
+                loop_position: int = len(track)  # Start from the end
+                byte_count: int = 0
+                for element in reversed(track):
+                    if byte_count <= offset:
+                        break
+                    byte_count -= len(element.raw)
+                    loop_position -= 1
+
+                if loop_position < 0:
+                    loop_position = 0
+                data = TrackDataEntry.new_rewind(loop_position)
                 data.raw = bytearray([0xFF, 0])
                 data.raw += offset.to_bytes(2, "little", signed=True)
                 loop_found = True
@@ -1374,13 +1540,6 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _recalculate_rewind_point(self, channel: int) -> None:
-        # TODO Get the index of the target element, then go from there to the rewind element adding each element's size
-        # to a counter
-        pass
-
-    # ------------------------------------------------------------------------------------------------------------------
-
     def _update_instrument_name(self, widget: str) -> None:
         name = self.app.getEntry(widget)[:24]
         if len(name) < 1:
@@ -1603,6 +1762,29 @@ class MusicEditor:
             self._update_element_info(self._selected_channel, self._selected_element)
             self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
 
+        elif widget == "SE_Apply_Rewind" or widget == "SE_Rewind_Value":
+            element, selection = self._get_selected_element()
+
+            if self._selected_element < 0 or element.control != TrackDataEntry.REWIND:
+                return
+
+            try:
+                value = int(self.app.getEntry("SE_Rewind_Value"), 10)
+                if value < 0 or value > len(self._track_data[self._selected_channel]):
+                    self.app.soundError()
+                    self.app.getEntryWidget("SE_Rewind_Value").selection_range(0, tkinter.END)
+
+                else:
+                    element.loop_position = value
+
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget("SE_Rewind_Value").selection_range(0, tkinter.END)
+
+            finally:
+                self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection,
+                                             callFunction=False)
+
         elif widget == "SE_Change_Element":
             if self._selected_channel > -1 and self._selected_element > -1:
                 self.app.selectFrame("SE_Stack_Editing", 7, callFunction=False)
@@ -1648,7 +1830,8 @@ class MusicEditor:
                                          callFunction=True)
             self._element_selection(None, channel)
 
-            self._recalculate_rewind_point(channel)
+            # self._recalculate_rewind_point(channel)
+            # This will be done before saving to ROM
 
             # If this is now a rewind point, delete everything that comes after that
             if new_type == TrackDataEntry.REWIND:
@@ -1814,7 +1997,15 @@ class MusicEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _track_input(self, widget: str) -> None:
-        if widget == "SE_Button_Cancel":
+        if widget == "SE_Button_Apply":
+            if not self.save_track_data():
+                self.app.errorBox("Save Track Data", "Error saving track data. This usually means the current\n" +
+                                  "song is too large to be contained in ROM.\nTry again after reducing its size.",
+                                  "Track_Editor")
+            else:
+                self.close_track_editor()
+
+        elif widget == "SE_Button_Cancel":
             self.close_track_editor()
 
         elif widget == "SE_Play_Stop":
@@ -1846,6 +2037,14 @@ class MusicEditor:
                 self.app.disableScale("SE_Triangle_Volume")
                 self.start_playback(True)
                 self.app.setButtonImage(widget, "res/stop.gif")
+
+        elif widget == "SE_Button_Import":
+            file_name = self.app.openBox("Import FMS/FMT text file", self.rom.path,
+                                         [("FamiStudio/FamiTracker Text File", "*.txt"),
+                                          ("All Files", "*.*")],
+                                         asFile=False, parent="Track_Editor", multiple=False)
+            if file_name != "":
+                self._read_famistudio_text(file_name)
 
         elif widget[:17] == "SE_Clear_Channel_":
             # Don't do this during playback
@@ -2321,17 +2520,16 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def get_data_size(self, bank: int, address: int) -> int:
+    def get_data_size(self, **kwargs) -> int:
         """
         Reads music data to calculate its size.
 
         Parameters
         ----------
-        address: int
-            The address where to start reading
-
-        bank: int
-            The bank where the channel data is found
+        kwargs: Dict[str, Any]
+            address: The address where to start reading
+            bank: The bank where the channel data is found
+            channel: Alternatively, read the currently loaded channel
 
         Returns
         -------
@@ -2340,76 +2538,236 @@ class MusicEditor:
         """
         size = 0
 
-        if bank == 8:
-            # Tuple: start address, end address
-            memory_blocks = [(0x87C7, 0x8DBE),
-                             (0x8639, 0x8642),
-                             (0x8EAA, 0x92C7),
-                             (0x9342, 0x974F),
-                             (0x9833, 0x9DBD),
-                             (0x9EAB, 0xA2B6),
-                             (0xA35E, 0xA5DD),
-                             (0xA74B, 0xAA00),
-                             (0xAA52, 0xAD21),
-                             (0xADC1, 0xB468),
-                             (0xB4FA, 0xB985),
-                             (0xB968, 0xBF9F),
-                             (0xBFD0, 0xBFEF)]
-        elif bank == 9:
-            # TODO Implement bank 9
-            return 0
+        address = kwargs.pop("address", -1)
+        bank = kwargs.pop("bank", -1)
+        channel = kwargs.pop("channel", -1)
+
+        if 0xBFF0 >= address >= 0x8000:
+            if bank < 8 or bank > 9:
+                self.error(f"get_data_size: Invalid bank #{bank}.")
+                return -1
+
+            while 1:
+                control_byte = self.rom.read_byte(bank, address)
+
+                if control_byte == 0xFB or control_byte == 0xFC or control_byte == 0xFE:
+                    size += 2
+                    address += 2
+
+                elif control_byte == 0xFD:
+                    size += 4
+                    address += 4
+
+                elif control_byte == 0xFF:
+                    size += 4
+                    break
+
+                elif control_byte < 0xF0:
+                    size += 2
+                    address += 2
+
+                else:
+                    size += 1
+                    address += 1
+
+        elif -1 < channel < 4:
+            for e in self._track_data[channel]:
+                if (e.control == TrackDataEntry.CHANNEL_VOLUME or e.control == TrackDataEntry.REST or
+                   e.control == TrackDataEntry.SELECT_INSTRUMENT or e.control < 0xF0):
+                    size += 2
+
+                elif e.control == TrackDataEntry.SET_VIBRATO:
+                    size += 4
+
+                elif e.control == TrackDataEntry.REWIND:
+                    size += 4
+                    break
+
+                else:
+                    size += 1
+
         else:
-            self.error(f"get_data_size: Unsupported bank {bank}.")
-            return 0
-
-        # Try to detect which memory block we are in
-        block = -1
-        for b in range(len(memory_blocks)):
-            if memory_blocks[b][0] <= address < memory_blocks[b][1]:
-                block = b
-                break
-
-        if block < 0:
-            self.error(f"Music data at ${bank:02X}:{address:04X} is outside of allocated memory area!")
-            return 0
-
-        # TODO Define better memory boundaries to avoid reading over code/unrelated data
-        while address < memory_blocks[block][1]:
-            control_byte = self.rom.read_byte(bank, address)
-
-            if control_byte == 0xFB or control_byte == 0xFC or control_byte == 0xFE:
-                size += 2
-                address += 2
-
-            elif control_byte == 0xFD:
-                size += 4
-                address += 4
-
-            elif control_byte == 0xFF:
-                size += 4
-                break
-
-            elif control_byte < 0xF0:
-                size += 2
-                address += 2
-
-            else:
-                size += 1
-                address += 1
+            self.error(f"get_data_size: Invalid parameters '{kwargs}'.")
+            return -1
 
         return size
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    @dataclass(init=True, repr=False)
+    class FMSNote:
+        # These are all the supported parameters
+        time: int
+        value: str = ""
+        instrument: str = ""
+        volume: int = -1
+        vibrato_speed: int = -1
+        vibrato_depth: int = -1
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    class FMSPattern:
+        """
+        Properties
+        ----------
+        name: str
+            Pattern name, mandatory
+
+        length: int
+            Total duration of this pattern, (notes * duration)
+
+        note_length: int
+            The duration of each note, in frames
+
+        events: List[MusicEditor.FMSNote]
+            The list of events/notes in this pattern
+        """
+        VIBRATO_FACTOR: bytearray = bytearray([0, 240, 220, 204, 188, 176, 160, 142,
+                                               128, 86, 64, 42, 30, 20, 12, 2])
+
+        def __init__(self, name: str, length: int = 10, note_length: int = 10):
+            self.name: str = name
+            self.note_length: int = note_length
+            self.length: int = length
+
+            self.events: List[MusicEditor.FMSNote] = []
+
+        def to_track_data(self) -> List[TrackDataEntry]:
+            converted: List[TrackDataEntry] = []
+
+            pattern_duration = self.length * self.note_length
+
+            # Some events happen in the middle of a note, which is not supported by the game's music driver
+            # To work around it, we stop the note short, and re-start the same note after the event
+            # Note that this will only sound about right if the envelope doesn't end in a much lower volume
+            last_note_value = ""
+
+            # We won't create an instrument change event if the instrument is not actually changing
+            last_instrument = ""
+
+            # If the first event doesn't start at time 0, then we must add a rest
+            # Unfortunately that is not 100% compatible with FamiStudio, but can be fixed manually after importing
+            if self.events[0].time != 0:
+                try:
+                    converted.append(TrackDataEntry.new_rest(self.events[1].time))
+                except IndexError:
+                    converted.append(TrackDataEntry.new_rest(self.note_length))
+
+            # We need to keep track of this in order to look ahead when calculating note durations
+            event_index = 0
+
+            for e in self.events:
+                if e.value == "Stop":
+                    # We only need a rest if this isn't immediately followed by a note
+                    if event_index >= len(self.events) - 1:
+                        # At the end of the pattern: a rest is only needed if the last note stops before the end
+                        duration = self.length - e.time
+                        if duration > 1:
+                            converted.append(TrackDataEntry.new_rest(duration * self.note_length))
+
+                    elif self.events[event_index + 1].time > e.time + 1:
+                        # Not immediately followed by something else: we add a rest to fill the gap
+                        duration = self.events[event_index + 1].time - e.time
+                        # If the duration would be too long, split this into several rests
+                        if duration * self.note_length < 256:
+                            converted.append(TrackDataEntry.new_rest(duration * self.note_length))
+                        else:
+                            factor = duration >> 2
+                            while (duration * self.note_length) > 255:
+                                duration -= factor
+                                converted.append(TrackDataEntry.new_rest(factor * self.note_length))
+
+                    # In any case, clear the last note value
+                    last_note_value = ""
+
+                else:
+                    # Any event that happen at the same time as a note must be added first
+                    if e.instrument != "":
+                        # TODO Use instrument index - we will create a dummy event for now
+                        if e.instrument != last_instrument and e.value != "":
+                            # Skip event if instrument is still the same, but only if there is a note at the same time
+                            last_instrument = e.instrument
+                            converted.append(TrackDataEntry.new_instrument(0))
+
+                    if e.volume > -1:
+                        converted.append(TrackDataEntry.new_volume(e.volume))
+
+                    if e.vibrato_depth > -1 and e.vibrato_speed > -1:
+                        # Use a pre-calculated conversion table for this value
+                        if e.vibrato_depth > 15:
+                            e.vibrato_depth = 15
+
+                        converted.append(TrackDataEntry.new_vibrato(
+                            False, e.vibrato_speed, MusicEditor.FMSPattern.VIBRATO_FACTOR[e.vibrato_depth]))
+
+                    if e.value == "":
+                        # This event is likely interrupting a note, and we'll need to re-play it after
+                        note_value = last_note_value
+                    else:
+                        # This event happens as a new note starts: we add the note after the event
+                        last_note_value = e.value
+                        note_value = e.value
+
+                    # Calculate the note's duration based on the next event's time
+                    duration = self.note_length
+                    try:
+                        duration = self.events[event_index + 1].time - e.time
+                        # Stop events usually happen one frame earlier than the following one
+                        if self.events[event_index + 1].value == "Stop":
+                            duration += 1
+                    except IndexError:
+                        # This was the last event, so we let it run until the end of the pattern
+                        duration = pattern_duration - e.time
+                    finally:
+                        if note_value != "":
+                            converted.append(TrackDataEntry.new_note(duration=duration, name=note_value.upper()))
+                        else:
+                            # No previous notes: add a rest instead
+                            converted.append(TrackDataEntry.new_rest(duration))
+
+                event_index += 1
+
+            return converted
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _read_famistudio_text(self, file_name: str) -> List[List[TrackDataEntry]]:
+        # One list per channel
         track_data: List[List[TrackDataEntry]] = [[], [], [], []]
+        # We will buffer the whole file
         buffer: List[str] = []
+
+        # We will skip the envelopes for now and only keep track of instrument names
+        instruments: List[(int, str)] = []
+
+        loop_point = 0
+        note_length = 10
+        # Default pattern length, in number of notes
+        default_pattern_length = 1
+
+        # (index, pattern length, note length)
+        custom_pattern_lengths: List[Tuple[int, int, int]] = []
+
+        # We will only import the first song for now
+        # TODO Scan for songs first and ask which one to import
+        found_songs = 0
+
+        # Index of the channel (0-3) we are currently processing
+        channel = -1
+
+        # We want a list of patterns per channel
+        patterns: List[List[MusicEditor.FMSPattern]] = [[], [], [], []]
+
+        current_pattern: MusicEditor.FMSPattern = MusicEditor.FMSPattern("")
+
+        # Each channel will have a list of pattern instances, referenced by name
+        pattern_instances: List[List[str]] = [[], [], [], []]
 
         try:
             fd = open(file_name, "r")
 
-            # TODO Buffer everything
-            buffer = fd.readlines()
+            # Buffer everything
+            buffer = [line.rstrip() for line in fd]
 
             fd.close()
         except IOError:
@@ -2426,8 +2784,210 @@ class MusicEditor:
             return track_data
 
         for line in buffer:
-            # TODO Process lines
-            pass
+            # Process lines
+            parts = line.split(' ')
+
+            object_name = parts[0].lstrip()
+
+            if object_name == "DPCMSample" or parts[0] == "DPCMMapping":
+                # Ignore there, not supported by the driver
+                continue
+
+            elif object_name == "Arpeggio":
+                # Maybe we'll add support for this at some point
+                continue
+
+            elif object_name == "Instrument":
+                try:
+                    name = parts[1].split('=')[1].replace('"', '')
+                    instruments.append((len(instruments), name))
+                except IndexError:
+                    continue
+
+            elif object_name == "Envelope":
+                # We're not importing instruments here
+                continue
+
+            elif object_name == "Song":
+                found_songs += 1
+                if found_songs > 1:
+                    # We're only importing one song for now
+                    break
+
+                # Extract the parameters we can use
+                try:
+                    for p in parts[1:]:
+                        if p[:9] == "LoopPoint":
+                            loop_point = int(p.split('=')[1].replace('"', ''))
+                        elif p[:10] == "NoteLength":
+                            note_length = int(p.split('=')[1].replace('"', ''))
+                        elif p[:13] == "PatternLength":
+                            default_pattern_length = int(p.split('=')[1].replace('"', ''))
+
+                except IndexError:
+                    continue
+
+            elif object_name == "PatternCustomSettings":
+                i = -1                       # Index
+                nl = note_length             # Custom note length
+                pl = default_pattern_length  # Custom pattern length
+                try:
+                    for p in parts[1:]:
+                        if p == "Time":
+                            i = int(p.split('=')[1].replace('"', ''), 10)
+                        elif p == "NoteLength":
+                            nl = int(p.split('=')[1].replace('"', ''), 10)
+                        elif p == "Length":
+                            pl = int(p.split('=')[1].replace('"', ''), 10)
+                    if i > -1:
+                        custom_pattern_lengths.append((i, pl, nl))
+
+                except ValueError:
+                    continue
+
+            elif object_name == "Channel":
+                try:
+                    name = parts[1].split('=')[1].replace('"', '')
+                    if name == "Square1":
+                        channel = 0
+                    elif name == "Square2":
+                        channel = 1
+                    elif name == "Triangle":
+                        channel = 2
+                    elif name == "Noise":
+                        channel = 3
+                    else:
+                        channel = -1
+                except IndexError:
+                    continue
+
+            elif object_name == "Pattern":
+                try:
+                    # Create a new pattern and add it to this channel's patterns list
+                    name = parts[1].split('=')[1].replace('"', '')
+
+                    pattern_index = len(patterns)
+                    pl = default_pattern_length
+                    nl = note_length
+                    for c in custom_pattern_lengths:
+                        if c[0] == pattern_index:
+                            pl = c[1]
+                            nl = c[2]
+
+                    current_pattern = MusicEditor.FMSPattern(name, pl, nl)
+                    patterns[channel].append(current_pattern)
+                except IndexError:
+                    continue
+
+            elif object_name == "Note":
+                if current_pattern.name != "":
+                    try:
+                        note = MusicEditor.FMSNote(0)
+
+                        for p in parts[1:]:
+                            attribute = p.split('=')
+                            if attribute[0] == "Time":
+                                note.time = int(attribute[1].replace('"', ''), 10)
+                            elif attribute[0] == "Value":
+                                note.value = attribute[1].replace('"', '')
+                            elif attribute[0] == "Instrument":
+                                note.instrument = attribute[1].replace('"', '')
+                            elif attribute[0] == "Volume":
+                                note.volume = int(attribute[1].replace('"', ''), 10)
+                            elif attribute[0] == "VibratoSpeed":
+                                note.vibrato_speed = int(attribute[1].replace('"', ''), 10)
+                            elif attribute[0] == "VibratoDepth":
+                                note.vibrato_depth = int(attribute[1].replace('"', ''), 10)
+
+                        current_pattern.events.append(note)
+
+                    except IndexError or ValueError:
+                        continue
+
+            elif object_name == "PatternInstance":
+                if current_pattern.name != "" and channel != -1:
+                    try:
+                        name = parts[2].split('=')[1].replace('"', '')
+                        pattern_instances[channel].append(name)
+                    except IndexError:
+                        continue
+
+        # Convert all patterns
+        square0_patterns: List[List[TrackDataEntry]] = []
+        square1_patterns: List[List[TrackDataEntry]] = []
+        triangle_patterns: List[List[TrackDataEntry]] = []
+        noise_patterns: List[List[TrackDataEntry]] = []
+
+        for p in patterns[0]:
+            square0_patterns.append(p.to_track_data())
+        for p in patterns[1]:
+            square1_patterns.append(p.to_track_data())
+        for p in patterns[2]:
+            triangle_patterns.append(p.to_track_data())
+        for p in patterns[3]:
+            noise_patterns.append(p.to_track_data())
+
+        # Create track data from pattern instances
+
+        # TODO Support "empty" patterns?
+        #  They appear as "holes" in the list of instances, where for example there is no entry with Time="0"
+
+        # ---  Square 0 ---
+
+        channel = 0
+        self._track_data[channel] = []
+        for name in pattern_instances[channel]:
+            # Find the pattern with this name
+            for p in range(len(patterns[channel])):
+                if patterns[channel][p].name == name:
+                    # Add it to the channel's track
+                    self._track_data[channel] = self._track_data[channel] + square0_patterns[p]
+                    break
+
+        # Add a rewind event at the end
+        # TODO Calculate the correct loop point
+        self._track_data[0].append(TrackDataEntry.new_rewind(loop_point))
+
+        self.track_info(channel)
+
+        # --- Square 1 ---
+
+        channel = 1
+        self._track_data[channel] = []
+        for name in pattern_instances[channel]:
+            for p in range(len(patterns[channel])):
+                if patterns[channel][p].name == name:
+                    self._track_data[channel] = self._track_data[channel] + square1_patterns[p]
+                    break
+        self._track_data[channel].append(TrackDataEntry.new_rewind(loop_point))
+
+        self.track_info(channel)
+
+        # --- Triangle ---
+
+        channel = 2
+        self._track_data[channel] = []
+        for name in pattern_instances[channel]:
+            for p in range(len(patterns[channel])):
+                if patterns[channel][p].name == name:
+                    self._track_data[channel] = self._track_data[channel] + triangle_patterns[p]
+                    break
+        self._track_data[channel].append(TrackDataEntry.new_rewind(loop_point))
+
+        self.track_info(channel)
+
+        # --- Noise ---
+
+        channel = 3
+        self._track_data[channel] = []
+        for name in pattern_instances[channel]:
+            for p in range(len(patterns[channel])):
+                if patterns[channel][p].name == name:
+                    self._track_data[channel] = self._track_data[channel] + noise_patterns[p]
+                    break
+        self._track_data[channel].append(TrackDataEntry.new_rewind(loop_point))
+
+        self.track_info(channel)
 
         return track_data
 
