@@ -530,8 +530,9 @@ class MusicEditor:
             Index of the track *in this bank* (0-10)
         """
         self._bank = bank
-
         self._track_index = track
+
+        self._selected_channel = 0
 
         try:
             self.app.getFrameWidget("SE_Frame_Buttons")
@@ -779,10 +780,10 @@ class MusicEditor:
                                         bg=colour.DARK_BLUE, sticky="SW", row=2, column=2)
 
                 # Selection controls
-                with self.app.frame("SE_Frame_Selection", padding=[4, 2], row=0, column=2, rowspan=2):
-                    self.app.label("SE_Label_Select", "Select Notes", sticky="NEW", row=0, column=0, font=12)
+                with self.app.frame("SE_Frame_Selection", padding=[4, 1], row=0, column=2, rowspan=2):
+                    self.app.label("SE_Label_Select", "Quick Selection", sticky="NEW", row=0, column=0, font=10)
 
-                    with self.app.frame("SE_Frame_Selection_Buttons", padding=[4, 2], row=1, column=0):
+                    with self.app.frame("SE_Frame_Selection_Buttons", padding=[4, 1], row=1, column=0):
                         self.app.button("SE_Select_Channel_0", self._track_input, image="res/square_0.gif",
                                         bg=colour.MEDIUM_GREEN, row=0, column=0)
                         self.app.button("SE_Select_Channel_1", self._track_input, image="res/square_1.gif",
@@ -792,7 +793,7 @@ class MusicEditor:
                         self.app.button("SE_Select_Channel_3", self._track_input, image="res/noise_wave.gif",
                                         bg=colour.DARK_NAVY, row=0, column=3)
 
-                    with self.app.frame("SE_Frame_Selection_Values", padding=[4, 2], row=2, column=0):
+                    with self.app.frame("SE_Frame_Selection_Values", padding=[4, 1], row=2, column=0):
                         self.app.label("SE_Label_Select_From", "All notes from:", sticky="E", row=0, column=0, font=10)
                         self.app.entry("SE_Select_From", "C2", change=self._track_input, width=4,
                                        sticky="W", row=0, column=1, font=9)
@@ -800,12 +801,21 @@ class MusicEditor:
                         self.app.entry("SE_Select_To", "C3", change=self._track_input, width=4,
                                        sticky="W", row=0, column=3, font=9)
 
-                    self.app.button("SE_Apply_Selection", self._track_input, image="res/check_green-small.gif",
-                                    tooltip="Apply Selection",
-                                    bg=colour.DARK_NAVY, sticky="SEW", row=3, column=0)
+                    self.app.button("SE_Apply_Notes_Selection", self._track_input, image="res/check_green-small.gif",
+                                    tooltip="Apply Selection", bg=colour.DARK_NAVY, sticky="SEW", row=3, column=0)
+
+                    with self.app.frame("SE_Frame_Selection_Type", padding=[4, 1], row=4, column=0):
+                        self.app.label("SE_Label_Select_Types", "All elements of type:", sticky="E",
+                                       row=0, column=0, font=10)
+                        self.app.optionBox("SE_Select_Type", ["Volume", "Instrument", "Vibrato", "Rest", "Note",
+                                                              "Others"], sticky="W", row=0, column=1, font=9)
+
+                    self.app.button("SE_Apply_Type_Selection", self._track_input, image="res/check_green-small.gif",
+                                    tooltip="Apply Selection", bg=colour.DARK_NAVY, sticky="SEW", row=5, column=0)
+
                     self.app.button("SE_Clear_Selection", self._track_input, image="res/clear_selection-small.gif",
                                     tooltip="Clear Selection",
-                                    bg=colour.DARK_VIOLET, sticky="SEW", row=4, column=0)
+                                    bg=colour.DARK_VIOLET, sticky="SEW", row=6, column=0)
 
                 # Volume controls
                 with self.app.frame("SE_Frame_Volumes", padding=[8, 2], row=0, column=3, rowspan=2):
@@ -1208,7 +1218,7 @@ class MusicEditor:
                     else:
                         # Save this channel to its new address
                         new_address = memory_map[chunk][0]
-                        if 0xBFF0 >= channel_address[c] >= 0x8000:
+                        if 0xBFF0 >= new_address >= 0x8000:
                             processed.append((channel_address[c], new_address, buffer))
                         channel_address[c] = new_address
 
@@ -1222,9 +1232,9 @@ class MusicEditor:
 
         if success:
             for p in processed:
-                if p[0] < 0 or len(p[2]) < 1:
+                if p[1] < 0 or len(p[2]) < 1:
                     continue
-                # self.info(f"DEBUG: Saving from 0x{p[0]:04X} to: 0x{p[1]:04X}.")
+                self.info(f"DEBUG: Saving {len(p[2])} bytes to: ${self._bank:02X}:{p[1]:04X}.")
                 self.rom.write_bytes(self._bank, p[1], p[2])
 
         return success
@@ -1586,7 +1596,7 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _track_entry_delete(self, channel: int, entry: int) -> None:
+    def _delete_track_element(self, channel: int, entry: int) -> None:
         self._track_data[channel].pop(entry)
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -1938,6 +1948,9 @@ class MusicEditor:
             else:
                 self.app.firstFrame("SE_Stack_Editing", callFunction=False)
 
+            # Highlight the selected channel
+            self._track_input(f"SE_Select_Channel_{self._selected_channel}")
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def _element_hotkey(self, event: any) -> None:
@@ -1957,8 +1970,13 @@ class MusicEditor:
         # Single- and multi- selection keys
         if event.keycode == 0x2E or event.keycode == 0x08:  # Delete
             for entry in selection:
-                self._track_entry_delete(self._selected_channel, entry)
+                self._delete_track_element(self._selected_channel, entry)
+
             self.track_info(self._selected_channel)
+            if selection[0] < len(self._track_data[self._selected_channel]):
+                self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection[0] << 1)
+            else:
+                self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", 0)
 
             return
 
@@ -2046,6 +2064,36 @@ class MusicEditor:
             if file_name != "":
                 self._read_famistudio_text(file_name)
 
+        elif widget == "SE_Apply_Type_Selection":
+            # Get element type
+            selected_type = self._get_selection_index("SE_Select_Type")
+            types = [TrackDataEntry.CHANNEL_VOLUME, TrackDataEntry.SELECT_INSTRUMENT, TrackDataEntry.SET_VIBRATO,
+                     TrackDataEntry.REST, TrackDataEntry.PLAY_NOTE, -1]
+            selected_type = types[selected_type]
+            # Gather a list of indices for all elements matching the desired type
+            selected_elements: List[int] = []
+            i = 0
+            for e in self._track_data[self._selected_channel]:
+                if selected_type == -1 and 0xF0 <= e.raw[0] < 0xFB:
+                    selected_elements.append(i)
+                elif selected_type == TrackDataEntry.PLAY_NOTE and e.raw[0] < 0xF0:
+                    selected_elements.append(i)
+                elif e.control == selected_type:
+                    selected_elements.append(i)
+
+                i += 1
+
+            w = self.app.getListBoxWidget(f"SE_List_Channel_{self._selected_channel}")
+            # Deselect everything first
+            w.selection_clear(0, tkinter.END)
+            for e in selected_elements:
+                # Add these indices to the current selection
+                w.selection_set(e << 1)
+
+            if len(selected_elements) > 0:
+                self._selected_element = selected_elements[0]
+                self.app.lastFrame("SE_Stack_Editing")
+
         elif widget[:17] == "SE_Clear_Channel_":
             # Don't do this during playback
             if self._playing:
@@ -2073,6 +2121,26 @@ class MusicEditor:
             # Update list
             self.track_info(channel)
             self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", 0, callFunction=True)
+
+        elif widget[:18] == "SE_Delete_Element_":
+            selection = self.app.getListBoxPos(f"SE_List_Channel_{self._selected_channel}")
+
+            for entry in reversed(selection):
+                self._delete_track_element(self._selected_channel, entry >> 1)
+
+            self.track_info(self._selected_channel)
+            if selection[0] < len(self._track_data[self._selected_channel]):
+                self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection[0])
+            else:
+                self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", 0)
+
+        elif widget[:18] == "SE_Select_Channel_":
+            channel = int(widget[-1], 10)
+
+            # Highlight this and un-highlight the others
+            for i in range(4):
+                self.app.button(f"SE_Select_Channel_{i}", bg=colour.DARK_NAVY if i != channel else colour.MEDIUM_GREEN)
+            self._selected_channel = channel
 
         else:
             self.info(f"Unimplemented callback for Track widget '{widget}'.")
@@ -2661,21 +2729,23 @@ class MusicEditor:
                     # We only need a rest if this isn't immediately followed by a note
                     if event_index >= len(self.events) - 1:
                         # At the end of the pattern: a rest is only needed if the last note stops before the end
-                        duration = self.length - e.time
+                        duration = (self.length * self.note_length) - e.time
                         if duration > 1:
-                            converted.append(TrackDataEntry.new_rest(duration * self.note_length))
+                            converted.append(TrackDataEntry.new_rest(duration))
 
                     elif self.events[event_index + 1].time > e.time + 1:
                         # Not immediately followed by something else: we add a rest to fill the gap
                         duration = self.events[event_index + 1].time - e.time
                         # If the duration would be too long, split this into several rests
-                        if duration * self.note_length < 256:
-                            converted.append(TrackDataEntry.new_rest(duration * self.note_length))
+                        if duration < 256:
+                            converted.append(TrackDataEntry.new_rest(duration))
                         else:
                             factor = duration >> 2
-                            while (duration * self.note_length) > 255:
+                            if factor == 0:
+                                factor = 1
+                            while duration > 255:
                                 duration -= factor
-                                converted.append(TrackDataEntry.new_rest(factor * self.note_length))
+                                converted.append(TrackDataEntry.new_rest(factor))
 
                     # In any case, clear the last note value
                     last_note_value = ""
@@ -2712,9 +2782,7 @@ class MusicEditor:
                     duration = self.note_length
                     try:
                         duration = self.events[event_index + 1].time - e.time
-                        # Stop events usually happen one frame earlier than the following one
-                        if self.events[event_index + 1].value == "Stop":
-                            duration += 1
+
                     except IndexError:
                         # This was the last event, so we let it run until the end of the pattern
                         duration = pattern_duration - e.time
