@@ -321,7 +321,7 @@ class MusicEditor:
 
         self._triangle_volume = 0.2
 
-        self.track_titles: List[str] = ["- No Tracks -"]
+        self.track_titles: List[List[str]] = [["- No Tracks -"], ["- No Tracks-"]]
 
         # These are to quickly access our canvas widgets
         self._canvas_graph: Canvas = Canvas()
@@ -402,40 +402,55 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def read_track_titles(self) -> List[str]:
+    def read_track_titles(self) -> List[List[str]]:
         """
         Reads track titles from music.txt, or <ROM name>_music.txt if present.
 
         Returns
         -------
-        List[str]
-            A list of strings corresponding to track titles.
+        List[List[str]]
+            Two lists of strings corresponding to track titles in banks 8 and 9 respectively
         """
-        track_titles: List[str] = []
+        track_titles: List[List[str]] = [[], []]
 
         # If any definition filename matches the currently loaded ROM filename, then use that one
         rom_file = os.path.basename(self.rom.path).rsplit('.')[0].lower()
 
-        if os.path.exists(f"{rom_file}_music.txt"):
-            file_name = f"{rom_file}_music.txt"
+        if os.path.exists(f"{rom_file}_music.ini"):
+            file_name = f"{rom_file}_music.ini"
         else:
-            file_name = "music.txt"
+            file_name = "music.ini"
+
+        # Get number of tracks in bank 8 from ROM
+        bank_8_count = self.rom.read_byte(0x8, 0x8001)
+
+        # Default names when no files found
+        for t in range(bank_8_count):
+            track_titles[0].append(f"Bank #08 Track #{t:02}")
+        for t in range(4):
+            track_titles[1].append(f"Bank #09 Track #{t:02}")
+
+        if not os.path.exists(file_name):
+            self.track_titles = track_titles
+            return track_titles
 
         try:
-            file = open(file_name, "r")
-            track_titles = file.readlines()
-            file.close()
+            parser = configparser.ConfigParser()
+            parser.read(file_name)
 
-            for m in range(len(track_titles)):
-                track_titles[m] = track_titles[m].rstrip("\n\a\r")
+            if parser.has_section("BANK_8"):
+                for t in range(bank_8_count):
+                    track_titles[0][t] = parser.get("BANK_8", f"{t}", fallback=f"Bank #08 Track #{t:02}")
+            if parser.has_section("BANK_9"):
+                for t in range(4):
+                    track_titles[1][t] = parser.get("BANK_9", f"{t}", fallback=f"Bank #08 Track #{t:02}")
 
-        except OSError as error:
-            self.error(f"Could not read '{file_name}': {error.strerror}.")
-            for t in range(12):
-                track_titles.append(f"Unnamed track #{t:02}")
+        except configparser.ParsingError as error:
+            self.app.errorBox("Music Editor", f"Could not parse track titles from file '{file_name}': {error}")
+            self.track_titles = track_titles
+            return track_titles
 
         self.track_titles = track_titles
-
         return track_titles
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -473,6 +488,11 @@ class MusicEditor:
             self._sound_server.stop()
         if self._sound_server.getIsBooted():
             self._sound_server.shutdown()
+
+        try:
+            self.app.destroySubWindow("Instrument_Info")
+        except ItemLookupError:
+            pass
 
         self.app.hideSubWindow("Instrument_Editor")
         self.app.emptySubWindow("Instrument_Editor")
@@ -548,7 +568,7 @@ class MusicEditor:
             window_exists = False
 
         # Get this track's address
-        address = 0x8051 + (track << 3)
+        address = (track << 3) + 0x8051 if bank == 8 else 0x8052
         for t in range(4):
             self._track_address[t] = self.rom.read_word(bank, address)
             address += 2
@@ -562,6 +582,9 @@ class MusicEditor:
         for instrument in self._instruments:
             instrument_names.append(f"{i:02X} {instrument.name if len(instrument.name) > 0 else '(no name)'}")
             i += 1
+
+        # Read or re-read track titles
+        self.read_track_titles()
 
         # Read track data for all tracks
         self.read_track_data(0)
@@ -615,7 +638,7 @@ class MusicEditor:
                 # Editable track info
                 with self.app.labelFrame("SE_Frame_Track_Info", name="Track Info", padding=[4, 2],
                                          row=0, column=0, rowspan=2):
-                    self.app.entry("SE_Track_Name", f"{self.read_track_titles()[track]}", width=24,
+                    self.app.entry("SE_Track_Name", f"{self.track_titles[8 - bank][track]}", width=24,
                                    row=0, column=0, colspan=3, font=9)
 
                     self.app.image("SE_Image_Channel_Address_0", "res/square_0.gif", sticky="E", row=1, column=0)
@@ -980,8 +1003,11 @@ class MusicEditor:
                                 bg=colour.WHITE if self._test_octave == 2 else colour.DARK_GREY,
                                 tooltip="Use lower octaves", sticky="W", row=3, column=3)
 
+                self.app.button("IE_Show_Info", self._instruments_input, image="res/info.gif",
+                                tooltip="Show instrument usage and other info", bg=colour.MEDIUM_ORANGE,
+                                sticky="E", row=2, column=0)
                 self.app.button("IE_Play_Stop", self._instruments_input, image="res/play.gif",
-                                width=32, height=32, bg=colour.MEDIUM_GREY, sticky="E", row=3, column=0)
+                                width=32, height=32, bg=colour.MEDIUM_ORANGE, sticky="E", row=3, column=0)
 
             # Full Volume / Duty cycle graph
             with self.app.frame("IE_Frame_Graph", padding=[2, 1], sticky="NEW", row=1, column=2):
@@ -999,17 +1025,17 @@ class MusicEditor:
                     self.app.label(f"IE_Label_Envelope_{e}", f"Envelope {e}", sticky="W", row=0, column=c, font=10)
                     self.app.listBox(f"IE_List_Envelope_{e}", None, width=list_width, height=8, rows=8,
                                      change=self._instruments_input, fixed_scrollbar=True,
-                                     multi=False, group=True, bg=colour.DARK_GREY, fg=colour.WHITE,
+                                     multi=False, group=True, bg=colour.DARK_RED, fg=colour.WHITE,
                                      sticky="S", row=1, column=c, font=9)
                     self.app.getListBoxWidget(f"IE_List_Envelope_{e}").configure(font="TkFixedFont")
 
                     # Buttons
                     self.app.button(f"IE_Move_Left_{e}", self._instruments_input, image="res/arrow_left-long.gif",
                                     tooltip="Move value to the previous envelope",
-                                    height=16, sticky="SEW", row=2, column=c, bg=colour.MEDIUM_GREY)
+                                    height=16, sticky="SEW", row=2, column=c, bg=colour.MEDIUM_ORANGE)
                     self.app.button(f"IE_Move_Right_{e}", self._instruments_input, image="res/arrow_right-long.gif",
                                     tooltip="Move value to the next envelope",
-                                    height=16, sticky="NEW", row=3, column=c, bg=colour.MEDIUM_GREY)
+                                    height=16, sticky="NEW", row=3, column=c, bg=colour.MEDIUM_ORANGE)
 
                     # Canvas and controls
                     self.app.canvas(f"IE_Canvas_Envelope_{e}", width=canvas_width, height=140, bg=colour.BLACK,
@@ -1526,6 +1552,64 @@ class MusicEditor:
 
             i += 2
             e += 1
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def instrument_usage(self, instrument_index: int) -> List[str]:
+        """
+        Parameters
+        ----------
+        instrument_index: int
+            Index of the instrument whose usage statistics we want
+
+        Returns
+        -------
+        List[str]:
+            A list of track names, in the instrument's bank, that contain at least one reference to its index
+        """
+        tracks: List[str] = []
+
+        pointers = 0x8051 if self._bank == 8 else 0x8052
+
+        if self._bank == 8:
+            # Read number of tracks from ROM
+            track_count = self.rom.read_byte(0x8, 0x8001)
+        else:
+            track_count = 4
+
+        for t in range(track_count):
+            # Each track has four channel pointers
+            for c in range(4):
+                # Get this channel's address
+                pointer = pointers + (2 * c) + (4 * t)
+                address = self.rom.read_word(self._bank, pointer)
+                # Read data, looking for instrument commands
+                while 1:
+                    value = self.rom.read_byte(self._bank, address)
+
+                    if value == 0xFF:       # REWIND
+                        break
+                    elif value == 0xFE:     # REST
+                        address += 2
+                    elif value == 0xFD:     # VIBRATO
+                        address += 4
+                    elif value == 0xFC:     # INSTRUMENT
+                        if self.rom.read_byte(self._bank, address + 1) == instrument_index:
+                            # Found a reference, we don't need any more
+                            if t < len(self.track_titles[8 - self._bank]):
+                                tracks.append(f"{t:02}: '{self.track_titles[8 - self._bank][t]}'")
+                            else:
+                                tracks.append(f"{t:02}: '(No Name)'")
+                            break
+                        address += 2
+                    elif value == 0xFB:     # VOLUME
+                        address += 1
+                    elif value < 0xF0:  # Notes
+                        address += 2
+                    else:               # Anything else
+                        address += 1
+
+        return tracks
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -2212,6 +2296,39 @@ class MusicEditor:
             self._selected_instrument = selection[0]
             self.instrument_info()
             self._restart_instrument_test()
+
+        elif widget == "IE_Show_Info":
+            if self._selected_instrument < 0:
+                return
+
+            instrument = self._instruments[self._selected_instrument]
+            name = f"Instrument #{self._selected_instrument:02}: {instrument.name}"
+            address = f"Pointers: ${self._bank:02X}:{instrument.envelope_address[0]:04X}, " +\
+                      f"{instrument.envelope_address[1]:04X}, {instrument.envelope_address[2]:04X}"
+            sizes = [instrument.envelope[e][0] for e in range(3)]
+            size = f"Size: {sizes[0] + sizes[1] + sizes[2]} {sizes}"
+            try:
+                self.app.setLabel("II_Label_Name", name)
+                self.app.setLabel("II_Label_Address", address)
+                self.app.setLabel("II_Label_Size", size)
+            except ItemLookupError:
+                with self.app.subWindow("Instrument_Info", modal=True, size=[320, 200], padding=[2, 2],
+                                        title="Instrument Info", bg=colour.DARK_ORANGE, fg=colour.WHITE):
+
+                    self.app.label("II_Label_Name", name, sticky="NEW", colspan=2, row=0, column=0, font=11)
+
+                    self.app.label("II_Label_Address", address, sticky="NE", row=1, column=1, font=10)
+                    self.app.label("II_Label_Size", size, sticky="NW", row=1, column=0, font=10)
+
+                    self.app.label("II_Label_Usage", "Used in tracks:", sticky="SW", row=2, column=0, font=11)
+                    self.app.listBox("II_List_Tracks", ["Please wait..."], bg=colour.BLACK, fg=colour.LIGHT_LIME,
+                                     height=8, sticky="SEW", row=3, column=0, colspan=2, font=10)
+            finally:
+                self.app.showSubWindow("Instrument_Info", follow=True)
+                # Find all tracks using this instrument
+                tracks = self.instrument_usage(self._selected_instrument)
+                self.app.clearListBox("II_List_Tracks", callFunction=False)
+                self.app.addListItems("II_List_Tracks", tracks, select=False)
 
         elif widget == "IE_Update_Name":
             self._update_instrument_name("IE_Instrument_Name")
@@ -3685,9 +3802,9 @@ class MusicEditor:
 
                     else:  # Vibrato disabled
                         if triangle_octave is True:
-                            channel_oscillator[c].setFreq(track_data.note.frequency)
-                        else:
                             channel_oscillator[c].setFreq(track_data.note.frequency >> 1)
+                        else:
+                            channel_oscillator[c].setFreq(track_data.note.frequency)
 
                     instrument = self._instruments[channel_instrument[c]]
 

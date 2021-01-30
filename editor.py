@@ -564,6 +564,7 @@ def open_rom(file_name: str) -> None:
 
         # Music editor
         music_editor = MusicEditor(app, rom, settings)
+        music_editor.read_track_titles()
 
         # Try to detect envelope bug
         data = rom.read_bytes(0x8, 0x8248, 3)
@@ -580,6 +581,7 @@ def open_rom(file_name: str) -> None:
         # Battlefield map editor
         battlefield_editor = BattlefieldEditor(app, rom, palette_editor)
         app.changeOptionBox("Battlefield_Option_Map", battlefield_editor.get_map_names(), 0, callFunction=False)
+        music_list = music_editor.track_titles[0] + music_editor.track_titles[1]
         app.changeOptionBox("Battlefield_Option_Music", music_editor.read_track_titles(), 0, callFunction=False)
 
         battlefield_editor.read_tab_data()
@@ -955,7 +957,8 @@ def read_cutscene_data(scene: int) -> None:
             app.disableOptionBox("CE_Param_2_00")
         else:
             app.enableOptionBox("CE_Param_2_00")
-            app.changeOptionBox("CE_Param_2_00", music_editor.read_track_titles(), callFunction=False)
+            app.changeOptionBox("CE_Param_2_00", music_editor.track_titles[0] + music_editor.track_titles[1],
+                                callFunction=False)
             app.setOptionBox("CE_Param_2_00", data[1] & 0x7F, callFunction=False)
 
         addresses = [0xB907, 0xB90B, 0xB90F, 0xB913]
@@ -1571,10 +1574,10 @@ def sound_tab_input(widget: str) -> None:
 
         # Show how many instruments are in this bank
         if bank == 8:
-            tracks_list = music_editor.track_titles[0:10]
+            tracks_list = music_editor.track_titles[0]
             value = 50
         else:
-            tracks_list = music_editor.track_titles[10:]
+            tracks_list = music_editor.track_titles[1]
             value = 0
             log(4, "MUSIC EDITOR", "Bank 9 not yet implemented.")
 
