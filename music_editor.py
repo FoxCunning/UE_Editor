@@ -411,7 +411,7 @@ class MusicEditor:
         else:
             file_name = "music.ini"
 
-        title = self.app.getEntry("SE_Track_Name")
+        title: str = f"{self.app.getEntry('SE_Track_Name')}"
         if len(title) < 1:
             # Nothing to save
             return
@@ -421,7 +421,7 @@ class MusicEditor:
             parser.read(file_name)
             if not parser.has_section(f"BANK_{self._bank}"):
                 parser.add_section(f"BANK_{self._bank}")
-            parser.set(f"BANK_{self._bank}", f"{title}")
+            parser.set(f"BANK_{self._bank}", f"{self._track_index}", title)
 
         except configparser.ParsingError as error:
             self.error(f"Could not save track name to file: '{error}'.")
@@ -1100,8 +1100,8 @@ class MusicEditor:
         success = True
 
         parser = configparser.ConfigParser()
-        parser.add_section("NAMES")
-        section = parser["NAMES"]
+        parser.add_section(f"BANK_{self._bank}")
+        section = parser[f"BANK_{self._bank}"]
 
         for i in range(len(self._instruments)):
             # Save envelopes
@@ -1145,7 +1145,7 @@ class MusicEditor:
                           (0xA74B, 694), (0xAA52, 720), (0xADC1, 1704), (0xB4FA, 1164), (0xB968, 1562), (0xBFD0, 32)]
 
         elif self._bank == 9:
-            track_count = 5
+            track_count = 4
 
             muted_address = 0x863C
 
@@ -1198,7 +1198,14 @@ class MusicEditor:
 
                     buffer: bytearray = bytearray()
                     for element in self._track_data[c]:
-                        buffer += element.raw
+                        data = element.raw.copy()
+
+                        # Bank 9 subtracts 50 to each instrument's index, so we did when loading the track
+                        #   Now we have to reverse that
+                        if data[0] == 0xFC and self._bank == 9:
+                            data[1] += 50
+
+                        buffer += data
 
                     # Allocate memory for the current track: discard addresses and re-allocate
                     channel_address.append(-1)
@@ -1317,6 +1324,12 @@ class MusicEditor:
 
         loop_found = False
 
+        if self._bank == 9:
+            # Bank 9 subtracts this value from each instrument's index
+            instrument_offset = 50
+        else:
+            instrument_offset = 0
+
         while not loop_found:
             control_byte = self.rom.read_byte(self._bank, address)
             address = address + 1
@@ -1328,7 +1341,10 @@ class MusicEditor:
                 # data.raw = bytearray([0xFB, value])
 
             elif control_byte == 0xFC:  # FC - INSTRUMENT
-                value = self.rom.read_byte(self._bank, address)
+                value = self.rom.read_byte(self._bank, address) - instrument_offset
+                if value < 0:
+                    self.warning(f"Invalid instrument index: {value} found.")
+                    value = 0
                 address += 1
                 data = TrackDataEntry.new_instrument(value)
                 # data.raw = bytearray([0xFC, value])
@@ -1423,8 +1439,8 @@ class MusicEditor:
             # Each instrument defines three duty/volume envelopes
             address = [0x8643, 0x86A7, 0x870B]
         else:
-            self.info("Bank 9 not yet implemented.")
-            return
+            instrument_count = 13
+            address = [0x8646, 0x8660, 0x867A]
 
         # Open names file, if there is one
         parser = configparser.ConfigParser()
@@ -1450,7 +1466,7 @@ class MusicEditor:
                 data = self.rom.read_bytes(bank, envelope_address, size + 1)
                 instrument.envelope.append(data)
 
-            instrument.name = parser.get("NAMES", f"{i}", fallback="(no name)")[:24]
+            instrument.name = parser.get(f"BANK_{self._bank}", f"{i}", fallback="(no name)")[:24]
 
             self._instruments.append(instrument)
 
@@ -1544,7 +1560,11 @@ class MusicEditor:
 
             elif t.control == TrackDataEntry.SELECT_INSTRUMENT:
                 text += f"{t.raw[1]:02X} - -- - --\n"
-                description = f"INS {self._instruments[t.instrument_index].name[:19]}"
+                try:
+                    description = f"INS {self._instruments[t.instrument_index].name[:19]}"
+                except IndexError:
+                    self.warning(f"Could not find name for instrument #{t.instrument_index}")
+                    description = f"INS #{t.instrument_index:02}"
                 bg = colour.DARK_ORANGE
                 fg = colour.PALE_TEAL
 
@@ -1607,8 +1627,10 @@ class MusicEditor:
         if self._bank == 8:
             # Read number of tracks from ROM
             track_count = self.rom.read_byte(0x8, 0x8001)
+            offset = 0
         else:
             track_count = 4
+            offset = 50     # Bank 9 subtracts this value from instrument indices
 
         for t in range(track_count):
             # Each track has four channel pointers
@@ -1627,7 +1649,7 @@ class MusicEditor:
                     elif value == 0xFD:     # VIBRATO
                         address += 4
                     elif value == 0xFC:     # INSTRUMENT
-                        if self.rom.read_byte(self._bank, address + 1) == instrument_index:
+                        if self.rom.read_byte(self._bank, address + 1) == instrument_index + offset:
                             # Found a reference, we don't need any more
                             if t < len(self.track_titles[8 - self._bank]):
                                 tracks.append(f"{t:02}: '{self.track_titles[8 - self._bank][t]}'")
@@ -1805,6 +1827,8 @@ class MusicEditor:
             self._update_element_info(self._selected_channel, self._selected_element)
             self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
 
+            self._unsaved_changes_track = True
+
         elif widget == "SE_Apply_Volume" or widget == "SE_Entry_Volume":
             element, selection = self._get_selected_element()
 
@@ -1830,6 +1854,8 @@ class MusicEditor:
             self._update_element_info(self._selected_channel, self._selected_element)
             self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
 
+            self._unsaved_changes_track = True
+
         elif widget == "SE_Select_Instrument":
             element, selection = self._get_selected_element()
 
@@ -1843,6 +1869,8 @@ class MusicEditor:
                 self._update_element_info(self._selected_channel, self._selected_element)
                 # Re-select it
                 self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
+
+                self._unsaved_changes_track = True
 
         elif widget == "SE_Apply_Rest" or widget == "SE_Rest_Duration":
             element, selection = self._get_selected_element()
@@ -1867,6 +1895,8 @@ class MusicEditor:
             element.set_rest(value)
             self._update_element_info(self._selected_channel, self._selected_element)
             self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
+
+            self._unsaved_changes_track = True
 
         elif widget == "SE_Apply_Vibrato" or widget == "SE_Vibrato_Speed" or widget == "SE_Vibrato_Factor":
             element, selection = self._get_selected_element()
@@ -1908,6 +1938,8 @@ class MusicEditor:
             self._update_element_info(self._selected_channel, self._selected_element)
             self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
 
+            self._unsaved_changes_track = True
+
         elif widget == "SE_Triangle_Octave":
             element, selection = self._get_selected_element()
 
@@ -1920,6 +1952,8 @@ class MusicEditor:
             element.set_vibrato(octave, speed, factor)
             self._update_element_info(self._selected_channel, self._selected_element)
             self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
+
+            self._unsaved_changes_track = True
 
         elif widget == "SE_Apply_Rewind" or widget == "SE_Rewind_Value":
             element, selection = self._get_selected_element()
@@ -1935,6 +1969,7 @@ class MusicEditor:
 
                 else:
                     element.loop_position = value
+                    self._unsaved_changes_track = True
 
             except ValueError:
                 self.app.soundError()
@@ -1998,6 +2033,8 @@ class MusicEditor:
                 self.track_info(channel)
             else:
                 self._update_element_info(channel, len(self._track_data[channel]) - 1)
+
+            self._unsaved_changes_track = True
 
         except IndexError:
             self.app.soundError()
@@ -2127,6 +2164,7 @@ class MusicEditor:
             else:
                 self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", 0)
 
+            self._unsaved_changes_track = True
             return
 
         if len(selection) > 1:
@@ -2160,6 +2198,8 @@ class MusicEditor:
         self.track_info(channel)
         self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", position << 1, callFunction=False)
         self._element_selection(None, channel)
+
+        self._unsaved_changes_track = True
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -2230,6 +2270,8 @@ class MusicEditor:
                 self._settings.set("last music import path", os.path.dirname(file_name))
                 self._read_famistudio_text(file_name)
 
+            self._unsaved_changes_track = True
+
         elif widget == "SE_Apply_Type_Selection":
             # Get element type
             selected_type = self._get_selection_index("SE_Select_Type")
@@ -2260,6 +2302,8 @@ class MusicEditor:
                 self._selected_element = selected_elements[0]
                 self.app.lastFrame("SE_Stack_Editing")
 
+            self._unsaved_changes_track = True
+
         elif widget[:17] == "SE_Clear_Channel_":
             # Don't do this during playback
             if self._playing:
@@ -2288,6 +2332,8 @@ class MusicEditor:
             self.track_info(channel)
             self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", 0, callFunction=True)
 
+            self._unsaved_changes_track = True
+
         elif widget[:18] == "SE_Delete_Element_":
             selection = self.app.getListBoxPos(f"SE_List_Channel_{self._selected_channel}")
 
@@ -2299,6 +2345,8 @@ class MusicEditor:
                 self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection[0])
             else:
                 self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", 0)
+
+            self._unsaved_changes_track = True
 
         elif widget[:18] == "SE_Select_Channel_":
             channel = int(widget[-1], 10)
@@ -2389,6 +2437,8 @@ class MusicEditor:
             # Update UI
             self.instrument_info()
 
+            self._unsaved_changes_instrument = True
+
         # Move envelope entry to next envelope
         elif widget[:13] == "IE_Move_Right":
             src = int(widget[-1], 10)  # Index of source envelope
@@ -2411,6 +2461,8 @@ class MusicEditor:
 
             # Update UI
             self.instrument_info()
+
+            self._unsaved_changes_instrument = True
 
         # Envelope entry selected
         elif widget[:17] == "IE_List_Envelope_":

@@ -1578,8 +1578,7 @@ def sound_tab_input(widget: str) -> None:
             value = 50
         else:
             tracks_list = music_editor.track_titles[1]
-            value = 0
-            log(4, "MUSIC EDITOR", "Bank 9 not yet implemented.")
+            value = 13
 
         app.setLabel("ST_Label_Instruments", f"Instruments in this bank: {value}")
         app.changeOptionBox("ST_Option_Music", tracks_list, 0, callFunction=False)
