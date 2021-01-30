@@ -1100,7 +1100,16 @@ class MusicEditor:
         success = True
 
         parser = configparser.ConfigParser()
-        parser.add_section(f"BANK_{self._bank}")
+
+        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_instruments.ini"
+        if os.path.exists(file_name):
+            parser.read(file_name)
+        elif os.path.exists("instruments.ini"):
+            parser.read("instruments.ini")
+
+        if not parser.has_section(f"BANK_{self._bank}"):
+            parser.add_section(f"BANK_{self._bank}")
+
         section = parser[f"BANK_{self._bank}"]
 
         for i in range(len(self._instruments)):
@@ -1114,7 +1123,6 @@ class MusicEditor:
             if name != "(no name)":
                 section[f"{i}"] = self._instruments[i].name
 
-        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_instruments.ini"
         try:
             with open(file_name, "w") as names_file:
                 parser.write(names_file, False)
@@ -1447,6 +1455,8 @@ class MusicEditor:
         file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_instruments.ini"
         if os.path.exists(file_name):
             parser.read(file_name)
+        elif os.path.exists("instruments.ini"):
+            parser.read("instruments.ini")
 
         # Clear previous instruments
         self._instruments.clear()
