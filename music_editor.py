@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import tkinter
+import re
 
 import pyo
 
@@ -295,6 +296,8 @@ class MusicEditor:
 
         # --- Common ---
         self._bank: int = 8
+
+        self._settings = settings
 
         # --- Track Editor ---
         self._track_address: List[int] = [0, 0, 0, 0]
@@ -2057,11 +2060,13 @@ class MusicEditor:
                 self.app.setButtonImage(widget, "res/stop.gif")
 
         elif widget == "SE_Button_Import":
-            file_name = self.app.openBox("Import FMS/FMT text file", self.rom.path,
+            path = self._settings.get("last music import path")
+            file_name = self.app.openBox("Import FMS/FMT text file", path,
                                          [("FamiStudio/FamiTracker Text File", "*.txt"),
                                           ("All Files", "*.*")],
                                          asFile=False, parent="Track_Editor", multiple=False)
             if file_name != "":
+                self._settings.set("last music import path", os.path.dirname(file_name))
                 self._read_famistudio_text(file_name)
 
         elif widget == "SE_Apply_Type_Selection":
@@ -2728,9 +2733,9 @@ class MusicEditor:
                 if e.value == "Stop":
                     # We only need a rest if this isn't immediately followed by a note
                     if event_index >= len(self.events) - 1:
-                        # At the end of the pattern: a rest is only needed if the last note stops before the end
+                        # At the end of the pattern: calculate how long before the end and use that as our duration
                         duration = (self.length * self.note_length) - e.time
-                        if duration > 1:
+                        if duration > 0:
                             converted.append(TrackDataEntry.new_rest(duration))
 
                     elif self.events[event_index + 1].time > e.time + 1:
@@ -2851,9 +2856,11 @@ class MusicEditor:
             self.app.errorBox("Track Editor", f"Invalid FamiStudio text file: '{file_name}'.")
             return track_data
 
+        expression = re.compile(r'''((?:[^ "']|"[^"]*"|'[^']*')+)''')
+
         for line in buffer:
             # Process lines
-            parts = line.split(' ')
+            parts = expression.split(line)[1::2]
 
             object_name = parts[0].lstrip()
 
@@ -3515,7 +3522,25 @@ class MusicEditor:
                         else:
                             channel_oscillator[c].setFreq(track_data.note.frequency >> 1)
 
-                    # This channel does not use instruments / envelopes, because it does not have volume / duty
+                    instrument = self._instruments[channel_instrument[c]]
+
+                    # Envelope trigger points for the current instrument
+                    # This tell us when to switch to the next envelope
+                    channel_triggers[c][0] = track_data.note.duration
+
+                    channel_triggers[c][1] = track_data.note.duration - instrument.size(0)
+                    if channel_triggers[c][1] < 0:
+                        channel_triggers[c][1] = 0
+
+                    value = channel_triggers[c][1] - instrument.size(2)
+                    if value < 0:
+                        value = 0
+
+                    # Take the smallest between this value of the size of the previous envelope
+                    if value >= instrument.size(1):
+                        value = instrument.size(1)
+
+                    channel_triggers[c][2] = channel_triggers[c][1] - value
 
                 elif track_data.control == TrackDataEntry.REST:
                     self._track_counter[c] = track_data.rest_duration
@@ -3560,11 +3585,32 @@ class MusicEditor:
 
             # Generate / manipulate sound
             if self._track_counter[c] > 1:
-                # Keep playing the current note
-                if vibrato_factor[c] > 1:
-                    # Use vibrato table and counters
-                    vibrato_counter[c] += vibrato_increment[c]
-                    channel_oscillator[c].setFreq(vibrato_table[c][vibrato_counter[c] & 0x0007])
+                # Choose one of the 3 envelopes in the current instrument based on trigger points
+                envelope = 0
+                if self._track_counter[c] < channel_triggers[c][1]:
+                    if self._track_counter[c] < channel_triggers[c][2]:
+                        envelope = 2
+                    else:
+                        envelope = 1
+
+                index = channel_triggers[c][envelope] - self._track_counter[c] + 1
+                if index > self._instruments[channel_instrument[c]].envelope[envelope][0]:
+                    index = self._instruments[channel_instrument[c]].envelope[envelope][0]
+                elif index < 0:
+                    index = 1
+
+                # This channel uses only two bits from the envelope as a value for the linear counter
+                if self._instruments[channel_instrument[c]].envelope[envelope][index] & 0x0C > 0:
+
+                    # Keep playing the current note
+                    if vibrato_factor[c] > 1:
+                        # Use vibrato table and counters
+                        vibrato_counter[c] += vibrato_increment[c]
+
+                        channel_oscillator[c].setFreq(vibrato_table[c][vibrato_counter[c] & 0x0007])
+                else:
+                    # Envelope is low: mute for this frame
+                    channel_oscillator[c].setFreq(0)
             else:
                 channel_oscillator[c].setFreq(0)
 
