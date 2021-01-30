@@ -582,7 +582,7 @@ def open_rom(file_name: str) -> None:
         battlefield_editor = BattlefieldEditor(app, rom, palette_editor)
         app.changeOptionBox("Battlefield_Option_Map", battlefield_editor.get_map_names(), 0, callFunction=False)
         music_list = music_editor.track_titles[0] + music_editor.track_titles[1]
-        app.changeOptionBox("Battlefield_Option_Music", music_editor.read_track_titles(), 0, callFunction=False)
+        app.changeOptionBox("Battlefield_Option_Music", music_list, 0, callFunction=False)
 
         battlefield_editor.read_tab_data()
 
@@ -1961,7 +1961,7 @@ if __name__ == "__main__":
                                    sticky="NEWS", stretch="BOTH", row=2, column=0):
                         app.label("Battlefield_Label_Music", "Battle Music (all maps):", sticky="E",
                                   row=0, column=0, font=11)
-                        app.optionBox("Battlefield_Option_Music", ["- None -"], sticky="W", width=16,
+                        app.optionBox("Battlefield_Option_Music", ["- None -"], sticky="W", width=24,
                                       row=0, column=1, font=10)
 
                     with app.frame("Battlefield_Buttons_Frame", row=3, column=0, sticky="NWS",
@@ -2290,7 +2290,7 @@ if __name__ == "__main__":
                     # Parameters
                     with app.frame("CE_Frame_Parameters_2", row=0, column=0, padding=[4, 1], sticky="NEW"):
                         app.label("CE_Label_2_00", "Music", sticky="E", row=0, column=0, font=11)
-                        app.optionBox("CE_Param_2_00", ["- File not loaded -"], change=None,
+                        app.optionBox("CE_Param_2_00", ["- File not loaded -"], change=None, width=24,
                                       sticky="W", row=0, column=1, colspan=2, font=10, fg=colour.BLACK)
 
                         app.label("CE_Label_2_01", "Text Position (X)", row=1, column=0, sticky="NE")
