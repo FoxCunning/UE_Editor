@@ -402,6 +402,36 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _save_current_track_title(self) -> None:
+        # If any definition filename matches the currently loaded ROM filename, then use that one
+        rom_file = os.path.basename(self.rom.path).rsplit('.')[0].lower()
+
+        if os.path.exists(f"{rom_file}_music.ini"):
+            file_name = f"{rom_file}_music.ini"
+        else:
+            file_name = "music.ini"
+
+        title = self.app.getEntry("SE_Track_Name")
+        if len(title) < 1:
+            # Nothing to save
+            return
+
+        parser = configparser.ConfigParser()
+        try:
+            parser.read(file_name)
+            if not parser.has_section(f"BANK_{self._bank}"):
+                parser.add_section(f"BANK_{self._bank}")
+            parser.set(f"BANK_{self._bank}", f"{title}")
+
+        except configparser.ParsingError as error:
+            self.error(f"Could not save track name to file: '{error}'.")
+
+        # Update option boxes in main window tabs?
+        self.app.changeOptionBox("Battlefield_Option_Music", self.track_titles[0] + self.track_titles[1])
+        self.app.changeOptionBox("CE_Param_2_00", self.track_titles[0] + self.track_titles[1])
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def read_track_titles(self) -> List[List[str]]:
         """
         Reads track titles from music.txt, or <ROM name>_music.txt if present.
@@ -1097,6 +1127,9 @@ class MusicEditor:
 
     def save_track_data(self) -> bool:
         success: bool = True
+
+        # Save track name to INI file
+        self._save_current_track_title()
 
         # We will need to re-allocate space for all the tracks in the current bank
         if self._bank == 8:
