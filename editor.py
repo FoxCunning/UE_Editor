@@ -1575,12 +1575,12 @@ def sound_tab_input(widget: str) -> None:
         # Show how many instruments are in this bank
         if bank == 8:
             tracks_list = music_editor.track_titles[0]
-            value = 50
+            instruments = 50
         else:
             tracks_list = music_editor.track_titles[1]
-            value = 13
+            instruments = 13
 
-        app.setLabel("ST_Label_Instruments", f"Instruments in this bank: {value}")
+        app.setLabel("ST_Label_Instruments", f"Instruments in this bank: {instruments}")
         app.changeOptionBox("ST_Option_Music", tracks_list, 0, callFunction=False)
 
     elif widget == "ST_Edit_Instruments":

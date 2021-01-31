@@ -404,11 +404,10 @@ class MusicEditor:
 
     def _save_current_track_title(self) -> None:
         # If any definition filename matches the currently loaded ROM filename, then use that one
-        rom_file = os.path.basename(self.rom.path).rsplit('.')[0].lower()
-
-        if os.path.exists(f"{rom_file}_music.ini"):
-            file_name = f"{rom_file}_music.ini"
-        else:
+        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_music.ini"
+        if os.path.exists(os.path.dirname(self.rom.path) + '/' + file_name):
+            file_name = os.path.dirname(self.rom.path) + '/' + file_name
+        elif os.path.exists("music.ini"):
             file_name = "music.ini"
 
         title: str = f"{self.app.getEntry('SE_Track_Name')}"
@@ -421,14 +420,20 @@ class MusicEditor:
             parser.read(file_name)
             if not parser.has_section(f"BANK_{self._bank}"):
                 parser.add_section(f"BANK_{self._bank}")
-            parser.set(f"BANK_{self._bank}", f"{self._track_index}", title)
+            parser.set(f"BANK_{self._bank}", f"{self._track_index}", title.replace('%', '%%'))
+
+        except ValueError:
+            self.app.warningBox("Track Editor", f"Invalid track title '{title}'.")
 
         except configparser.ParsingError as error:
             self.error(f"Could not save track name to file: '{error}'.")
 
-        # Update option boxes in main window tabs?
+        self.track_titles[self._bank - 8][self._track_index] = title
+
+        # Update option boxes in main window tabs
         self.app.changeOptionBox("Battlefield_Option_Music", self.track_titles[0] + self.track_titles[1])
         self.app.changeOptionBox("CE_Param_2_00", self.track_titles[0] + self.track_titles[1])
+        self.app.setOptionBox("ST_Music_Bank", self._bank - 8, callFunction=True)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -444,11 +449,19 @@ class MusicEditor:
         track_titles: List[List[str]] = [[], []]
 
         # If any definition filename matches the currently loaded ROM filename, then use that one
+        """
         rom_file = os.path.basename(self.rom.path).rsplit('.')[0].lower()
 
         if os.path.exists(f"{rom_file}_music.ini"):
             file_name = f"{rom_file}_music.ini"
         else:
+            file_name = "music.ini"
+
+        """
+        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_music.ini"
+        if os.path.exists(os.path.dirname(self.rom.path) + '/' + file_name):
+            file_name = os.path.dirname(self.rom.path) + '/' + file_name
+        elif os.path.exists("music.ini"):
             file_name = "music.ini"
 
         # Get number of tracks in bank 8 from ROM
@@ -668,7 +681,7 @@ class MusicEditor:
                 # Editable track info
                 with self.app.labelFrame("SE_Frame_Track_Info", name="Track Info", padding=[4, 2],
                                          row=0, column=0, rowspan=2):
-                    self.app.entry("SE_Track_Name", f"{self.track_titles[8 - bank][track]}", width=24,
+                    self.app.entry("SE_Track_Name", f"{self.track_titles[bank - 8][track]}", width=24,
                                    row=0, column=0, colspan=3, font=9)
 
                     self.app.image("SE_Image_Channel_Address_0", "res/square_0.gif", sticky="E", row=1, column=0)
@@ -1102,9 +1115,13 @@ class MusicEditor:
         parser = configparser.ConfigParser()
 
         file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_instruments.ini"
-        if os.path.exists(file_name):
+        if os.path.exists(os.path.dirname(self.rom.path) + '/' + file_name):
+            file_name = os.path.dirname(self.rom.path) + '/' + file_name
+            parser.read(file_name)
+        elif os.path.exists(file_name):
             parser.read(file_name)
         elif os.path.exists("instruments.ini"):
+            file_name = "instruments.ini"
             parser.read("instruments.ini")
 
         if not parser.has_section(f"BANK_{self._bank}"):
@@ -1121,7 +1138,10 @@ class MusicEditor:
             # Add name to ini file
             name = self._instruments[i].name
             if name != "(no name)":
-                section[f"{i}"] = self._instruments[i].name
+                try:
+                    section[f"{i}"] = self._instruments[i].name.replace('%', '%%')
+                except ValueError:
+                    self.app.warningBox("Instrument Editor", f"Invalid instrument name '{name}'.")
 
         try:
             with open(file_name, "w") as names_file:
@@ -1453,10 +1473,14 @@ class MusicEditor:
         # Open names file, if there is one
         parser = configparser.ConfigParser()
         file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_instruments.ini"
-        if os.path.exists(file_name):
+        if os.path.exists(os.path.dirname(self.rom.path) + '/' + file_name):
+            file_name = os.path.dirname(self.rom.path) + '/' + file_name
+            parser.read(file_name)
+        elif os.path.exists(file_name):
             parser.read(file_name)
         elif os.path.exists("instruments.ini"):
-            parser.read("instruments.ini")
+            file_name = "instruments.ini"
+            parser.read(file_name)
 
         # Clear previous instruments
         self._instruments.clear()
@@ -1661,8 +1685,8 @@ class MusicEditor:
                     elif value == 0xFC:     # INSTRUMENT
                         if self.rom.read_byte(self._bank, address + 1) == instrument_index + offset:
                             # Found a reference, we don't need any more
-                            if t < len(self.track_titles[8 - self._bank]):
-                                tracks.append(f"{t:02}: '{self.track_titles[8 - self._bank][t]}'")
+                            if t < len(self.track_titles[self._bank - 8]):
+                                tracks.append(f"{t:02}: '{self.track_titles[self._bank - 8][t]}'")
                             else:
                                 tracks.append(f"{t:02}: '(No Name)'")
                             break
@@ -2220,6 +2244,7 @@ class MusicEditor:
                                   "song is too large to be contained in ROM.\nTry again after reducing its size.",
                                   "Track_Editor")
             else:
+                self._unsaved_changes_track = False
                 self.close_track_editor()
 
         elif widget == "SE_Button_Cancel":
