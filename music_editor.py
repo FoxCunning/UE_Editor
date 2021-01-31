@@ -422,10 +422,15 @@ class MusicEditor:
                 parser.add_section(f"BANK_{self._bank}")
             parser.set(f"BANK_{self._bank}", f"{self._track_index}", title.replace('%', '%%'))
 
+            parser.write(open(file_name, "w"))
+
         except ValueError:
             self.app.warningBox("Track Editor", f"Invalid track title '{title}'.")
 
         except configparser.ParsingError as error:
+            self.error(f"Error parsing track names: '{error}'.")
+
+        except IOError as error:
             self.error(f"Could not save track name to file: '{error}'.")
 
         self.track_titles[self._bank - 8][self._track_index] = title
@@ -960,6 +965,7 @@ class MusicEditor:
         self.track_info(2)
         self.track_info(3)
 
+        self._unsaved_changes_track = False
         self.app.showSubWindow("Track_Editor")
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -1240,15 +1246,15 @@ class MusicEditor:
 
                     # Also read the address from the entry widget to see if this is a "muted" track
                     try:
-                        address = int(self.app.getEntry(f"SE_Channel_Address_{c}"), 16)
+                        address = self._track_address[c]
                         if address == muted_address:
                             # Make sure this is actually a muted channel, don't just rely on size:
                             #   data should be FC 00 FB 08 FE 40 FF 00 FE FF
                             if len(self._track_data[c]) == 4:
                                 if (self._track_data[c][0].raw[0] == 0xFC and
-                                   self._track_data[c][1].raw[1] == 0xFB and
-                                   self._track_data[c][2].raw[2] == 0xFE and
-                                   self._track_data[c][3].raw[3] == 0xFF):
+                                   self._track_data[c][1].raw[0] == 0xFB and
+                                   self._track_data[c][2].raw[0] == 0xFE and
+                                   self._track_data[c][3].raw[0] == 0xFF):
                                     channel_address[c] = muted_address
 
                     except ValueError:
@@ -1285,6 +1291,8 @@ class MusicEditor:
                 # Now we have data and pointers
                 # First, we make sure this isn't a "muted" track
                 if channel_address[c] == muted_address:
+                    # In this case, we only need to update the pointer table
+                    self.rom.write_word(self._bank, pointer_table + (2 * c) + (8 * i), channel_address[c])
                     continue
 
                 # Now let's see if a track with the same address had already been processed
@@ -2362,6 +2370,12 @@ class MusicEditor:
             self._track_data[channel].append(TrackDataEntry.new_volume(0))
             self._track_data[channel].append(TrackDataEntry.new_rest(7))
             self._track_data[channel].append(TrackDataEntry.new_rewind(0))
+
+            # Change address to the default "muted track" one
+            self.app.clearEntry(f"SE_Channel_Address_{channel}", callFunction=False, setFocus=False)
+            address = 0x8639 if self._bank == 8 else 0x863C
+            self.app.setEntry(f"SE_Channel_Address_{channel}", f"0x{address:04X}", callFunction=False)
+            self._track_address[channel] = address
 
             # Update list
             self.track_info(channel)
