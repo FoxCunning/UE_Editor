@@ -67,7 +67,10 @@ class EditorSettings:
 
             self.config.add_section("SETTINGS")
             for k in EditorSettings.KEYS:
-                self.config.set("SETTINGS", k, EditorSettings.KEYS.get(k))
+                try:
+                    self.config.set("SETTINGS", k, EditorSettings.KEYS.get(k))
+                except TypeError as error:
+                    log(2, "SETTINGS", f"Error parsing option '{k}': {error}.")
 
             self.config.write(open(self._path, "w"))
 
