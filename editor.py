@@ -2420,26 +2420,21 @@ if __name__ == "__main__":
         # Instrument Editor Sub-Window ---------------------------------------------------------------------------------
         with app.subWindow("Instrument_Editor", title="Ultima Exodus Instrument Editor", size=[900, 456], padding=[2, 0],
                            modal=False, resizable=False, inPadding=0, guiPadding=0,
-                           bg=colour.DARK_ORANGE, fg=colour.WHITE):
-            # noinspection PyArgumentList
-            app.setStopFunction(instrument_editor_stop)
+                           bg=colour.DARK_ORANGE, fg=colour.WHITE, stopFunction=instrument_editor_stop):
 
             app.label("IE_Label_Temp", "...")
 
         # Track Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Track_Editor", title="Ultima Exodus Track Editor", size=[900, 720], padding=[2, 0],
                            modal=False, resizable=False, inPadding=0, guiPadding=0,
-                           bg=colour.DARK_NAVY, fg=colour.WHITE):
-            # noinspection PyArgumentList
-            app.setStopFunction(track_editor_stop)
+                           bg=colour.DARK_NAVY, fg=colour.WHITE, stopFunction=track_editor_stop):
 
             app.label("SE_Label_Temp", "...")
 
         # Screen Editor Sub-Window -------------------------------------------------------------------------------------
         with app.subWindow("Cutscene_Editor", title="Screen Editor", size=[800, 402], padding=[2, 0], modal=False,
-                           resizable=False, inPadding=0, guiPadding=0, bg=colour.DARK_GREY):
-            # noinspection PyArgumentList
-            app.setStopFunction(cutscene_editor_stop)
+                           resizable=False, inPadding=0, guiPadding=0, bg=colour.DARK_GREY,
+                           stopFunction=cutscene_editor_stop):
 
             # Buttons
             with app.frame("CE_Cutscene_Buttons", row=0, column=0, padding=[2, 0]):
@@ -2482,17 +2477,14 @@ if __name__ == "__main__":
 
         # Party Editor Sub-Window --------------------------------------------------------------------------------------
         with app.subWindow("Party_Editor", title="Party Editor", size=[360, 240], modal=False, resizable=False,
-                           padding=0, inPadding=0, guiPadding=0, bg=colour.LIGHT_BLUE):
-            # noinspection PyArgumentList
-            app.setStopFunction(party_editor_stop)
+                           padding=0, inPadding=0, guiPadding=0, bg=colour.LIGHT_BLUE,
+                           stopFunction=party_editor_stop):
 
             app.label("PE_Label_p0", "")
 
             # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
             with app.subWindow("PE_Progress", title="Loading", modal=True, size=[300, 100], padding=[4, 4],
-                               bg=colour.PALE_PINK):
-                # noinspection PyArgumentList
-                app.setStopFunction(no_stop)
+                               bg=colour.PALE_PINK, stopFunction=no_stop):
 
                 app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch="ROW", sticky='WE',
                           font=16)
@@ -2510,10 +2502,8 @@ if __name__ == "__main__":
             app.label("BE_Label_temp", "...")
 
         # Text Editor Sub-Window ---------------------------------------------------------------------------------------
-        with app.subWindow("Text_Editor", "Text Editor", size=[420, 380], modal=False, resizable=False):
-            # noinspection PyArgumentList
-            app.setStopFunction(text_editor_stop)
-
+        with app.subWindow("Text_Editor", "Text Editor", size=[420, 380], modal=False, resizable=False,
+                           stopFunction=text_editor_stop):
             # Buttons
             with app.frame("TE_Frame_Top", row=0, colspan=2, sticky="NEW", stretch="ROW", padding=[8, 2]):
                 app.button("TE_Button_Accept", text_editor_input, name="Accept and Close", image="res/floppy.gif",
