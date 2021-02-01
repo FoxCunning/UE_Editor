@@ -273,7 +273,7 @@ class MusicEditor:
         self.rom = rom
 
         # --- Common ---
-        self._bank: int = 8     # Default value, changes upon opening an edit window
+        self._bank: int = 8  # Default value, changes upon opening an edit window
         self._settings = settings
 
         # --- Track Editor ---
@@ -649,10 +649,10 @@ class MusicEditor:
                                 tooltip="Apply changes to all channels", bg=colour.PALE_NAVY,
                                 sticky="W", row=0, column=0)
                 self.app.button("SE_Button_Import", self._track_input, image="res/import.gif", width=32, height=32,
-                                tooltip="Import FamiStudio / FamiTracker text file", bg=colour.PALE_NAVY,
+                                tooltip="Import track data from file", bg=colour.PALE_NAVY,
                                 sticky="W", row=0, column=1)
                 self.app.button("SE_Button_Export", self._track_input, image="res/export.gif", width=32, height=32,
-                                tooltip="Export to FamiStudio / FamiTracker text file", bg=colour.PALE_NAVY,
+                                tooltip="Export track data to file", bg=colour.PALE_NAVY,
                                 sticky="W", row=0, column=2)
                 self.app.button("SE_Button_Reload", self._track_input, image="res/reload.gif", width=32, height=32,
                                 tooltip="Reload track data from ROM", bg=colour.PALE_NAVY,
@@ -1234,7 +1234,7 @@ class MusicEditor:
                     if offset > 0:
                         offset = 0
 
-                    self._track_data[c][-1].raw = bytearray([0xFF, 00]) +\
+                    self._track_data[c][-1].raw = bytearray([0xFF, 00]) + \
                         bytearray(offset.to_bytes(2, "little", signed=True))
 
                     buffer: bytearray = bytearray()
@@ -1259,9 +1259,9 @@ class MusicEditor:
                             #   data should be FC 00 FB 08 FE 40 FF 00 FE FF
                             if len(self._track_data[c]) == 4:
                                 if (self._track_data[c][0].raw[0] == 0xFC and
-                                   self._track_data[c][1].raw[0] == 0xFB and
-                                   self._track_data[c][2].raw[0] == 0xFE and
-                                   self._track_data[c][3].raw[0] == 0xFF):
+                                        self._track_data[c][1].raw[0] == 0xFB and
+                                        self._track_data[c][2].raw[0] == 0xFE and
+                                        self._track_data[c][3].raw[0] == 0xFF):
                                     channel_address[c] = muted_address
 
                     except ValueError:
@@ -1526,7 +1526,7 @@ class MusicEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _update_undo_buttons(self, editor: int) -> None:
-        if editor == 0:     # Track Editor
+        if editor == 0:  # Track Editor
             if len(self._track_undo_count) < 1:
                 self.app.disableButton("SE_Button_Undo")
                 self.app.setButtonTooltip("SE_Button_Undo", "Nothing to Undo")
@@ -1541,7 +1541,7 @@ class MusicEditor:
                 self.app.enableButton("SE_Button_Redo")
                 self.app.setButtonTooltip("SE_Button_Redo", "Redo: " + self._track_undo.get_redo_text())
 
-        elif editor == 1:   # Instrument Editor
+        elif editor == 1:  # Instrument Editor
             self.info("Undo/Redo functionality not yet implemented for Instrument Editor.")
 
         else:
@@ -1702,7 +1702,7 @@ class MusicEditor:
             offset = 0
         else:
             track_count = 4
-            offset = 50     # Bank 9 subtracts this value from instrument indices
+            offset = 50  # Bank 9 subtracts this value from instrument indices
 
         for t in range(track_count):
             # Each track has four channel pointers
@@ -1714,13 +1714,13 @@ class MusicEditor:
                 while 1:
                     value = self.rom.read_byte(self._bank, address)
 
-                    if value == 0xFF:       # REWIND
+                    if value == 0xFF:  # REWIND
                         break
-                    elif value == 0xFE:     # REST
+                    elif value == 0xFE:  # REST
                         address += 2
-                    elif value == 0xFD:     # VIBRATO
+                    elif value == 0xFD:  # VIBRATO
                         address += 4
-                    elif value == 0xFC:     # INSTRUMENT
+                    elif value == 0xFC:  # INSTRUMENT
                         if self.rom.read_byte(self._bank, address + 1) == instrument_index + offset:
                             # Found a reference, we don't need any more
                             if t < len(self.track_titles[self._bank - 8]):
@@ -1729,11 +1729,11 @@ class MusicEditor:
                                 tracks.append(f"{t:02}: '(No Name)'")
                             break
                         address += 2
-                    elif value == 0xFB:     # VOLUME
+                    elif value == 0xFB:  # VOLUME
                         address += 1
                     elif value < 0xF0:  # Notes
                         address += 2
-                    else:               # Anything else
+                    else:  # Anything else
                         address += 1
 
         return tracks
@@ -2483,10 +2483,10 @@ class MusicEditor:
         self._selected_channel = channel
         selection = self.app.getListBoxPos(f"SE_List_Channel_{self._selected_channel}")
 
-        if len(selection) < 1:      # Nothing selected
+        if len(selection) < 1:  # Nothing selected
             self.app.firstFrame("SE_Stack_Editing", callFunction=False)
             self.app.setLabel("SE_Selection_Info", "Channel - Element -")
-        elif len(selection) > 1:    # Multiple selection
+        elif len(selection) > 1:  # Multiple selection
             self.app.lastFrame("SE_Stack_Editing", callFunction=False)
             # This will point to the first element selected
             self._selected_element = selection[0] >> 1
@@ -2634,7 +2634,7 @@ class MusicEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _track_input(self, widget: str) -> None:
-        if widget == "SE_Button_Apply":
+        if widget == "SE_Button_Apply":     # --------------------------------------------------------------------------
             if not self.save_track_data():
                 self.app.errorBox("Save Track Data", "Error saving track data. This usually means the current\n" +
                                   "song is too large to be contained in ROM.\nTry again after reducing its size.",
@@ -2643,10 +2643,10 @@ class MusicEditor:
                 self._unsaved_changes_track = False
                 self.close_track_editor()
 
-        elif widget == "SE_Button_Cancel":
+        elif widget == "SE_Button_Cancel":  # --------------------------------------------------------------------------
             self.close_track_editor()
 
-        elif widget == "SE_Play_Stop":
+        elif widget == "SE_Play_Stop":  # ------------------------------------------------------------------------------
             if self._play_thread.is_alive():
                 self.stop_playback()
                 self.app.enableScale("SE_Triangle_Volume")
@@ -2676,7 +2676,7 @@ class MusicEditor:
                 self.start_playback(True)
                 self.app.setButtonImage(widget, "res/stop.gif")
 
-        elif widget == "SE_Play_Seek":
+        elif widget == "SE_Play_Seek":  # ------------------------------------------------------------------------------
             if not self._play_thread.is_alive():
                 # Leaving multiple selection active during playback messes up the interface
                 self.app.setListBoxMulti(f"SE_List_Channel_0", multi=False)
@@ -2691,31 +2691,52 @@ class MusicEditor:
                 self.start_playback(True, seek=True)
                 self.app.setButtonImage("SE_Play_Stop", "res/stop.gif")
 
-        elif widget == "SE_Button_Import":
+        elif widget == "SE_Button_Import":  # --------------------------------------------------------------------------
             path = self._settings.get("last music import path")
-            file_name = self.app.openBox("Import FMS/FMT text file", path,
-                                         [("FamiStudio/FamiTracker Text File", "*.txt"),
+            file_name = self.app.openBox("Import track data", path,
+                                         [("Ultima Exodus binary files", "*.bin"),
+                                          ("FamiStudio text files", "*.txt"),
                                           ("All Files", "*.*")],
                                          asFile=False, parent="Track_Editor", multiple=False)
             if file_name != "":
                 self._settings.set("last music import path", os.path.dirname(file_name))
-                self._read_famistudio_text(file_name)
+                # Choose type of import depending on the extension
+                if file_name.rsplit('.')[-1].lower() == "txt":
+                    self._read_famistudio_text(file_name)
+                else:
+                    self._read_track_from_file(file_name)
 
-            # Not undoable: clear undo stack
-            self._track_undo.clear()
-            self._track_undo_count = []
-            self._track_redo_count = []
-            self._update_undo_buttons(0)
+                # Not undoable: clear undo stack
+                self._track_undo.clear()
+                self._track_undo_count = []
+                self._track_redo_count = []
+                self._update_undo_buttons(0)
 
-            self._unsaved_changes_track = True
+                self._unsaved_changes_track = True
 
-        elif widget == "SE_Button_Undo":
+        elif widget == "SE_Button_Export":  # --------------------------------------------------------------------------
+            path = self._settings.get("last music import path")
+            file_name = self.app.saveBox("Export track data", "", path, "*.bin",
+                                         [("Ultima Exodus binary files", "*.bin"),
+                                          ("FamiStudio text files", "*.txt"),
+                                          ("All Files", "*.*")],
+                                         asFile=False, parent="Track_Editor")
+            if file_name != "":
+                self._settings.set("last music import path", os.path.dirname(file_name))
+                # Choose type of import depending on the extension
+                if file_name.rsplit('.')[-1].lower() == "txt":
+                    self.warning("NOT IMPLEMENTED")
+                    return
+                else:
+                    self._save_track_to_file(file_name)
+
+        elif widget == "SE_Button_Undo":    # --------------------------------------------------------------------------
             self._undo_track_action()
 
-        elif widget == "SE_Button_Redo":
+        elif widget == "SE_Button_Redo":    # --------------------------------------------------------------------------
             self._redo_track_action()
 
-        elif widget == "SE_Apply_Type_Selection":
+        elif widget == "SE_Apply_Type_Selection":   # ------------------------------------------------------------------
             # Get element type
             selected_type = self._get_selection_index("SE_Select_Type")
             types = [TrackDataEntry.CHANNEL_VOLUME, TrackDataEntry.SELECT_INSTRUMENT, TrackDataEntry.SET_VIBRATO,
@@ -2747,7 +2768,7 @@ class MusicEditor:
 
             self._unsaved_changes_track = True
 
-        elif widget[:17] == "SE_Clear_Channel_":
+        elif widget[:17] == "SE_Clear_Channel_":    # ------------------------------------------------------------------
             # Don't do this during playback
             if self._playing:
                 self.app.soundError()
@@ -2761,7 +2782,7 @@ class MusicEditor:
                                                       "channel?\nThis operation cannot be undone, except reloading " +
                                                       "the whole channel from ROM (use the button next to the " +
                                                       "address value in the upper-left frame).",
-                                                      "Track_Editor"):
+                                     "Track_Editor"):
                 return
 
             # Not undoable: clear the undo stack
@@ -2792,7 +2813,7 @@ class MusicEditor:
         # Undoable action
         # DO: delete element (channel, index)
         # UNDO: create element (channel, index, type, values)
-        elif widget[:18] == "SE_Delete_Element_":
+        elif widget[:18] == "SE_Delete_Element_":   # ------------------------------------------------------------------
             channel = self._selected_channel
             selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
 
@@ -2804,9 +2825,9 @@ class MusicEditor:
                     # We need to know what the deleted element was if we want to be able to undo this action
                     deleted = self._track_data[channel][index]
                     if (deleted.control == TrackDataEntry.CHANNEL_VOLUME or
-                       deleted.control == TrackDataEntry.SELECT_INSTRUMENT or
-                       deleted.control == TrackDataEntry.REWIND or
-                       deleted.control == TrackDataEntry.REST):
+                            deleted.control == TrackDataEntry.SELECT_INSTRUMENT or
+                            deleted.control == TrackDataEntry.REWIND or
+                            deleted.control == TrackDataEntry.REST):
 
                         values = [deleted.raw[1]]
 
@@ -2840,7 +2861,7 @@ class MusicEditor:
 
                 self._unsaved_changes_track = True
 
-        elif widget[:18] == "SE_Select_Channel_":
+        elif widget[:18] == "SE_Select_Channel_":   # ------------------------------------------------------------------
             channel = int(widget[-1], 10)
 
             # Highlight this and un-highlight the others
@@ -2848,7 +2869,7 @@ class MusicEditor:
                 self.app.button(f"SE_Select_Channel_{i}", bg=colour.DARK_NAVY if i != channel else colour.MEDIUM_GREEN)
             self._selected_channel = channel
 
-        else:
+        else:   # ------------------------------------------------------------------------------------------------------
             self.info(f"Unimplemented callback for Track widget '{widget}'.")
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -2876,7 +2897,7 @@ class MusicEditor:
 
             instrument = self._instruments[self._selected_instrument]
             name = f"Instrument #{self._selected_instrument:02}: {instrument.name}"
-            address = f"Pointers: ${self._bank:02X}:{instrument.envelope_address[0]:04X}, " +\
+            address = f"Pointers: ${self._bank:02X}:{instrument.envelope_address[0]:04X}, " + \
                       f"{instrument.envelope_address[1]:04X}, {instrument.envelope_address[2]:04X}"
             sizes = [instrument.envelope[e][0] for e in range(3)]
             size = f"Size: {sizes[0] + sizes[1] + sizes[2]} {sizes}"
@@ -3107,12 +3128,12 @@ class MusicEditor:
                 else:
                     base_note = 0x24
 
-                if self._test_notes == 0:       # Single note loop
+                if self._test_notes == 0:  # Single note loop
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
-                elif self._test_notes == 1:     # Scale
+                elif self._test_notes == 1:  # Scale
                     self._track_data[0].append(TrackDataEntry.new_note(base_note, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 2, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 4, note_length))
@@ -3120,7 +3141,7 @@ class MusicEditor:
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 9, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 11, note_length))
-                else:                           # Arpeggio
+                else:  # Arpeggio
                     self._track_data[0].append(TrackDataEntry.new_note(base_note, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 4, note_length))
                     self._track_data[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
@@ -3384,7 +3405,7 @@ class MusicEditor:
         elif -1 < channel < 4:
             for e in self._track_data[channel]:
                 if (e.control == TrackDataEntry.CHANNEL_VOLUME or e.control == TrackDataEntry.REST or
-                   e.control == TrackDataEntry.SELECT_INSTRUMENT or e.control < 0xF0):
+                        e.control == TrackDataEntry.SELECT_INSTRUMENT or e.control < 0xF0):
                     size += 2
 
                 elif e.control == TrackDataEntry.SET_VIBRATO:
@@ -3402,6 +3423,195 @@ class MusicEditor:
             return -1
 
         return size
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _read_track_from_file(self, file_name: str) -> bool:
+        success = True
+
+        try:
+            fd = open(file_name, "rb")
+
+            buffer: bytes = fd.read()
+            file_size = len(buffer)
+            file_position: int = 0
+
+            fd.close()
+        except IOError as error:
+            self.app.errorBox("Import binary file", f"Error reading from binary file '{file_name}': {error}.")
+            return False
+
+        tracks: List[List[TrackDataEntry]] = [[], [], [], []]
+
+        for channel in range(4):
+            loop_found = False
+
+            while not loop_found:
+                if file_position >= file_size:
+                    break
+
+                control_byte = buffer[file_position]
+                file_position += 1
+
+                try:
+                    if control_byte == 0xFB:  # FB - VOLUME
+                        value = buffer[file_position]
+                        file_position += 1
+                        data = TrackDataEntry.new_volume(value)
+
+                    elif control_byte == 0xFC:  # FC - INSTRUMENT
+                        value = buffer[file_position]
+                        if value < 0:
+                            self.warning(f"Invalid instrument index: {value} found.")
+                            value = 0
+                        file_position += 1
+                        data = TrackDataEntry.new_instrument(value)
+
+                    elif control_byte == 0xFD:  # FD - VIBRATO
+                        triangle_octave = buffer[file_position]
+                        file_position += 1
+
+                        speed = buffer[file_position]
+                        file_position += 1
+
+                        factor = buffer[file_position]
+                        file_position += 1
+
+                        data = TrackDataEntry.new_vibrato(triangle_octave < 0xFF, speed, factor)
+                        # data.raw = bytearray([0xFD, triangle_octave, speed, factor])
+
+                    elif control_byte == 0xFE:  # FE - REST
+                        value = buffer[file_position]
+                        file_position += 1
+
+                        data = TrackDataEntry.new_rest(value)
+                        # data.raw = bytearray([0xFE, value])
+
+                    elif control_byte == 0xFF:  # FF - REWIND
+                        # Skip next byte (always zero, unused)
+                        file_position += 1
+
+                        # Read signed offset (usually negative)
+                        signed_value = bytearray([buffer[file_position], buffer[file_position + 1]])
+                        offset = int.from_bytes(signed_value, "little", signed=True)
+                        file_position += 2
+
+                        if offset > 0:
+                            self.app.warningBox("Track Editor",
+                                                f"Found positive rewind offset ({offset}) for channel {channel}.\n" +
+                                                "This may have undesired effects.", "Track_Editor")
+
+                        # Calculate item index based on each item's size, counting backwards
+                        loop_position: int = len(tracks[channel])  # Start from the end
+                        byte_count: int = 0
+                        for element in reversed(tracks[channel]):
+                            if byte_count <= offset:
+                                break
+                            byte_count -= len(element.raw)
+                            loop_position -= 1
+
+                        if loop_position < 0:
+                            loop_position = 0
+                        data = TrackDataEntry.new_rewind(loop_position)
+                        data.raw = bytearray([0xFF, 0])
+                        data.raw += offset.to_bytes(2, "little", signed=True)
+                        loop_found = True
+
+                    elif control_byte >= 0xF0:  # F0-FA - IGNORED
+                        value = buffer[file_position]
+                        file_position += 1
+
+                        data = TrackDataEntry(bytearray([value]))
+
+                    else:  # 00-EF - NOTE
+                        index = control_byte
+
+                        duration = buffer[file_position]
+                        file_position += 1
+
+                        if index > len(_notes):
+                            self.warning(f"Invalid note: ${control_byte:02X} for channel {channel} at " +
+                                         f"0x{file_position:X} in file '{file_name}'.")
+                            data = TrackDataEntry.new_note(0, 0)
+                        else:
+                            data = TrackDataEntry.new_note(index, duration)
+
+                except IndexError:
+                    break
+
+                tracks[channel].append(data)
+
+        for channel in range(4):
+            if len(tracks[channel]) < 1:
+                self.app.warningBox("Import binary file", "File truncated, or missing REWIND value for one or more " +
+                                    "tracks.", "Track_Editor")
+                success = False
+                break
+
+        if success:
+            self._track_data = tracks
+
+        return success
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _save_track_to_file(self, file_name: str) -> bool:
+        """
+        Exports the current track to a raw binary file, which is how it would appear in ROM.
+        Parameters
+        ----------
+        file_name: str
+            Full path to export to
+        Returns
+        -------
+        bool
+            True if data was successfully saved, False otherwise.
+        """
+        success: bool = True
+
+        # If file has no extension, add ".bin"
+        if file_name.rfind('.') < 0:
+            file_name += ".bin"
+
+        try:
+            fd = open(file_name, "wb")
+
+            for channel in range(4):
+                # Calculate rewind offset for this channel
+                if self._track_data[channel][-1].control != TrackDataEntry.REWIND:
+                    self.warning(f"Channel {channel} does not end with a REWIND element!")
+                    loop_position = 0
+                    self._track_data.append(TrackDataEntry.new_rewind(0))
+                else:
+                    loop_position = self._track_data[channel][-1].loop_position
+
+                # Go through the data from the last element to the first, counting bytes until we reach our target
+                #   element
+                offset: int = 4
+                position: int = len(self._track_data[channel])
+                for element in reversed(self._track_data[channel]):
+                    if position == loop_position:
+                        break
+                    else:
+                        offset -= len(element.raw)
+                    position -= 1
+
+                if offset > 0:
+                    offset = 0
+
+                self._track_data[channel][-1].raw = bytearray([0xFF, 00]) + \
+                    bytearray(offset.to_bytes(2, "little", signed=True))
+
+                # Write channel data
+                for element in self._track_data[channel]:
+                    fd.write(element.raw)
+
+            fd.close()
+        except IOError as error:
+            self.app.errorBox("Track Editor", f"Error exporting data to '{file_name}': {error}.")
+            success = False
+
+        return success
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -3641,8 +3851,8 @@ class MusicEditor:
                     continue
 
             elif object_name == "PatternCustomSettings":
-                i = -1                       # Index
-                nl = note_length             # Custom note length
+                i = -1  # Index
+                nl = note_length  # Custom note length
                 pl = default_pattern_length  # Custom pattern length
                 try:
                     for p in parts[1:]:
@@ -4005,7 +4215,7 @@ class MusicEditor:
             #   frames has passed.
             for c in range(4):
                 if c == seek[0]:
-                    continue    # Skip the seek channel, we have already processed that
+                    continue  # Skip the seek channel, we have already processed that
 
                 frames = 0
                 element_index = 0
