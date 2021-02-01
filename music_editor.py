@@ -970,6 +970,11 @@ class MusicEditor:
         self._unsaved_changes_track = False
         self.app.showSubWindow("Track_Editor")
 
+        # Hotkey bindings
+        sw = self.app.openSubWindow("Track_Editor")
+        sw.bind("<Control-z>", self._undo_track_action, add='')
+        sw.bind("<Control-y>", self._redo_track_action, add='')
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def show_instrument_editor(self, bank: int) -> None:
@@ -1788,6 +1793,50 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _undo_track_action(self, _event: any = None) -> None:
+        if len(self._track_undo_count) < 1:
+            self.app.soundError()
+            return
+
+        count = self._track_undo_count.pop()
+        self._track_redo_count.append(count)
+        result = self._track_undo.undo(count)
+        # We expect the result to be a channel index
+        if len(result) == 1 and result[0] is not None:
+            self.track_info(result[0])
+        else:
+            # Some methods do not return a value, so we don't know which channel was affected
+            # Or maybe more than one channel was affected, so we just update everything
+            self.track_info(0)
+            self.track_info(1)
+            self.track_info(2)
+            self.track_info(3)
+
+        self._update_undo_buttons(0)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _redo_track_action(self, _event: any = None) -> None:
+        if len(self._track_redo_count) < 1:
+            self.app.soundError()
+            return
+
+        count = self._track_redo_count.pop()
+        self._track_undo_count.append(count)
+        result = self._track_undo.redo(count)
+
+        if len(result) == 1 and result[0] is not None:
+            self.track_info(result[0])
+        else:
+            self.track_info(0)
+            self.track_info(1)
+            self.track_info(2)
+            self.track_info(3)
+
+        self._update_undo_buttons(0)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _update_instrument_name(self, widget: str) -> None:
         name = self.app.getEntry(widget)[:24]
         if len(name) < 1:
@@ -2221,6 +2270,156 @@ class MusicEditor:
             self._track_redo_count = []
             self._update_undo_buttons(0)
 
+        # Undoable action: increase the duration of a group of notes
+        elif widget == "SE_Duration_Up":
+            channel = self._selected_channel
+            selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
+
+            # Some items may not be notes, others may be already at max duration, so we need to create a new
+            #   selection that only contains items we can actually modify
+            final_selection: List[int] = []
+
+            if len(selection) > 0:
+                sorted_selection = list(set([i >> 1 for i in selection]))
+                sorted_selection.sort(reverse=True)
+                for index in sorted_selection:
+                    element = self._track_data[channel][index]
+                    # Only add notes with duration less than 255 to our final selection
+                    if element.raw[0] < 0xF0 and element.raw[1] < 0xFF:
+                        final_selection.append(index)
+
+            # Now we can process these "filtered" items
+            for index in final_selection:
+                element = self._track_data[channel][index]
+
+                # Create undo action
+                old_values = element.raw.copy()
+                new_values = bytearray([old_values[0], old_values[1] + 1])
+                self._track_undo(self._change_element_value, (channel, index, new_values),
+                                 (channel, index, old_values), text=f"Increase note duration (Channel {channel})")
+                # Update this element's entry in the list box and (re-)select it
+                self._update_element_info(channel, index)
+                self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
+
+            if len(final_selection) > 0:
+                self._track_undo_count.append(len(final_selection))
+                self._track_redo_count = []
+                # Update undo buttons
+                self._update_undo_buttons(0)
+                # (Re-)select these items
+
+        # Undoable action: decrease the duration of a group of notes
+        elif widget == "SE_Duration_Down":
+            channel = self._selected_channel
+            selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
+
+            # Some items may not be notes, others may be already at minimum duration, so we need to create a new
+            #   selection that only contains items we can actually modify
+            final_selection: List[int] = []
+
+            if len(selection) > 0:
+                sorted_selection = list(set([i >> 1 for i in selection]))
+                sorted_selection.sort(reverse=True)
+                for index in sorted_selection:
+                    element = self._track_data[channel][index]
+                    # Only add notes with duration more than 0 to our final selection
+                    if element.raw[0] < 0xF0 and element.raw[1] > 0:
+                        final_selection.append(index)
+
+            # Now we can process these "filtered" items
+            for index in final_selection:
+                element = self._track_data[channel][index]
+
+                # Create undo action
+                old_values = element.raw.copy()
+                new_values = bytearray([old_values[0], old_values[1] - 1])
+                self._track_undo(self._change_element_value, (channel, index, new_values),
+                                 (channel, index, old_values), text=f"Decrease note duration (Channel {channel})")
+                # Update this element's entry in the list box and (re-)select it
+                self._update_element_info(channel, index)
+                self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
+
+            if len(final_selection) > 0:
+                self._track_undo_count.append(len(final_selection))
+                self._track_redo_count = []
+                # Update undo buttons
+                self._update_undo_buttons(0)
+                # (Re-)select these items
+
+        # Undoable action: increase the pitch of a group of notes one semitone
+        elif widget == "SE_Semitone_Up":
+            channel = self._selected_channel
+            selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
+
+            # Some items may not be notes, others may be already the highest note, so we need to create a new
+            #   selection that only contains items we can actually modify
+            final_selection: List[int] = []
+            if len(selection) > 0:
+                sorted_selection = list(set([i >> 1 for i in selection]))
+                sorted_selection.sort(reverse=True)
+                for index in sorted_selection:
+                    element = self._track_data[channel][index]
+                    # Only add notes with duration more than 0 to our final selection
+                    if element.raw[0] < len(_NOTE_NAMES):
+                        final_selection.append(index)
+
+            # Now we can process these "filtered" items
+            for index in final_selection:
+                element = self._track_data[channel][index]
+
+                # Create undo action
+                old_values = element.raw.copy()
+                new_values = bytearray([old_values[0] + 1, old_values[1]])
+                self._track_undo(self._change_element_value, (channel, index, new_values),
+                                 (channel, index, old_values), text=f"Increase note pitch (Channel {channel})")
+                # Update this element's entry in the list box and (re-)select it
+                self._update_element_info(channel, index)
+                self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
+
+            if len(final_selection) > 0:
+                self._track_undo_count.append(len(final_selection))
+                self._track_redo_count = []
+                # Update undo buttons
+                self._update_undo_buttons(0)
+                # (Re-)select these items
+
+        # Undoable action: decrease the pitch of a group of notes one semitone
+        elif widget == "SE_Semitone_Down":
+            channel = self._selected_channel
+            selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
+
+            # Some items may not be notes, others may be already the lowest note, so we need to create a new
+            #   selection that only contains items we can actually modify
+            final_selection: List[int] = []
+            if len(selection) > 0:
+                sorted_selection = list(set([i >> 1 for i in selection]))
+                sorted_selection.sort(reverse=True)
+                for index in sorted_selection:
+                    element = self._track_data[channel][index]
+                    # Only add notes with duration more than 0 to our final selection
+                    if 0 < element.raw[0] < 0xF0:
+                        final_selection.append(index)
+
+            # Now we can process these "filtered" items
+            for index in final_selection:
+                element = self._track_data[channel][index]
+
+                # Create undo action
+                old_values = element.raw.copy()
+                new_values = bytearray([old_values[0] - 1, old_values[1]])
+                self._track_undo(self._change_element_value, (channel, index, new_values),
+                                 (channel, index, old_values), text=f"Decrease note pitch (Channel {channel})")
+                # Update this element's entry in the list box and (re-)select it
+                self._update_element_info(channel, index)
+                self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
+
+            if len(final_selection) > 0:
+                self._track_undo_count.append(len(final_selection))
+                self._track_redo_count = []
+                # Update undo buttons
+                self._update_undo_buttons(0)
+                # (Re-)select these items
+
         elif widget == "SE_Cancel_Change_Element":
             # Simply re-select the current selection
             self._element_selection(None, self._selected_channel)
@@ -2511,36 +2710,10 @@ class MusicEditor:
             self._unsaved_changes_track = True
 
         elif widget == "SE_Button_Undo":
-            count = self._track_undo_count.pop()
-            self._track_redo_count.append(count)
-            result = self._track_undo.undo(count)
-            # We expect the result to be a channel index
-            if len(result) == 1 and result[0] is not None:
-                self.track_info(result[0])
-            else:
-                # Some methods do not return a value, so we don't know which channel was affected
-                # Or maybe more than one channel was affected, so we just update everything
-                self.track_info(0)
-                self.track_info(1)
-                self.track_info(2)
-                self.track_info(3)
-
-            self._update_undo_buttons(0)
+            self._undo_track_action()
 
         elif widget == "SE_Button_Redo":
-            count = self._track_redo_count.pop()
-            self._track_undo_count.append(count)
-            result = self._track_undo.redo(count)
-
-            if len(result) == 1 and result[0] is not None:
-                self.track_info(result[0])
-            else:
-                self.track_info(0)
-                self.track_info(1)
-                self.track_info(2)
-                self.track_info(3)
-
-            self._update_undo_buttons(0)
+            self._redo_track_action()
 
         elif widget == "SE_Apply_Type_Selection":
             # Get element type
