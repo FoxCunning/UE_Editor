@@ -2418,8 +2418,8 @@ if __name__ == "__main__":
         #       ##### Sub-Windows #####
 
         # Instrument Editor Sub-Window ---------------------------------------------------------------------------------
-        with app.subWindow("Instrument_Editor", title="Ultima Exodus Instrument Editor", size=[900, 456], padding=[2, 0],
-                           modal=False, resizable=False, inPadding=0, guiPadding=0,
+        with app.subWindow("Instrument_Editor", title="Ultima Exodus Instrument Editor", size=[900, 456],
+                           padding=[2, 0], modal=False, resizable=False, inPadding=0, guiPadding=0,
                            bg=colour.DARK_ORANGE, fg=colour.WHITE, stopFunction=instrument_editor_stop):
 
             app.label("IE_Label_Temp", "...")
@@ -2549,4 +2549,4 @@ if __name__ == "__main__":
     del portrait_options
     del tiles_list
 
-    sys.setswitchinterval(500)
+    sys.setswitchinterval(0.05)
