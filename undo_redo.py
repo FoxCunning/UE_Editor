@@ -9,6 +9,17 @@ _MAX_UNDO = 8192
 
 
 class UndoRedo:
+    """
+    This is basically a cut-down, simplified version of undo.py by jcuster.
+
+    To use it:
+
+    - Create an instance of UndoRedo in a class, e.g. self._undo_redo = UndoRedo()
+    - Have methods that can perform / reverse any action in that class
+    - Instead of directly performing such actions, call self._undo_redo()
+    - Example: self._undo_redo(self._make_something, (make_params), (unmake_params), self._unmake_something)
+    - Then you can undo with self._undo_redo.undo() and self._undo_redo.redo()
+    """
 
     # ------------------------------------------------------------------------------------------------------------------
 
