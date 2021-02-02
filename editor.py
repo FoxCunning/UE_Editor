@@ -466,6 +466,12 @@ def open_rom(file_name: str) -> None:
         app.errorBox("ERROR", val)
     else:
         app.setStatusbar(f"ROM file opened: '{file_name}'", field=0)
+
+        app.showSubWindow("PE_Progress")
+        app.setLabel("PE_Progress_Label", "Loading...")
+        app.setMeter("PE_Progress_Meter", 0)
+        app.topLevel.update()
+
         # Process header
         h = bytearray(rom.header())
         s = ""
@@ -514,10 +520,16 @@ def open_rom(file_name: str) -> None:
             app.setCheckBox(f"Feature_{feature}", ticked=rom.has_feature(feature_names[feature]), callFunction=False)
             app.showCheckBox(f"Feature_{feature}")
 
+        app.setMeter("PE_Progress_Meter", 10)
+        app.topLevel.update()
+
         # Create Editor instances
         palette_editor = PaletteEditor(rom, app)
         # Load palettes
         palette_editor.load_palettes()
+
+        app.setMeter("PE_Progress_Meter", 20)
+        app.topLevel.update()
 
         map_colours = []  # Portrait map_colours
         for c in range(4, 8):
@@ -530,10 +542,16 @@ def open_rom(file_name: str) -> None:
         # This automatically loads text pointer tables and caches dialogue and special strings
         text_editor = TextEditor(rom, map_colours, app)
 
+        app.setMeter("PE_Progress_Meter", 30)
+        app.topLevel.update()
+
         # Enemy editor
         enemy_editor = EnemyEditor(app, rom, palette_editor)
         enemy_editor.read_encounters_table()
         enemy_editor.read_enemy_data(text_editor)
+
+        app.setMeter("PE_Progress_Meter", 40)
+        app.topLevel.update()
 
         # Map editor
         map_editor = MapEditor(rom, app, palette_editor, text_editor, enemy_editor, settings)
@@ -545,6 +563,9 @@ def open_rom(file_name: str) -> None:
         app.setOptionBox("Map_Compression", 1)
 
         update_text_table(app.getOptionBox("Text_Type"))
+
+        app.setMeter("PE_Progress_Meter", 50)
+        app.topLevel.update()
 
         # Read map location names from file
         # Update map list for the correct maximum number of maps
@@ -562,6 +583,9 @@ def open_rom(file_name: str) -> None:
         app.hideFrame("ET_Frame_Enemy")
         app.hideFrame("ET_Frame_Encounter")
 
+        app.setMeter("PE_Progress_Meter", 60)
+        app.topLevel.update()
+
         # Music editor
         music_editor = MusicEditor(app, rom, settings)
         music_editor.read_track_titles()
@@ -578,6 +602,9 @@ def open_rom(file_name: str) -> None:
         else:  # Custom / unrecognised music driver code
             app.disableCheckBox("ST_Fix_Envelope_Bug")
 
+        app.setMeter("PE_Progress_Meter", 70)
+        app.topLevel.update()
+
         # Battlefield map editor
         battlefield_editor = BattlefieldEditor(app, rom, palette_editor)
         app.changeOptionBox("Battlefield_Option_Map", battlefield_editor.get_map_names(), 0, callFunction=False)
@@ -590,8 +617,14 @@ def open_rom(file_name: str) -> None:
         app.setOptionBox("Battlefield_Option_Map", 0, callFunction=True)
         app.setOptionBox("ST_Music_Bank", 0, callFunction=True)
 
+        app.setMeter("PE_Progress_Meter", 80)
+        app.topLevel.update()
+
         # Party editor
         party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
+
+        app.setMeter("PE_Progress_Meter", 90)
+        app.topLevel.update()
 
         # Cutscene data
         for scene in range(8):
@@ -611,6 +644,8 @@ def open_rom(file_name: str) -> None:
         screens.append("Fountain")
         app.changeOptionBox("CE_Option_Cutscene", screens, 0, callFunction=False)
 
+        app.setMeter("PE_Progress_Meter", 100)
+
         # Activate tabs
         app.setTabbedFrameDisabledTab("TabbedFrame", "Map", False)
         app.setTabbedFrameDisabledTab("TabbedFrame", "Misc", False)
@@ -622,6 +657,8 @@ def open_rom(file_name: str) -> None:
 
         # Add file name to the window's title
         app.setTitle(f"UE Editor - {os.path.basename(file_name)}")
+
+        app.hideSubWindow("PE_Progress")
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1572,13 +1609,18 @@ def sound_tab_input(widget: str) -> None:
 
         app.setButton("ST_Import_Instruments", text=f"Import from bank {9 - value}")
 
-        # Show how many instruments are in this bank
+        # Show how many tracks and instruments are in this bank
         if bank == 8:
             tracks_list = music_editor.track_titles[0]
             instruments = 50
+            # TODO Read value from ROM or stored variable
+            app.setSpinBox("ST_Tracks_Count", 10, callFunction=False)
+            app.enableSpinBox("ST_Tracks_Count")
         else:
             tracks_list = music_editor.track_titles[1]
             instruments = 13
+            app.setSpinBox("ST_Tracks_Count", 4, callFunction=False)
+            app.disableSpinBox("ST_Tracks_Count")
 
         app.setLabel("ST_Label_Instruments", f"Instruments in this bank: {instruments}")
         app.changeOptionBox("ST_Option_Music", tracks_list, 0, callFunction=False)
@@ -2369,8 +2411,11 @@ if __name__ == "__main__":
                 with app.frame("ST_Frame_Bank", padding=[4, 1], sticky="NEWS", row=0, column=0):
                     app.optionBox("ST_Music_Bank", ["Bank 8", "Bank 9"], change=sound_tab_input, width=12, sticky="W",
                                   row=0, column=0, font=10)
-                    app.checkBox("ST_Fix_Envelope_Bug", name="Fix Envelope Bug", sticky="WE",
-                                 row=0, column=1, font=10)
+                    app.label("ST_Label_Tracks_Count", "Max tracks:", sticky="E", row=0, column=1, font=11)
+                    app.spinBox("ST_Tracks_Count", list(range(11, 1, -1)), change=sound_tab_input, width=4,
+                                sticky="W", row=0, column=2, font=10)
+                    app.checkBox("ST_Fix_Envelope_Bug", name="Fix Envelope Bug", sticky="E",
+                                 row=0, column=3, font=10)
 
                 with app.frame("ST_Frame_Instruments", padding=[2, 1], sticky="NEWS", row=1, column=0):
                     app.label("ST_Label_Instruments", "Instruments in this bank: 0", sticky="WE",
@@ -2482,14 +2527,14 @@ if __name__ == "__main__":
 
             app.label("PE_Label_p0", "")
 
-            # Progress Sub-Sub-Window ----------------------------------------------------------------------------------
-            with app.subWindow("PE_Progress", title="Loading", modal=True, size=[300, 100], padding=[4, 4],
-                               bg=colour.PALE_PINK, stopFunction=no_stop):
+        # Progress Sub-Window ----------------------------------------------------------------------------------
+        with app.subWindow("PE_Progress", title="Loading", modal=True, size=[300, 100], padding=[4, 4],
+                           bg=colour.DARK_TEAL, fg=colour.WHITE, stopFunction=no_stop):
 
-                app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch="ROW", sticky='WE',
-                          font=16)
-                app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
-                          fill=colour.MEDIUM_BLUE)
+            app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch="ROW", sticky='WE',
+                      font=16)
+            app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
+                      fill=colour.MEDIUM_BLUE)
 
         # Map Editor Sub-Window ----------------------------------------------------------------------------------------
         with app.subWindow("Map_Editor", "Map Editor", size=[512, 480], modal=False, resizable=False, padding=0,

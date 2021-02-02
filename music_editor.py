@@ -614,6 +614,11 @@ class MusicEditor:
 
         self._selected_channel = 0
 
+        self.app.showSubWindow("PE_Progress")
+        self.app.setLabel("PE_Progress_Label", "Loading...")
+        self.app.setMeter("PE_Progress_Meter", 0)
+        self.app.topLevel.update()
+
         try:
             self.app.getFrameWidget("SE_Frame_Buttons")
             window_exists = True
@@ -630,6 +635,9 @@ class MusicEditor:
         if len(self._instruments) < 1:
             self.read_instrument_data()
 
+        self.app.setMeter("PE_Progress_Meter", 10)
+        self.app.topLevel.update()
+
         instrument_names: List[str] = []
         i = 0
         for instrument in self._instruments:
@@ -639,14 +647,27 @@ class MusicEditor:
         # Read or re-read track titles
         self.read_track_titles()
 
+        self.app.setMeter("PE_Progress_Meter", 20)
+        self.app.topLevel.update()
+
         # Read track data for all tracks
         self.read_track_data(0)
+        self.app.setMeter("PE_Progress_Meter", 30)
+        self.app.topLevel.update()
         self.read_track_data(1)
+        self.app.setMeter("PE_Progress_Meter", 40)
+        self.app.topLevel.update()
         self.read_track_data(2)
+        self.app.setMeter("PE_Progress_Meter", 50)
+        self.app.topLevel.update()
         self.read_track_data(3)
+        self.app.setMeter("PE_Progress_Meter", 60)
+        self.app.topLevel.update()
 
         if window_exists:
             self.app.showSubWindow("Track_Editor")
+            self.app.setMeter("PE_Progress_Meter", 100)
+            self.app.topLevel.update()
             return
 
         with self.app.subWindow("Track_Editor"):
@@ -949,6 +970,9 @@ class MusicEditor:
                                         tooltip="Create new element below selection",
                                         height=32, bg=colour.PALE_NAVY, sticky="NEW", row=0, column=3)
 
+        self.app.setMeter("PE_Progress_Meter", 80)
+        self.app.topLevel.update()
+
         # Set the volume slider to the current amp factor
         self.app.setScale("SE_Master_Volume", int(self._sound_server.amp * 100), callFunction=False)
         self.app.setScale("SE_Triangle_Volume", int(self._triangle_volume * 100), callFunction=False)
@@ -971,6 +995,9 @@ class MusicEditor:
         self.app.getListBoxWidget(f"SE_List_Channel_3").bind("<Button-3>",
                                                              lambda event: self._element_right_click(event, 3), add='')
 
+        self.app.setMeter("PE_Progress_Meter", 90)
+        self.app.topLevel.update()
+
         self.track_info(0)
         self.track_info(1)
         self.track_info(2)
@@ -979,10 +1006,16 @@ class MusicEditor:
         self._unsaved_changes_track = False
         self.app.showSubWindow("Track_Editor")
 
+        self.app.setMeter("PE_Progress_Meter", 100)
+        self.app.topLevel.update()
+
         # Hotkey bindings
         sw = self.app.openSubWindow("Track_Editor")
         sw.bind("<Control-z>", self._undo_track_action, add='')
         sw.bind("<Control-y>", self._redo_track_action, add='')
+
+        self.app.hideSubWindow("PE_Progress")
+        self.app.setFocus("SE_Track_Name")
 
     # ------------------------------------------------------------------------------------------------------------------
 
