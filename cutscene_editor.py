@@ -11,6 +11,7 @@ from debug import log
 from helpers import Point2D
 from palette_editor import PaletteEditor
 from rom import ROM
+from undo_redo import UndoRedo
 
 
 class CutsceneEditor:
@@ -75,6 +76,14 @@ class CutsceneEditor:
         # Last modified tile on the cutscene, used for drag-editing
         self._last_modified: Point2D = Point2D(-1, -1)
 
+        # We keep track of how many tiles are modified with a single operation, for the undo/redo manager
+        self._modified_tiles: int = 0
+
+        self._undo_redo: UndoRedo = UndoRedo()
+        # These keep count of how many actions to process in each single undo/redo
+        self._undo_actions: List[int] = []
+        self._redo_actions: List[int] = []
+
         self.rom: ROM = rom
         self.palette_editor = palette_editor
         self.app: appjar.gui = app
@@ -136,6 +145,8 @@ class CutsceneEditor:
         self._y = y
 
         self._unsaved_changes = False
+
+        self._modified_tiles = 0
 
         # TODO Create the widgets here and destroy them on window close to save memory
 
@@ -208,6 +219,10 @@ class CutsceneEditor:
         else:
             self.canvas_palettes.bind("<Button-1>", self._palettes_click, add="")
 
+        sw = self.app.openSubWindow("Cutscene_Editor")
+        sw.bind("<Control-z>", self.undo, add='')
+        sw.bind("<Control-y>", self.redo, add='')
+
         # Show sub-window
         self.app.showSubWindow("Cutscene_Editor")
 
@@ -270,6 +285,9 @@ class CutsceneEditor:
             self.canvas_cutscene.bind("<B1-Motion>", self._nametable_mouse_1_drag_2x2, add="")
             self.canvas_cutscene.bind("<Button-3>", self._nametable_mouse_3, add="")
 
+        # Common events for 1x1 and 2x2 operations
+        self.canvas_cutscene.bind("<ButtonRelease-1>", self._nametable_mouse_1_up, add="")
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def _assign_attributes(self, tile: int, attribute: int) -> None:
@@ -321,6 +339,8 @@ class CutsceneEditor:
         self._patterns = [0] * 256
         image = ImageTk.PhotoImage(Image.new('P', (16, 16), 0))
         self._pattern_cache = [image] * 256
+
+        self._clear_undo_history()
 
         return True
 
@@ -600,6 +620,45 @@ class CutsceneEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def undo(self, _event=None) -> None:
+        if len(self._undo_actions) < 1:
+            return
+
+        count = self._undo_actions.pop()
+        self._redo_actions.append(count)
+
+        self._undo_redo.undo(count)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def redo(self, _event=None) -> None:
+        if len(self._redo_actions) < 1:
+            return
+
+        count = self._redo_actions.pop()
+        self._undo_actions.append(count)
+
+        self._undo_redo.redo(count)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _clear_undo_history(self) -> None:
+        self._undo_redo.clear()
+        self._undo_actions = []
+        self._redo_actions = []
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _nametable_mouse_1_up(self, _event: any) -> None:
+        # self.info(f"*** DEBUG: Mouse up. Modified {self._modified_tiles} tiles. ")
+
+        self._undo_actions.append(self._modified_tiles)
+        self._modified_tiles = 0
+
+        self._unsaved_changes = True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _nametable_mouse_1_down(self, event: any) -> None:
         """
         Callback for left button down on cutscene canvas, when selection size is 1x1.
@@ -607,7 +666,17 @@ class CutsceneEditor:
         self._last_modified.x = event.x >> 4
         self._last_modified.y = event.y >> 4
 
-        self.edit_nametable_entry(self._last_modified.x, self._last_modified.y, self._selected_pattern)
+        tile = (self._last_modified.x % 32) + (self._last_modified.y << 5)
+        old_pattern, old_palette = self.nametable[tile], self.attributes[tile]
+
+        # DO action
+        self._undo_redo(self.edit_nametable_entry,
+                        (self._last_modified.x, self._last_modified.y, self._selected_pattern),
+                        # UNDO parameters
+                        (self._last_modified.x, self._last_modified.y, old_pattern, old_palette),
+                        text="Draw 1x1")
+
+        self._modified_tiles = 1
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -618,17 +687,44 @@ class CutsceneEditor:
         # We treat the canvas as if it contained half the tiles
         # Do as if each tile was twice the size on each axis, then multiply by the scaling factor
         # This ensures we always select the top-left tile of each 2x2 group
-        self._last_modified.x = (event.x >> 5) << 1
-        self._last_modified.y = (event.y >> 5) << 1
+        x = self._last_modified.x = (event.x >> 5) << 1
+        y = self._last_modified.y = (event.y >> 5) << 1
 
-        self.info(f"Mouse: {event.x}, {event.y}, tile: {self._last_modified.x}, {self._last_modified.y}")
+        tile = (x % 32) + (y << 5)
+        # self.info(f"Mouse: {event.x}, {event.y}, tile: {self._last_modified.x}, {self._last_modified.y}")
 
         # The selection should always be the top-left tile of a 2x2 "super-tile"
-        self.edit_nametable_entry(self._last_modified.x + 1, self._last_modified.y + 1, self._selected_pattern + 17)
-        self.edit_nametable_entry(self._last_modified.x, self._last_modified.y + 1, self._selected_pattern + 16)
-        self.edit_nametable_entry(self._last_modified.x + 1, self._last_modified.y, self._selected_pattern + 1)
+
+        # Bottom-Right (x + 1, y + 1)
+        old_pattern, old_palette = self.nametable[tile + 33], self.attributes[tile + 33]
+        self._undo_redo(self.edit_nametable_entry,
+                        (x + 1, y + 1, self._selected_pattern + 17),
+                        (x + 1, y + 1, old_pattern, old_palette),
+                        text="Draw 2x2")
+
+        # Bottom-Left (x, y + 1)
+        old_pattern, old_palette = self.nametable[tile + 32], self.attributes[tile + 32]
+        self._undo_redo(self.edit_nametable_entry,
+                        (x, y + 1, self._selected_pattern),
+                        (x, y + 1, old_pattern, old_palette),
+                        text="Draw 2x2")
+
+        # Top-Right (x + 1, y)
+        old_pattern, old_palette = self.nametable[tile + 1], self.attributes[tile + 1]
+        self._undo_redo(self.edit_nametable_entry,
+                        (x + 1, y, self._selected_pattern),
+                        (x + 1, y, old_pattern, old_palette),
+                        text="Draw 2x2")
+
         # We leave the top-left last so that the selection rectangle will be based on its position
-        self.edit_nametable_entry(self._last_modified.x, self._last_modified.y, self._selected_pattern)
+        # Top-Left (x, y)
+        old_pattern, old_palette = self.nametable[tile], self.attributes[tile]
+        self._undo_redo(self.edit_nametable_entry,
+                        (x, y, self._selected_pattern),
+                        (x, y, old_pattern, old_palette),
+                        text="Draw 2x2")
+
+        self._modified_tiles = 4
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -636,15 +732,25 @@ class CutsceneEditor:
         """
         Callback for left button drag on cutscene canvas, when selection size is 1x1.
         """
+        if (511 < event.x < 0) or (479 < event.y < 0):
+            return
+
         x = event.x >> 4
         y = event.y >> 4
 
         if x == self._last_modified.x and y == self._last_modified.y:
             return
         else:
+            tile = (x % 32) + (y << 5)
+            old_pattern = self.nametable[tile]
+            old_palette = self.attributes[tile]
+
             self._last_modified.x = x
             self._last_modified.y = y
-            self.edit_nametable_entry(x, y, self._selected_pattern)
+
+            self._undo_redo(self.edit_nametable_entry, (x, y, self._selected_pattern),
+                            (x, y, old_pattern, old_palette))
+            self._modified_tiles += 1
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -652,22 +758,46 @@ class CutsceneEditor:
         """
         Callback for left button drag on cutscene canvas, when selection size is 2x2.
         """
+        if (511 < event.x < 0) or (479 < event.y < 0):
+            return
+
         x = (event.x >> 5) << 1
         y = (event.y >> 5) << 1
 
         if x == self._last_modified.x and y == self._last_modified.y:
             return
         else:
+            tile = (x % 32) + (y << 5)
+
             self._last_modified.x = x
             self._last_modified.y = y
+
             # Bottom-right
-            self.edit_nametable_entry(x + 1, y + 1, self._selected_pattern + 17)
+            old_pattern, old_palette = self.nametable[tile + 33], self.attributes[tile + 33]
+            self._undo_redo(self.edit_nametable_entry,
+                            (x + 1, y + 1, self._selected_pattern + 17),
+                            (x + 1, y + 1, old_pattern, old_palette),
+                            text="Draw 2x2")
             # Bottom-left
-            self.edit_nametable_entry(x, y + 1, self._selected_pattern + 16)
+            old_pattern, old_palette = self.nametable[tile + 32], self.attributes[tile + 32]
+            self._undo_redo(self.edit_nametable_entry,
+                            (x, y + 1, self._selected_pattern),
+                            (x, y + 1, old_pattern, old_palette),
+                            text="Draw 2x2")
             # Top-right
-            self.edit_nametable_entry(x + 1, y, self._selected_pattern + 1)
+            old_pattern, old_palette = self.nametable[tile + 1], self.attributes[tile + 1]
+            self._undo_redo(self.edit_nametable_entry,
+                            (x + 1, y, self._selected_pattern),
+                            (x + 1, y, old_pattern, old_palette),
+                            text="Draw 2x2")
             # Top-left
-            self.edit_nametable_entry(x, y, self._selected_pattern)
+            old_pattern, old_palette = self.nametable[tile], self.attributes[tile]
+            self._undo_redo(self.edit_nametable_entry,
+                            (x, y, self._selected_pattern),
+                            (x, y, old_pattern, old_palette),
+                            text="Draw 2x2")
+
+            self._modified_tiles += 4
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -744,7 +874,7 @@ class CutsceneEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def edit_nametable_entry(self, x: int, y: int, pattern: int) -> None:
+    def edit_nametable_entry(self, x: int, y: int, pattern: int, palette=None) -> None:
         """
         Assigns a pattern to a tile in the nametable.
 
@@ -758,7 +888,13 @@ class CutsceneEditor:
 
         pattern: int
             Index of the new pattern (0-255)
+
+        palette: int
+            Index of the palette for this tile, or use the currently selected palette if not specified
         """
+        if palette is None:
+            palette = self._selected_palette
+
         # (tile X index % number of tiles in a row) + (tile Y index * number of tiles in a column)
         t = (x % 32) + (y << 5)
         self.nametable[t] = pattern
@@ -767,12 +903,12 @@ class CutsceneEditor:
         sub_palette = self.attributes[t]
 
         # Don't change palette if the attributes are static
-        if self._selected_palette != sub_palette and self.attributes_address != -1:
+        if palette != sub_palette and self.attributes_address != -1:
             # We are changing the palette, which affects other tiles
             # Get the top-left tile of this 2x2 group
             top_left = Point2D(x - (x % 2), y - (y % 2))
             # Update the palette for the whole group
-            sub_palette = self._selected_palette
+            sub_palette = palette
 
             self._update_attribute(top_left.x, top_left.y, sub_palette)
             self._update_attribute(top_left.x + 1, top_left.y, sub_palette)
@@ -781,7 +917,7 @@ class CutsceneEditor:
 
         else:
             # Palette didn't change: only update this tile
-            sub_palette = self._selected_palette
+            sub_palette = palette
             colours = self.palette_editor.sub_palette(self.palette_index, sub_palette)
 
             new_image = self._pattern_cache[pattern]
@@ -796,7 +932,8 @@ class CutsceneEditor:
 
         self.select_tile(x, y)
 
-        self._unsaved_changes = True
+        # We will do this in the mouse up event callback instead, so it doesn't happen repeatedly when drag-drawing
+        # self._unsaved_changes = True
 
     # ------------------------------------------------------------------------------------------------------------------
 

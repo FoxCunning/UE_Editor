@@ -509,7 +509,7 @@ class MusicEditor:
         if self._sound_server.getIsBooted():
             self._sound_server.shutdown()
 
-        self.app.hideSubWindow("Track_Editor")
+        self.app.hideSubWindow("Track_Editor", useStopFunction=False)
         self.app.emptySubWindow("Track_Editor")
 
         self._track_undo.clear()
@@ -541,7 +541,7 @@ class MusicEditor:
         if self._sound_server.getIsBooted():
             self._sound_server.shutdown()
 
-        self.app.hideSubWindow("Instrument_Editor")
+        self.app.hideSubWindow("Instrument_Editor", useStopFunction=False)
         self.app.emptySubWindow("Instrument_Editor")
 
         self._instrument_undo.clear()
