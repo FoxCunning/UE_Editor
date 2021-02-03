@@ -31,16 +31,36 @@ NAME=Intelligence check
 ; DESCRIPTION_x:	A string of text that will appear in the UI next to
 ;					parameter 'x'.
 ;
+; TOOLTIP_x:	A text to show in the tooltip for this parameter's widget.
+;
 ; POINTER_x:	If specified, this will be the base address to the offset for
 ;				parameter 'x'.
 ;
 ; OFFSET_x:	Offset for reading parameter 'x' value, either from the
 ;			start of the spell's routine, or from 'POINTER_x'.
+;			For table parameters, this is the offset of the *pointer* to
+;			the table, not the offset of the table itself.
 ;
 ; TYPE_x:	This determins what kind of widget(s) to show for parameter 'x'.
 ;			Values can be: HEX (or H), DECIMAL (or D), POINTER (or P),
 ;			STRING (or S), ATTRIBUTE (or A), BOOL (or B), CHECK (or C),
 ;			LOCATION (or L), MARK (or M), NPC (or N)
+;			For Special Dialogue routines, also: TABLE (or T)
+;			Aliases: WORD (or W) is the same as POINTER
+;
+; SIZE_x:	For TABLE parameters, number of entries (NOT byte count, that will
+;			be calculated depending on VALUE_TYPE).
+;
+; INDEX_TYPE_x:	For TABLE parameters, type of the index value
+;				e.g. DECIMAL, HEX, LOCATION, etc.
+;
+; VALUE_TYPE_x:	For TABLE parameters, type of values contained in the table,
+;				e.g. DECIMAL, HEX, POINTER, etc.
+;
+; TABLE_COPY_x:	For TABLE parameters, if specified each value from the table
+;				will be copied to the specified list of offsets upon saving.
+;				If the values are 16-bits long, then offsets will be pairs of
+;				low, high entries.
 ; ============================================================================
 
 
@@ -978,6 +998,7 @@ TYPE_2=STRING
 
 DESCRIPTION_3=Failure dialogue
 OFFSET_3=0x5F
+TYPE_3=STRING
 
 
 ; ------------------------------------------
@@ -1112,3 +1133,179 @@ TYPE_11=STRING
 DESCRIPTION_12=Failure dialogue
 OFFSET_12=0xCF
 TYPE_12=STRING
+
+
+
+; ============================================================================
+;
+;							SPECIAL DIALOGUES
+;
+; Note: pointers to other routines are not supported.
+; ============================================================================
+
+
+; ------------------------------------------
+;					ORACLE
+; ------------------------------------------
+[SPECIAL_0]
+DESCRIPTION_0=Base dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Refusal dialogue string
+OFFSET_1=0x14
+TYPE_1=STRING
+
+DESCRIPTION_2=Price list string
+OFFSET_2=0x24
+TYPE_2=STRING
+
+DESCRIPTION_3=Insufficient money string
+OFFSET_3=0x6C
+TYPE_3=STRING
+
+DESCRIPTION_4=Base prophecy string
+OFFSET_4=0x82
+TYPE_4=STRING
+
+DESCRIPTION_5=Final dialogue string
+OFFSET_5=0x89
+TYPE_5=STRING
+
+DESCRIPTION_6=Base prophecy cost
+TOOLTIP=Total cost = (prophecy index + 1) * base cost
+OFFSET_6=0x54
+TYPE_6=DECIMAL
+
+DESCRIPTION_7=Base/top prophecy table
+OFFSET_7=0x7F
+TYPE_7=TABLE
+INDEX_TYPE_7=LOCATION
+VALUE_TYPE_7=DECIMAL
+SIZE_7=21
+
+
+; ------------------------------------------
+;					HEALER
+; ------------------------------------------
+[SPECIAL_1]
+DESCRIPTION_0=Base dialogue string
+OFFSET_0=0x01
+TYPE_0=STRING
+
+DESCRIPTION_1=Base price list string
+OFFSET_1=0x0E
+TYPE_1=STRING
+
+DESCRIPTION_2=Insufficient money string
+OFFSET_2=0x90
+TYPE_2=STRING
+
+DESCRIPTION_3=Success dialogue string
+OFFSET_3=0xE7,0x116,0x147,0x19E
+TYPE_3=STRING
+
+DESCRIPTION_4=Goodbye dialogue string
+OFFSET_4=0x11D,0x14E,0x1A5
+TYPE_4=STRING
+
+DESCRIPTION_5=Healthy patient string
+OFFSET_5=0xF3,0x1B7,0x1BC
+TYPE_5=STRING
+
+DESCRIPTION_6=Dead patient string
+OFFSET_6=0x15
+TYPE_6=STRING
+
+DESCRIPTION_7=Successful resurrection string
+OFFSET_7=0x197
+TYPE_7=STRING
+
+DESCRIPTION_8=Failed resurrection string
+OFFSET_8=0x1B0
+TYPE_8=STRING
+
+DESCRIPTION_9=Blood donation string
+OFFSET_9=0x1ED
+TYPE_9=STRING
+
+DESCRIPTION_10=Can't donate blood string
+OFFSET_10=0x1D1
+TYPE_10=STRING
+
+DESCRIPTION_11=Gold for donating blood
+OFFSET_11=0x1DF
+TYPE_11=DECIMAL
+
+DESCRIPTION_12=Healing services table
+TOOLTIP_12=Locations with value '1' have 'cure cold' and 'give blood' instead of 'heal'
+OFFSET_12=0x0A
+TYPE_12=TABLE
+INDEX_TYPE_12=LOCATION
+VALUE_TYPE_12=DECIMAL
+SIZE_12=21
+
+DESCRIPTION_13=Healing prices table
+OFFSET_13=0x7C
+TYPE_13=TABLE
+INDEX_TYPE_13=DECIMAL
+VALUE_TYPE_13=WORD
+SIZE_13=4
+TABLE_COPY_13=0xD9,0xDD,0x108,0x10C,0x139,0x13D,0x161,0x165
+
+
+; ------------------------------------------
+;				WEAPON SHOP
+; ------------------------------------------
+[SPECIAL_2]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Base price list string
+OFFSET_1=0x28
+TYPE_1=STRING
+
+DESCRIPTION_2=Unusable weapon warning
+OFFSET_2=0x68
+TYPE_2=STRING
+
+DESCRIPTION_3=Can't carry any more string
+OFFSET_3=0x8B
+TYPE_3=STRING
+
+DESCRIPTION_4=Not enough money string
+OFFSET_4=0x8D
+TYPE_4=STRING
+
+DESCRIPTION_5=Thank you string
+OFFSET_5=0xC2
+TYPE_5=STRING
+
+DESCRIPTION_6=Goodbye dialogue string
+OFFSET_6=0xD8
+TYPE_6=STRING
+
+DESCRIPTION_7=Shop quality table
+TOOLTIP_7=Locations with value '0' sell Dagger to Spear, value '2' sell Broad Axe to Sun Sword
+OFFSET_7=0x24
+TYPE_7=TABLE
+INDEX_TYPE_7=LOCATION
+SIZE_7=21
+VALUE_TYPE_7=DECIMAL
+
+DESCRIPTION_8=Buy cost table
+TOOLTIP_8=Prices when buying weapons, from Dagger to Sun Sword
+OFFSET_8=0xA2
+TYPE_8=TABLE
+INDEX_TYPE_8=DECIMAL
+SIZE_8=14
+VALUE_TYPE_8=WORD
+
+DESCRIPTION_9=Sell price table
+TOOLTIP_9=Money gained when selling weapons, from Dagger to Sun Sword
+OFFSET_9=0x115
+TYPE_9=TABLE
+INDEX_TYPE_9=DECIMAL
+SIZE_9=14
+VALUE_TYPE_9=WORD

@@ -264,7 +264,7 @@ class MapEditor:
         else:
             self.map_index = map_index
 
-        self.info(f"Loading tiles for map 0x{map_index:02X}...")
+        # self.info(f"Loading tiles for map 0x{map_index:02X}...")
 
         if self.is_dungeon(map_index):
             if map_colour < 0:
@@ -405,7 +405,7 @@ class MapEditor:
         """
         Loads and caches tile images for a non-dungeon map
         """
-        self.info("Loading town/castle/continent tileset...")
+        # self.info("Loading town/castle/continent tileset...")
 
         # Make a copy of the palette instead of referencing it directly, to avoid modifications
         if self.map_index == 0x0F:
@@ -424,7 +424,7 @@ class MapEditor:
 
         if self.map_colour > 0 and self.rom.has_feature("custom map colours"):
             # If not zero, load the two custom colours into the current palette
-            self.info(f"Loading custom map colour set #{self.map_colour}")
+            # self.info(f"Loading custom map colour set #{self.map_colour}")
             address = 0xEDEE + (self.map_colour * 2)
             map_palette[9] = self.rom.read_byte(0xF, address)
             map_palette[10] = self.rom.read_byte(0xF, address + 1)
@@ -1029,7 +1029,7 @@ class MapEditor:
         for _ in range(11):
             self.dungeon_data.append(DungeonData(message_pointers=[], messages=[], fountain_ids=[], mark_ids=[]))
 
-        self.info("Reading dungeon data...")
+        # self.info("Reading dungeon data...")
 
         # Get base address of message pointers table from ROM, by reading the instruction that is by default:
         # 0D:AA87    LDA $AAF6,X
@@ -1510,8 +1510,8 @@ class MapEditor:
                 # Action cancelled
                 return
 
-        _SELECTED = "#C0C0C0"
-        _INACTIVE = "#707070"
+        _SELECTED = colour.PALE_TEAL
+        _INACTIVE = colour.MEDIUM_GREY
 
         if tool == "draw":
             self.tool = tool
@@ -1880,8 +1880,10 @@ class MapEditor:
             string_id = self.app.getEntry("NPCE_Entry_Dialogue_ID")
             try:
                 value = int(string_id, 16)
-                if 0 <= value <= 0xE6:
+                if 0 <= value <= 0xE5:
                     self.text_editor.show_window(value, "Dialogue")
+                elif 0xF0 <= value <= 0xFF:
+                    self.text_editor.show_special_window(value, self.location_names)
                 else:
                     self.app.warningBox("Edit Dialogue", f"{string_id} is not a valid Dialogue ID.",
                                         parent="NPC_Editor")
@@ -1902,19 +1904,18 @@ class MapEditor:
 
             # Buttons
             with self.app.frame("ME_Frame_Buttons", row=0, column=0, padding=[4, 0], sticky='NEW', stretch='ROW'):
-                self.app.button("MapEditor_Import", name="Import", value=self.map_input, image="res/import.gif",
-                                tooltip="Import from File", row=0, column=0)
-                self.app.button("MapEditor_Export", name="Export", value=self.map_input, image="res/export.gif",
-                                tooltip="Export to File", row=0, column=1)
                 self.app.button("MapEditor_Save", name="Save Changes", value=self.map_input, image="res/floppy.gif",
-                                tooltip="Close and Apply Changes", row=0, column=2)
+                                tooltip="Apply Changes", row=0, column=0)
+                self.app.button("MapEditor_Import", name="Import", value=self.map_input, image="res/import.gif",
+                                tooltip="Import from File", row=0, column=1)
+                self.app.button("MapEditor_Export", name="Export", value=self.map_input, image="res/export.gif",
+                                tooltip="Export to File", row=0, column=2)
                 self.app.button("MapEditor_Discard", name="Discard Changes", value=self.map_input,
                                 image="res/close.gif",
                                 tooltip="Close and Discard Changes", row=0, column=3)
 
             # Tile picker / toolbox
-            with self.app.frame("ME_Frame_Tile_Picker", row=1, column=0, padding=[4, 0], stretch='COLUMN', sticky='EW',
-                                bg=colour.PALE_BLUE):
+            with self.app.frame("ME_Frame_Tile_Picker", row=1, column=0, padding=[4, 0], stretch='COLUMN', sticky='EW'):
                 self.app.button("ME_Button_Draw", self.map_input, name="Draw", image="res/pencil.gif",
                                 tooltip="Draw", height=32, row=0, column=0)
                 self.app.button("ME_Button_Fill", self.map_input, name="Fill", image="res/bucket.gif",
@@ -1928,10 +1929,9 @@ class MapEditor:
                 self.app.setCanvasCursor("ME_Canvas_Tiles", "hand2")
 
             # Tile info frame
-            with self.app.labelFrame("Tile Info", row=2, column=0, bg=colour.PALE_VIOLET, stretch='BOTH', sticky='EW'):
+            with self.app.labelFrame("Tile Info", row=2, column=0, stretch='BOTH', sticky='EW'):
                 self.app.canvas("ME_Canvas_Selected_Tile", row=0, column=0, width=16, height=16, stretch='NONE',
-                                map=None,
-                                bg=colour.PALE_NAVY)
+                                map=None, bg=colour.PALE_NAVY)
                 self.app.label("ME_Selected_Tile_Name", "", row=0, column=1)
                 self.app.label("ME_Selected_Tile_Properties", "", row=0, column=2)
                 self.app.label("ME_Selected_Tile_Position", "", row=0, column=3)
@@ -2259,7 +2259,7 @@ class MapEditor:
                 self.map.append(0)
 
         elif compression == "none":
-            self.info(f"Opening map @{bank:X}:{address:04X} (uncompressed)...")
+            # self.info(f"Opening map @{bank:X}:{address:04X} (uncompressed)...")
             for y in range(64):
                 for x in range(32):
                     # Each byte represents two tiles
@@ -2271,7 +2271,7 @@ class MapEditor:
             self.show_map()
 
         elif compression == "RLE":
-            self.info(f"Opening map @{bank:X}:{address:04X} (RLE compressed)...")
+            # self.info(f"Opening map @{bank:X}:{address:04X} (RLE compressed)...")
             data = self.rom.read_bytes(bank, address, 2048)
             uncompressed = rle.decode(data)
             offset = 0
@@ -2287,7 +2287,7 @@ class MapEditor:
 
         elif compression == "LZSS":
 
-            self.info(f"Opening map @{bank:X}:{address:04X} (LZSS compressed)...")
+            # self.info(f"Opening map @{bank:X}:{address:04X} (LZSS compressed)...")
             data = self.rom.read_bytes(bank, address, 2048)
             uncompressed = lzss.decode(data)
             offset = 0
@@ -2502,7 +2502,7 @@ class MapEditor:
         if self.is_dungeon():
             return
 
-        self.info(f"Jump to {x}, {y}.")
+        # self.info(f"Jump to {x}, {y}.")
 
         pane = self.app.getScrollPaneWidget("ME_Scroll_Pane")
         delta_x = (x - 12)

@@ -270,10 +270,10 @@ class PartyEditor:
                                 sticky="NEW", stretch="ROW"):
                 self.app.button("PE_Apply", name="Apply", value=self._races_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
-                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
-                                tooltip="Discard Changes and Close Window", row=0, column=1)
                 self.app.button("PE_Update_Race_Names", name="Reload", value=self._races_input, image="res/reload.gif",
-                                tooltip="Update Race Names", row=0, column=3, sticky="E")
+                                tooltip="Update Race Names", row=0, column=1, sticky="E")
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=2)
 
             with self.app.frame("PE_Frame_Races", row=1, column=0, stretch="BOTH", sticky="NEWS", padding=[4, 2],
                                 bg=colour.PALE_BLUE):
@@ -465,11 +465,11 @@ class PartyEditor:
                 self.app.button("PE_Apply", name="Apply", value=self._professions_input, image="res/floppy.gif",
                                 sticky="NE",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
+                self.app.button("PE_Update_Profession_Names", name="Reload", value=self._professions_input,
+                                image="res/reload.gif", tooltip="Update Profession Names", row=0, column=1, sticky="E")
                 self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
                                 sticky="NW",
-                                tooltip="Discard Changes and Close Window", row=0, column=1)
-                self.app.button("PE_Update_Profession_Names", name="Reload", value=self._professions_input,
-                                image="res/reload.gif", tooltip="Update Profession Names", row=0, column=3, sticky="E")
+                                tooltip="Discard Changes and Close Window", row=0, column=2)
 
             # Left Column
             with self.app.frame("PE_Frame_Left", row=1, column=0, stretch="COLUMN", sticky="NEW", padding=[4, 2],
@@ -809,10 +809,10 @@ class PartyEditor:
             with self.app.frame("PE_Frame_Buttons", padding=[4, 0], row=0, column=0, stretch="BOTH", sticky="NEWS"):
                 self.app.button("PE_Apply", name="Apply", value=self._magic_input, image="res/floppy.gif",
                                 tooltip="Apply Changes and Close Window", row=0, column=0)
-                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
-                                tooltip="Discard Changes and Close Window", row=0, column=1)
                 self.app.button("PE_Reload", name="Reload", value=self._magic_input, image="res/reload.gif",
-                                tooltip="Update Spell Names", row=0, column=3, sticky="E")
+                                tooltip="Update Spell Names", row=0, column=1, sticky="E")
+                self.app.button("PE_Cancel", name="Cancel", value=self._generic_input, image="res/close.gif",
+                                tooltip="Discard Changes and Close Window", row=0, column=2)
 
             # Spell list
             with self.app.frame("PE_Frame_Top", padding=[2, 2], row=1, column=0, stretch="BOTH", sticky="NEW"):

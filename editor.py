@@ -129,9 +129,9 @@ def edit_map() -> None:
         map_editor.load_npc_data()
         # Move the map editor and the NPC editor relatively to the main window
         main_location = app.getLocation()
-        app.setSubWindowLocation("Map_Editor", main_location[0] - 256, main_location[1])
-        app.setSubWindowLocation("NPC_Editor", main_location[0] + 258, main_location[1])
-        app.setSubWindowLocation("Entrance_Editor", main_location[0] - 514, main_location[1])
+        app.setSubWindowLocation("Map_Editor", main_location[0], main_location[1])
+        app.setSubWindowLocation("NPC_Editor", main_location[0] + 514, main_location[1])
+        app.setSubWindowLocation("Entrance_Editor", main_location[0] - 258, main_location[1])
 
         app.hideFrame("ME_Frame_Dungeon_Tools")
 
@@ -309,7 +309,7 @@ def select_palette(sel: str) -> None:
     sel: str
         Name of the Option Box widget
     """
-    log(4, "EDITOR", f"Selected palette: {app.getOptionBox(sel)}")
+    # log(4, "EDITOR", f"Selected palette: {app.getOptionBox(sel)}")
     palette_set = app.getOptionBox(sel)
     palette_editor.choose_palette_set(palette_set)
 
@@ -1046,7 +1046,7 @@ def select_map(sel: str) -> None:
     global map_compression
 
     selected_map = get_option_index(sel, app.getOptionBox(sel))  # int(app.getOptionBox(sel)[:4], 16)
-    log(4, "EDITOR", f"Selected map# {selected_map}")
+    # log(4, "EDITOR", f"Selected map# {selected_map}")
 
     map_data = map_editor.map_table[selected_map]
 
@@ -1920,7 +1920,7 @@ if __name__ == "__main__":
                     with app.frame("Map_MidFrame", row=1, column=0, sticky="NEW", stretch='BOTH', bg=colour.PALE_OLIVE):
 
                         # Basic info
-                        with app.frame("MapInfo_Frame_Basic", row=0, column=0, padding=[8, 0], stretch='BOTH'):
+                        with app.frame("MapInfo_Frame_Basic", row=0, column=0, padding=[8, 4], stretch='BOTH'):
                             app.label("MapInfo_Basic_h0", "Map type: ", sticky='E', row=0, column=0, colspan=2)
                             app.optionBox("MapInfo_Basic_Type", ["6: Continent (No Guards)", "2: Continent (w/Guards)",
                                                                  "4: Town / Castle (No Guards)",
@@ -1936,10 +1936,11 @@ if __name__ == "__main__":
                             del banks_list
 
                             app.label("MapInfo_Basic_h2", "ID: ", sticky='E', row=1, column=2)
-                            app.spinBox("MapInfo_Basic_ID", list(range(31, -1, -1)), change=main_input, row=1, column=3)
+                            app.spinBox("MapInfo_Basic_ID", list(range(31, -1, -1)), change=main_input,
+                                        width=4, sticky='W', row=1, column=3)
 
                         # Advanced info
-                        with app.frame("MapInfo_Frame_Advanced", row=1, column=0, padding=[4, 0], stretch='BOTH'):
+                        with app.frame("MapInfo_Frame_Advanced", row=1, column=0, padding=[4, 1], stretch='BOTH'):
                             app.label("MapInfo_h0", "Bank Number", row=0, column=0, sticky="NEW", stretch="ROW")
                             app.label("MapInfo_h1", "Data Address", row=0, column=1, sticky="NEW", stretch="ROW")
                             app.label("MapInfo_h2", "NPC Table", row=0, column=2, sticky="NEW", stretch="ROW")
@@ -1969,14 +1970,14 @@ if __name__ == "__main__":
                     app.setRadioButton("MapInfo_Advanced_Option", "Basic", callFunction=False)
                     app.hideFrame("MapInfo_Frame_Advanced")
 
-                    with app.frame("Map_BtmFrame", row=4, column=0, sticky='NEWS', stretch='BOTH', padding=[4, 8],
+                    with app.frame("Map_BtmFrame", row=4, column=0, sticky='NEWS', stretch='BOTH', padding=[4, 2],
                                    bg=colour.PALE_LIME):
                         app.button("Map_Apply", image="res/floppy.gif", value=main_input, width=32, height=32,
                                    tooltip="Save the changes to the values in this tab",
-                                   sticky="NEW", row=0, column=0)
+                                   bg=colour.PALE_TEAL, sticky="NEW", row=0, column=0)
                         app.button("Map_Edit", image="res/brush.gif", value=main_input, width=128, height=32,
                                    tooltip="Edit the selected map",
-                                   sticky="NEW", row=0, column=1)
+                                   bg=colour.PALE_TEAL, sticky="NEW", row=0, column=1)
                         app.label("MapInfo_SelectCompression", "Compression:", sticky="NEW", row=0, column=2)
                         app.optionBox("Map_Compression", ["none", "LZSS", "RLE"], change=select_compression,
                                       sticky="NEW", callFunction=True, row=0, column=3)
@@ -1992,7 +1993,7 @@ if __name__ == "__main__":
                         app.optionBox("Battlefield_Option_Map", battlefields, change=main_input,
                                       sticky="W", row=0, column=1, font=10)
 
-                    with app.frame("Battlefield_Middle_Frame", inPadding=[4, 4], padding=[4, 0], bg=colour.PALE_BLUE,
+                    with app.frame("Battlefield_Middle_Frame", inPadding=[4, 4], padding=[4, 1], bg=colour.PALE_BLUE,
                                    sticky="NEWS", stretch="BOTH", row=1, column=0):
                         app.label("Battlefield_Label_Address", "Address: ", sticky="E", row=0, column=0, font=11)
                         app.entry("Battlefield_Map_Address", "", change=main_input, fg=colour.BLACK, sticky="W",
@@ -2009,13 +2010,13 @@ if __name__ == "__main__":
                                    padding=[4, 4], bg=colour.PALE_LIME):
                         app.button("Battlefield_Apply", image="res/floppy.gif", value=main_input, width=32, height=32,
                                    tooltip="Save all changes to the values for this map",
-                                   sticky="E", row=0, column=0)
+                                   bg=colour.PALE_TEAL, sticky="E", row=0, column=0)
                         app.button("Battlefield_Reload", image="res/reload.gif", value=main_input, width=32, height=32,
                                    tooltip="Reload all values from ROM buffer",
-                                   sticky="W", row=0, column=1)
+                                   bg=colour.PALE_TEAL, sticky="W", row=0, column=1)
                         app.button("Battlefield_Edit", image="res/brush.gif", value=main_input, width=128, height=32,
                                    tooltip="Edit the selected map",
-                                   sticky="W", row=0, column=2)
+                                   bg=colour.PALE_TEAL, sticky="W", row=0, column=2)
 
         # MISC Tab ----------------------------------------------------------------------------------------------------
         with app.tab("Misc"):

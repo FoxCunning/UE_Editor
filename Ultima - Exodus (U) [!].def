@@ -913,6 +913,7 @@ TYPE_2=STRING
 
 DESCRIPTION_3=Failure dialogue
 OFFSET_3=0x5F
+TYPE_3=STRING
 
 
 ; ------------------------------------------

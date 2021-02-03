@@ -1,15 +1,22 @@
 __author__ = "Fox Cunning"
 
+import configparser
+import os
 from typing import List
 
 from PIL import Image, ImageTk
 
+import appJar
+import colour
 from appJar import gui
 from debug import log
 from rom import ROM
 
+from routines import Routine, Parameter
 
-# --- _convert_unpacked() ---
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 
 def _convert_unpacked(byte: int) -> str:
     """Converts an unpacked text byte to the corresponding displayable ASCII character
@@ -55,7 +62,7 @@ def _convert_unpacked(byte: int) -> str:
     return switcher.get(byte, '[?]')
 
 
-# --- _convert_packed() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _convert_packed(character: str) -> int:
     """Converts a string (representing a single ASCII character) to a 6-bit integer for bit-packing
@@ -104,7 +111,7 @@ def _convert_packed(character: str) -> int:
     return switcher.get(character[0], 0x1B)
 
 
-# --- _ascii_to_exodus() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def ascii_to_exodus(ascii_string: str) -> bytearray:
     """
@@ -184,7 +191,7 @@ def ascii_to_exodus(ascii_string: str) -> bytearray:
     return exodus_string
 
 
-# --- _exodus_to_ascii() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def exodus_to_ascii(exodus_string: bytearray) -> str:
     """
@@ -235,7 +242,7 @@ def exodus_to_ascii(exodus_string: bytearray) -> str:
     return ascii_string
 
 
-# --- read_text() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def read_text(rom: ROM, bank: int, address: int) -> str:
     """
@@ -270,7 +277,7 @@ def read_text(rom: ROM, bank: int, address: int) -> str:
     return text
 
 
-# --- _empty_image() ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 def _empty_image(width: int, height: int) -> Image:
     colours = [0, 0, 0,
@@ -286,7 +293,7 @@ def _empty_image(width: int, height: int) -> Image:
     return image
 
 
-# --- TextEditor ---
+# ----------------------------------------------------------------------------------------------------------------------
 
 class TextEditor:
 
@@ -297,7 +304,15 @@ class TextEditor:
         self.index: int = -1  # Index of the pointer to this string
         self.address: int = 0  # Address of compressed text in bank 05
 
-        self.changed: bool = False  # Set this to True when the text has been modified
+        self.special_index = -1  # Same, for special (e.g. shop) dialogues
+        self._special_routine: Routine = Routine()
+        self._special_unsaved_changes: bool = False
+        # Full path of routine definitions file
+        self._special_definitions: str = ""
+
+        self._location_names: List[str] = ["- No Maps Names -"]
+
+        self.unsaved_changes: bool = False  # Set this to True when the text has been modified
 
         self.npc_name_pointers: List[int] = [0]  # Pointer to NPC name for this dialogue
         self.npc_names: List[str] = []  # NPC name as read from ROM using the above pointer
@@ -343,14 +358,12 @@ class TextEditor:
                 self.app.changeOptionBox("TE_Option_Portrait", options, callFunction=False)
 
             except IOError as error:
-                log(3, f"{self}", f"Error parsing portrait descriptions file: {error}.")
+                self.error(f"Error parsing portrait descriptions file: {error}.")
 
             file.close()
 
         except IOError:
             log(3, f"{self}", "Could not read portrait descriptions file.")
-
-        log(4, f"{self}", "Pre-loading text strings...")
 
         # Load names table from ROM
         # Read strings from 0B:A700 byte by byte until 0xFF is encountered to get the base address of each string
@@ -395,9 +408,7 @@ class TextEditor:
         # Read and uncompress dialogue / special strings
         self.uncompress_all_string()
 
-        log(4, f"{self}", "Text loaded.")
-
-    # --- TextEditor.uncompress_all_strings() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def uncompress_all_string(self):
         """
@@ -422,7 +433,7 @@ class TextEditor:
             self.special_text_pointers.append(address)
             self.special_text.append(TextEditor.unpack_text(self.rom, address))
 
-    # --- TextEditor.unpack_text() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     @staticmethod
     def unpack_text(rom: ROM, address: int) -> str:
@@ -480,7 +491,7 @@ class TextEditor:
 
         return output
 
-    # --- TextEditor.pack_text ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     @staticmethod
     def pack_text(text: str) -> bytearray:
@@ -535,7 +546,22 @@ class TextEditor:
 
         return packed_data
 
-    # --- TextEditor.show_window() ---
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def error(self, message: str):
+        log(2, f"{self.__class__.__name__}", message)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def warning(self, message: str):
+        log(3, f"{self.__class__.__name__}", message)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def info(self, message: str):
+        log(4, f"{self.__class__.__name__}", message)
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     def show_window(self, string_id: int, string_type: str) -> None:
         """
@@ -551,7 +577,7 @@ class TextEditor:
         self.index = string_id
         self.type = string_type
 
-        self.changed = False
+        self.unsaved_changes = False
 
         if string_type == "Dialogue":
             self.address = self.dialogue_text_pointers[string_id]
@@ -667,7 +693,7 @@ class TextEditor:
 
         self.app.showSubWindow("Text_Editor")
 
-    # --- TextEditor.modify_text() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def modify_text(self, new_text: str, new_address: int, new_portrait: int = -1, new_npc_name: int = -1) -> None:
         """
@@ -728,13 +754,13 @@ class TextEditor:
             self.menu_text[self.index] = new_text
 
         else:
-            log(3, "TEXT EDITOR", f"Invalid string type for modify_text: '{self.type}'.")
+            self.warning(f"Invalid string type for modify_text: '{self.type}'.")
             return
 
         self.app.clearTextArea("Text_Preview")
         self.app.setTextArea("Text_Preview", new_text)
 
-    # --- TextEditor.hide_window() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def hide_window(self, confirm_quit: bool = True) -> bool:
         """
@@ -751,7 +777,7 @@ class TextEditor:
             True if the window has been closed, False otherwise (e.g. user cancelled)
         """
         # Ask for confirmation if self.changed is True
-        if confirm_quit is True and self.changed is True:
+        if confirm_quit is True and self.unsaved_changes is True:
             choice = self.app.questionBox("Confirm", "Unsaved changes will be lost. Continue?")
             if choice is False:
                 return False
@@ -766,7 +792,7 @@ class TextEditor:
 
         return True
 
-    # --- TextEditor.load_portrait() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def load_portrait(self, index: int) -> None:
         self.app.clearCanvas("TE_Canvas_Portrait")
@@ -787,7 +813,7 @@ class TextEditor:
                 address = address + 16
                 self.app.addCanvasImage("TE_Canvas_Portrait", 4 + (x * 8), 4 + (y * 8), ImageTk.PhotoImage(image))
 
-    # --- StringList ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     class StringListItem:
         """
@@ -811,7 +837,7 @@ class TextEditor:
             self.address = address
             self.done = False
 
-    # --- StringMemoryInfo ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     class StringMemoryInfo:
         """
@@ -920,14 +946,12 @@ class TextEditor:
 
             return address
 
-    # --- TextEditor.rebuild_pointers() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def rebuild_pointers(self) -> None:
         """
         Rebuilds the pointer tables for dialogues and special text
         """
-        log(4, f"{self}", "Saving new special/dialogue text pointers...")
-
         special_list = []
         dialogue_list = []
 
@@ -1161,17 +1185,14 @@ class TextEditor:
             # Update first available address
             address_first = address_first + len(exodus_text)
 
-        log(4, f"{self}", "Text pointers rebuilt.")
         self.app.setStatusbar("Text pointers successfully rebuilt")
 
-    # --- TextEditor.save_enemy_names() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def save_enemy_names(self) -> None:
         """
         Stores Enemy names shown in the battle screen in ROM and rebuilds their pointers table
         """
-        log(4, f"{self}", "Saving Enemy names/pointers...")
-
         # Create a new, empty list for the new pointers
         new_pointers: List[int] = []
         for _ in self.enemy_name_pointers:
@@ -1225,7 +1246,7 @@ class TextEditor:
         # Update cached pointers
         self.enemy_name_pointers = new_pointers
 
-    # --- TextEditor.read_menu_test() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_menu_text(self) -> None:
         # Read Menu/Intro pointers from ROM
@@ -1250,7 +1271,7 @@ class TextEditor:
                 address = address + 1
             self.menu_text.append(exodus_to_ascii(data))
 
-    # --- TextEditor.save_menu_text() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def save_menu_text(self) -> None:
         """
@@ -1323,14 +1344,12 @@ class TextEditor:
             self.rom.write_word(0xC, address, p)
             address = address + 2
 
-    # --- TextEditor.save_npc_names() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def save_npc_names(self) -> None:
         """
         Stores NPC names shown during dialogue in ROM and rebuilds their pointers
         """
-        log(4, f"{self}", "Saving NPC names/pointers for special/dialogue...")
-
         # Create a new, empty list for the new pointers
         new_pointers: List[int] = []
         for _ in self.npc_name_pointers:
@@ -1397,4 +1416,292 @@ class TextEditor:
         # Update our pointers cache
         self.npc_name_pointers = new_pointers
 
-        log(4, f"{self}", "NPC names/pointers successfully saved.")
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _get_selection_index(self, widget: str) -> int:
+        """
+        Returns
+        -------
+        int:
+            The index of the currently selected option from an OptionBox widget
+        """
+        value = "(nothing)"
+        try:
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            return box.options.index(value)
+        except ValueError as error:
+            self.error(f"ERROR: Getting selection index for '{value}' in '{widget}': {error}.")
+            return 0
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def close_special_window(self) -> bool:
+        # Ask confirmation if there are unsaved changes
+        if self._special_unsaved_changes:
+            if not self.app.yesNoBox("Special Dialogue Function Editor", "Are you sure you want to close this window?" +
+                                     "\nAny unsaved changes will be lost.", "Special_Dialogue"):
+                return False
+
+        self.app.hideSubWindow("Special_Dialogue", useStopFunction=False)
+        self.app.emptySubWindow("Special_Dialogue")
+        return True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def show_special_window(self, dialogue_id: int, location_names: List[str]) -> None:
+        try:
+            self.app.openSubWindow("Special_Dialogue")
+            window_exists = True
+        except appJar.appjar.ItemLookupError:
+            window_exists = False
+
+        self._special_unsaved_changes = False
+        self.special_index = dialogue_id - 0xF0
+        address = self.rom.read_word(0xF, 0xC6CD + (self.special_index << 1))
+        self._special_routine = Routine(address=address)
+
+        self._location_names = location_names
+
+        # Find and open definitions file
+        rom_base = os.path.splitext(self.rom.path)[0]  # Dir + file name, no ext
+        rom_file = os.path.basename(rom_base)     # File name, no dir, no ext
+
+        if os.path.exists(rom_base + ".def"):
+            # Found definitions file in ROM folder
+            file_name = rom_base + ".def"
+        elif os.path.exists(rom_file + ".def"):
+            # Found definitions file in editor's folder
+            file_name = rom_file + ".def"
+        elif os.path.exists("Ultima - Exodus Remastered.def"):
+            # Fallback definitions file
+            file_name = "Ultima - Exodus Remastered.def"
+            self.warning("No routine definitions file found. Using default definitions for Remastered version.")
+        else:
+            # No definitions found
+            file_name = ""
+
+        self._special_definitions = file_name
+
+        if window_exists:
+            # Empty existing sub-window
+            self.app.emptySubWindow("Special_Dialogue")
+            generator = self.app.subWindow("Special_Dialogue")
+        else:
+            # Create sub-window
+            generator = self.app.subWindow("Special_Dialogue", title="Special Dialogue Function Editor",
+                                           size=[480, 320], padding=[2, 2], resizable=False,
+                                           bg=colour.DARK_OLIVE, fg=colour.WHITE, modal=False, blocking=False,
+                                           stopFunction=self.close_special_window)
+
+        # Create widgets
+        with generator:
+            with self.app.frame("SD_Frame_Info", 0, 0, sticky="NEW", padding=[4, 2]):
+                self.app.button("SD_Button_Apply", self._special_input, image="res/floppy.gif", bg=colour.LIGHT_OLIVE,
+                                tooltip="Save Changes", row=0, column=0, sticky="NW")
+                self.app.button("SD_Button_Reload", self._special_input, image="res/reload.gif", bg=colour.LIGHT_OLIVE,
+                                tooltip="Reload from ROM buffer", row=0, column=1, sticky="NW")
+                self.app.button("SD_Button_Cancel", self._special_input, image="res/close.gif", bg=colour.LIGHT_OLIVE,
+                                tooltip="Cancel Changes and Close", row=0, column=2, sticky="NW")
+
+                self.app.label("SD_Label_Index", f"             Index: 0x{dialogue_id:02X}, Address:", row=0, column=3,
+                               sticky="SE", font=11)
+                self.app.entry("SD_Routine_Address", f"0x{address:04X}",
+                               tooltip="Address in bank 08", submit=self._special_input,
+                               bg=colour.DARK_GREEN, fg=colour.LIGHT_ORANGE,
+                               width=8, row=0, column=4, sticky="SW", font=10)
+
+            with self.app.scrollPane("SD_Pane_Parameters", 1, 0, sticky="NEWS", padding=[4, 2], bg=colour.DARK_GREEN):
+                self._read_special_routine()
+
+        self.app.showSubWindow("Special_Dialogue")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _read_special_routine(self) -> None:
+        if self._special_definitions == "":
+            self.app.message("SD_Message_Error", "NO ROUTINE DEFINITIONS FOUND", sticky="NEWS",
+                             fg=colour.PALE_RED, width=740, row=0, column=0, font=16)
+        else:
+            parser = configparser.ConfigParser()
+            try:
+                parser.read(self._special_definitions)
+
+                section = parser[f"SPECIAL_{self.special_index}"]
+
+                row = 0
+
+                n = section.get("NOTES")
+                if n is not None:
+                    self.app.message(f"SD_Notes", n, width=740, sticky="NEW", row=row, column=0, colspan=3, font=11)
+                    row += 1
+
+                for p in range(32):
+                    description = section.get(f"DESCRIPTION_{p}")
+                    if description is None:
+                        break
+
+                    # Description found: create new parameter
+                    param = Parameter(description=description)
+
+                    tooltip = section.get(f"TOOLTIP_{p}", f"Value for parameter {p}")
+
+                    # offset = int(section.get(f"OFFSET_{p}", "0"), 16)
+                    offsets = section.get(f"OFFSET_{p}", "0").split(',')
+                    param.address = [(self._special_routine.address + int(n, 16)) for n in offsets]
+
+                    param_type = section.get(f"TYPE_{p}", "H")[0]
+                    param.type = Parameter.get_type(param_type)
+
+                    if param_type == "T":
+                        table_index = section.get(f"INDEX_TYPE_{p}", "D")[0]
+                        param.table_index_type = Parameter.get_type(table_index)
+
+                        value_type = section.get(f"VALUE_TYPE_{p}", "D")[0]
+                        param.table_type = Parameter.get_type(value_type)
+
+                        table_size = int(section.get(f"SIZE_{p}", "1"), 10)
+
+                        param.table_address = self.rom.read_word(0xD, param.address[0])
+
+                        address = param.table_address
+                        for v in range(table_size):
+                            if param.table_type == Parameter.TYPE_WORD or param.table_type == Parameter.TYPE_CHECK:
+                                param.table_values.append(self.rom.read_word(0xD, address))
+                                address += 2
+                            else:
+                                param.table_values.append(self.rom.read_byte(0xD, address))
+                                address += 1
+
+                        copy_values = section.get(f"TABLE_COPY_{p}", "")
+                        if copy_values != "":
+                            param.table_copy = [int(value, 16) for value in copy_values.split(',')]
+
+                    # Read value
+                    if param.type == Parameter.TYPE_POINTER or param_type == Parameter.TYPE_CHECK:
+                        param.value = self.rom.read_word(0xD, param.address[0])
+                    elif param.type == Parameter.TYPE_TABLE:
+                        pass
+                    else:
+                        param.value = self.rom.read_byte(0xD, param.address[0])
+
+                    # Add the newly created parameter to our routine instance
+                    self._special_routine.parameters.append(param)
+
+                    # Finally create the necessary widgets depending on its type
+                    self.app.label(f"SD_Description_{p:02}", description, row=row, column=0, sticky="E", font=11)
+
+                    if param.type == Parameter.TYPE_DECIMAL:
+                        self.app.entry(f"SD_Value_{p:02}", f"{param.value}", tooltip=tooltip, sticky="W", width=6,
+                                       change=self._special_input,
+                                       bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, font=10)
+
+                    elif param.type == Parameter.TYPE_HEX:
+                        self.app.entry(f"SD_Value_{p:02}", f"0x{param.value:02X}", tooltip=tooltip, sticky="W", width=6,
+                                       change=self._special_input,
+                                       bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, font=10)
+
+                    elif param.type == Parameter.TYPE_STRING:
+                        self.app.entry(f"SD_Value_{p:02}", f"0x{param.value:02X}", tooltip=tooltip, sticky="W", width=6,
+                                       change=self._special_input,
+                                       bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, font=10)
+                        self.app.button(f"SD_Edit_String_{p:02}", self._special_input, image="res/edit-dlg-small.gif",
+                                        sticky="W", width=16, height=16, tooltip="Edit this string", row=row, column=2)
+
+                    elif param.type == Parameter.TYPE_TABLE:
+                        # Table index
+                        if param.table_index_type == Parameter.TYPE_LOCATION:
+                            row += 1
+                            self.app.optionBox(f"SD_Index_{p:02}", self._location_names[:len(param.table_values)],
+                                               tooltip="Table index", change=self._special_input,
+                                               sticky="WE", row=row, column=0, colspan=2, font=10)
+
+                        elif param.table_index_type == Parameter.TYPE_DECIMAL:
+                            indices = [f"{n}" for n in range(0, len(param.table_values))]
+                            self.app.optionBox(f"SD_Index_{p:02}", indices, tooltip="Table index",
+                                               change=self._special_input,
+                                               width=5, sticky="W", row=row, column=1, font=10)
+
+                        elif param.table_index_type == Parameter.TYPE_HEX:
+                            indices = [f"0x{n:02X}" for n in range(0, len(param.table_values))]
+                            self.app.optionBox(f"SD_Index_{p:02}", indices, tooltip="Table index",
+                                               change=self._special_input,
+                                               width=5, sticky="W", row=row, column=1, font=10)
+
+                        else:
+                            # Default index type: same as decimal
+                            indices = [f"{n}" for n in range(0, len(param.table_values))]
+                            self.app.optionBox(f"SD_Index_{p:02}", indices, tooltip="Table index",
+                                               change=self._special_input,
+                                               width=5, sticky="W", row=row, column=1, font=10)
+
+                        # Table value
+                        if param.table_type == Parameter.TYPE_WORD:
+                            self.app.entry(f"SD_Table_Value_{p:02}", f"{param.table_values[0]}", tooltip=tooltip,
+                                           bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
+                                           width=6, sticky="W", row=row, column=2, font=10)
+                        elif param_type == Parameter.TYPE_HEX:
+                            self.app.entry(f"SD_Table_Value_{p:02}", f"0x{param.table_values[0]:02X}", tooltip=tooltip,
+                                           bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
+                                           width=6, sticky="W", row=row, column=2, font=10)
+                        else:
+                            # TODO Support other value types (location, NPC, string...)
+                            self.app.entry(f"SD_Table_Value_{p:02}", f"{param.table_values[0]}", tooltip=tooltip,
+                                           bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
+                                           width=6, sticky="W", row=row, column=2, font=10)
+
+                    else:
+                        self.app.label(f"SD_Unsupported_{p:02}", "Unsupported parameter type", sticky="E",
+                                       fg=colour.PALE_RED, row=row, column=1, font=11)
+
+                    # Move down one row for the next parameter
+                    row += 1
+
+            except configparser.ParsingError as error:
+                self.app.message("SD_Message_Error", f"Error parsing '{self._special_definitions}':\n{error}",
+                                 sticky="NEWS", width=740, fg=colour.PALE_RED, row=0, column=0, font=12)
+            except TypeError as error:
+                self.app.message("SD_Message_Error", f"Error parsing '{self._special_definitions}':\n{error}",
+                                 sticky="NEWS", width=740, fg=colour.PALE_RED, row=0, column=0, font=12)
+            except KeyError:
+                self.app.message("SD_Message_Error", "No definitions found for this dialogue.", sticky="NEWS",
+                                 fg=colour.PALE_RED, width=740, row=0, column=0, font=12)
+            except ValueError or IndexError as error:
+                self.app.message("SD_Message_Error", f"Error parsing '{self._special_definitions}':\n{error}",
+                                 sticky="NEWS", width=740, fg=colour.PALE_RED, row=0, column=0, font=12)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _special_input(self, widget: str) -> None:
+        if widget[:15] == "SD_Edit_String_":    # ----------------------------------------------------------------------
+            p = int(widget[-2:])
+            value = self._special_routine.parameters[p].value
+
+            self.show_window(value, "Special")
+
+        elif widget[:9] == "SD_Index_":     # --------------------------------------------------------------------------
+            p = int(widget[-2:])
+            param = self._special_routine.parameters[p]
+
+            selection = self._get_selection_index(widget)
+            try:
+                value = param.table_values[selection]
+            except IndexError:
+                self.app.errorBox("Special Dialogue Editor", f"Selection for parameter #{p} out of range.\n" +
+                                  "Wrong list size in definition file?",
+                                  "Special_Dialogue")
+                return
+
+            destination = f"SD_Table_Value_{p:02}"
+            # The widget type where we write this value depends on the value type in the table
+            if param.table_type == Parameter.TYPE_HEX:
+                self.app.clearEntry(destination, callFunction=False, setFocus=True)
+                self.app.setEntry(destination, f"0x{value:02X}", callFunction=False)
+            elif param.table_type == Parameter.TYPE_LOCATION:
+                self.app.setOptionBox(destination, value, callFunction=False)
+            else:
+                self.app.clearEntry(destination, callFunction=False, setFocus=True)
+                self.app.setEntry(destination, f"{value}", callFunction=False)
+
+        else:   # ------------------------------------------------------------------------------------------------------
+            self.info(f"Unimplemented input from widget: '{widget}'.")

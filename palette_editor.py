@@ -197,7 +197,7 @@ class PaletteEditor:
         """
         Load all palettes from ROM and update the Palettes frame accordingly
         """
-        log(4, "PALETTE EDITOR", "Loading palettes from ROM...")
+        # log(4, "PALETTE EDITOR", "Loading palettes from ROM...")
 
         # Populate the full NES palette canvas
         self.app.clearCanvas("PE_Canvas_Full")
