@@ -15,7 +15,11 @@ A comprehensive editor for the NES version of *Ultima III: Exodus.*
     - NPC name editor (only for Remastered ROM)
     - Enemy name editor
     - Menu / Intro text editor
-    
+
+- Music / Sound Effect editor
+  - Instrument editor
+  - Track editor
+  
 - Palette Editor
 - Enemy Encounter Editor
 - Screen / Cutscene Editor
@@ -33,13 +37,14 @@ A comprehensive editor for the NES version of *Ultima III: Exodus.*
     - Special ability editor (Remastered ROM only)
 
 ###To do:
-- Music tracker
+- Music tracker:
+  - Implement noise channel
+  - Import/export music from/to FamiTracker
 - SFX editor
-- Import/export music from/to NSF
 - Special dialogue editor (e.g. vendors, Lord British, etc.)
 - Editor settings UI
 - Improve the map editor (drag-drawing, optional grid)
-- Undo features for most modules  
+- Undo features for map editor  
 - Major refactoring in most modules
 - Some extra features that would be nice to have:
     - Integrated pattern editor, to make external tools entirely optional
@@ -52,3 +57,11 @@ A comprehensive editor for the NES version of *Ultima III: Exodus.*
 - AppJar (0.94, a slightly altered version is included with this project)
 - TCL 8.6
 - TK 8.6
+
+#
+###Disclaimer:
+This project was in big part an occasion for me to learn Python. You may notice my coding style changed as I learnt more
+techniques,
+and while I often do go back and improve older code, a full restructuring will have to happen at some point.
+
+Hopefully you will still find it fun and useful ☻
