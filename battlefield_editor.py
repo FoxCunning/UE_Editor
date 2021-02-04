@@ -30,7 +30,7 @@ class BattlefieldEditor:
 
         self._map_address: List[int] = []
 
-        # TODO Maybe read these from a customised (optional) text file
+        # TODO Maybe read these from a customised (optional) text file, or config file section
         self._map_names: List[str] = ["Grass", "Brush", "Forest", "Player vs Sea Monsters",
                                       "Player vs Pirate Ship", "Door", "Stone Floor 1", "Lava",
                                       "Wall", "Table", "Chest", "Stone Floor 2", "Wall Top", "Castle / Dungeon",
@@ -142,6 +142,10 @@ class BattlefieldEditor:
         self._update_undo_buttons()
 
         self.app.showSubWindow("Battlefield_Editor", hide=False)
+
+        sw = self.app.openSubWindow("Battlefield_Editor")
+        sw.bind("<Control-z>", self._undo, add='')
+        sw.bind("<Control-y>", self._redo, add='')
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -567,12 +571,14 @@ class BattlefieldEditor:
     def _update_undo_buttons(self) -> None:
         if len(self._undo_actions) < 1:
             self.app.disableButton("BE_Button_Undo")
+            self.app.setButtonTooltip("BE_Button_Undo", "Nothing to Undo")
         else:
             self.app.enableButton("BE_Button_Undo")
             self.app.setButtonTooltip("BE_Button_Undo", "Undo: " + self._undo_redo.get_undo_text())
 
         if len(self._redo_actions) < 1:
             self.app.disableButton("BE_Button_Redo")
+            self.app.setButtonTooltip("BE_Button_Redo", "Nothing to Redo")
         else:
             self.app.enableButton("BE_Button_Redo")
             self.app.setButtonTooltip("BE_Button_Undo", "Undo: " + self._undo_redo.get_redo_text())

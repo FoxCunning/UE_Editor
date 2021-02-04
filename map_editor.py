@@ -1,6 +1,7 @@
 __author__ = "Fox Cunning"
 
 import os
+import tkinter
 from dataclasses import dataclass
 from typing import List, TextIO
 
@@ -22,6 +23,8 @@ from rom import ROM
 
 
 # ------------------------------------------------------------------------------------------------------------------
+from undo_redo import UndoRedo
+
 
 @dataclass(init=True, repr=False)
 class NPCData:
@@ -187,6 +190,8 @@ class MapEditor:
         self.canvas_icon_moongates: List[int] = []
         self.canvas_icon_dawn: int = -1
 
+        self.canvas_map: tkinter.Canvas = tkinter.Canvas()
+
         # A reference to the palette editor
         self.palette_editor: PaletteEditor = palette_editor
 
@@ -208,7 +213,15 @@ class MapEditor:
         self.npc_palette_indices = []
 
         # These will be saved when clicking on the map
-        self._last_tile: Point2D = Point2D()
+        self._last_tile: Point2D = Point2D(0xFF, 0xFF)
+
+        # Keep count of how many tiles have been modified by a single action (e.g. single click, drag-drawing,
+        # flood fill, etc.) for undo/redo
+        self._modified_tiles: int = 0
+
+        self._undo_redo: UndoRedo = UndoRedo()
+        self._undo_actions: List[int] = []
+        self._redo_actions: List[int] = []
 
         # List of all location names, as read from locations txt file
         self.location_names: List[str] = []
@@ -1149,10 +1162,8 @@ class MapEditor:
         self.npc_data = []
 
         # Remove previous NPC images
-        canvas = self.app.getCanvas("ME_Canvas_Map")
-        if canvas is not None:
-            for npc in self.canvas_npc_images:
-                canvas.delete(npc)
+        for npc in self.canvas_npc_images:
+            self.canvas_map.delete(npc)
         self.canvas_npc_images.clear()
 
         # We will use this to create a selectable OptionBox containing a list of NPCs
@@ -1194,7 +1205,7 @@ class MapEditor:
         npc_count = len(self.npc_data)
         for i in range(npc_count, 32):
             npc_sprite = self.app.addCanvasImage("ME_Canvas_Map", 255, 255, self.npc_sprites[0])
-            self.app.getCanvas("ME_Canvas_Map").itemconfigure(npc_sprite, state="hidden")
+            self.canvas_map.itemconfigure(npc_sprite, state="hidden")
             self.canvas_npc_images.append(npc_sprite)
 
         # Update the widgets
@@ -1212,9 +1223,8 @@ class MapEditor:
         This only works for maps 0x0 and 0xF
         """
         # Clear previous entries
-        canvas = self.app.getCanvas("ME_Canvas_Map")
         for e in self.canvas_icon_entrances:
-            canvas.delete(e)
+            self.canvas_map.delete(e)
         self.canvas_icon_entrances.clear()
         self.entrances.clear()
 
@@ -1224,7 +1234,7 @@ class MapEditor:
 
         # Remove previous starting position icon
         if self.canvas_icon_start > -1:
-            canvas.delete(self.canvas_icon_start)
+            self.canvas_map.delete(self.canvas_icon_start)
             self.canvas_icon_start = -1
 
         # Add an icon for the starting point on this map
@@ -1263,7 +1273,7 @@ class MapEditor:
                 self.canvas_icon_entrances.append(image_id)
                 # Only show entrance if coordinates are valid
                 if entrance.x > 63 or entrance.y > 63:
-                    canvas.itemconfigure(image_id, state="hidden")
+                    self.canvas_map.itemconfigure(image_id, state="hidden")
 
                 # Update widget with the list of entrances
                 self.app.addListItem("EE_List_Entrances", f"0x{e:02X} -> {entrance.x:02d}, {entrance.y:02d}",
@@ -1303,7 +1313,7 @@ class MapEditor:
                 self.canvas_icon_entrances.append(image_id)
                 # Only show the icon if coordinates are valid
                 if entrance.x > 63 or entrance.y > 63:
-                    canvas.itemconfigure(image_id, state="hidden")
+                    self.canvas_map.itemconfigure(image_id, state="hidden")
 
                 # Update widget with the list of entrances
                 self.app.addListItem("EE_List_Entrances",
@@ -1331,11 +1341,10 @@ class MapEditor:
         those used for the town of Dawn
         """
         # Clear previous entries
-        canvas = self.app.getCanvas("ME_Canvas_Map")
         for m in self.canvas_icon_moongates:
-            canvas.delete(m)
+            self.canvas_map.delete(m)
         if self.canvas_icon_dawn > -1:
-            canvas.delete(self.canvas_icon_dawn)
+            self.canvas_map.delete(self.canvas_icon_dawn)
 
         self.canvas_icon_moongates.clear()
         self.canvas_icon_dawn = -1
@@ -1457,18 +1466,21 @@ class MapEditor:
             if choice is True:
                 # Clear the map
 
+                # TODO Clear undo/redo history
+                self._modified_tiles = 0
+
                 if self.is_dungeon():
                     # Only clear the current dungeon level
                     # Put walls around the level first
                     for x in range(0, 16):
-                        self.change_tile(x, 0, 0x00, False)
+                        self._change_tile(x, 0, 0x00, False)
                     for y in range(1, 16):
-                        self.change_tile(0, y, 0x00, False)
+                        self._change_tile(0, y, 0x00, False)
 
                     # Then make everything else a regular floor
                     for y in range(1, 16):
                         for x in range(1, 16):
-                            self.change_tile(x, y, 0x0D, False)
+                            self._change_tile(x, y, 0x0D, False)
 
                 else:
                     # Clear the whole area
@@ -1476,14 +1488,14 @@ class MapEditor:
 
                     self.app.setLabel("Progress_Label", "Clearing map, please wait...")
                     self.app.showSubWindow("Map_Progress")
-                    root = self.app.getCanvas("ME_Canvas_Map").winfo_toplevel()
+                    root = self.canvas_map.winfo_toplevel()
                     root.update()
                     progress = 0.0
                     self.app.setMeter("ME_Progress_Meter", value=progress)
                     for y in range(64):
                         progress = progress + 1.55
                         for x in range(64):
-                            self.change_tile(x, y, 0x00, False)
+                            self._change_tile(x, y, 0x00, False)
                         self.app.setMeter("ME_Progress_Meter", value=progress)
                         root.update()
                     # Hide progress window and re-focus map editor windows
@@ -1495,10 +1507,9 @@ class MapEditor:
                     if clear_npcs:
                         self.npc_data.clear()
 
-                        canvas = self.app.getCanvas("ME_Canvas_Map")
                         for i in range(32):
                             # Hide the sprite
-                            canvas.itemconfigure(self.canvas_npc_images[i], state="hidden")
+                            self.canvas_map.itemconfigure(self.canvas_npc_images[i], state="hidden")
 
                         # Empty widget with NPC list
                         self.app.changeOptionBox("NPCE_Option_NPC_List", ["No NPCs found on this map"])
@@ -1575,7 +1586,16 @@ class MapEditor:
         except ItemLookupError:
             self.create_widgets()
 
+        self._undo_redo.clear()
+        self._undo_actions = []
+        self._redo_actions = []
+        self._update_undo_buttons()
+
         self.app.showSubWindow("Map_Editor", hide=False)
+
+        sw = self.app.openSubWindow("Map_Editor")
+        sw.bind("<Control-z>", self._undo, add='')
+        sw.bind("<Control-y>", self._redo, add='')
 
     # ----------------------------------------------------------------------------------------------------------------------
 
@@ -1589,7 +1609,13 @@ class MapEditor:
             Always returns true
         """
         # TODO Ask to save changes (if any)
-        self.app.hideSubWindow("NPC_Editor")
+
+        self._undo_redo.clear()
+        self._undo_actions = []
+        self._redo_actions = []
+        self.canvas_map = tkinter.Canvas()
+
+        self.app.hideSubWindow("NPC_Editor", useStopFunction=False)
         self.app.emptySubWindow("NPC_Editor")
         self.app.hideSubWindow("Entrance_Editor", useStopFunction=False)
         self.app.emptySubWindow("Entrance_Editor")
@@ -1755,6 +1781,139 @@ class MapEditor:
         else:
             self.app.disableOptionBox("MapInfo_Tileset")
 
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _undo(self, _event=None) -> None:
+        try:
+            count = self._undo_actions.pop()
+        except IndexError:
+            return
+
+        self._undo_redo.undo(count)
+
+        self._redo_actions.append(count)
+        self._update_undo_buttons()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _redo(self, _event=None) -> None:
+        try:
+            count = self._redo_actions.pop()
+        except IndexError:
+            return
+
+        self._undo_redo.redo(count)
+
+        self._undo_actions.append(count)
+        self._update_undo_buttons()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _map_button1_down(self, event: any) -> None:
+        """
+        Called when the user clicks on the map canvas.
+
+        Parameters
+        ----------
+        event
+            Mouse click event instance
+        """
+        tile_x = event.x >> 4
+        tile_y = event.y >> 4
+
+        # Save coordinates for future editing
+        self._last_tile(tile_x, tile_y)
+
+        if self.tool == "draw":
+            old_tile_id = self.get_tile_id(tile_x, tile_y)
+
+            # self._change_tile(tile_x, tile_y, self.selected_tile_id, False)
+            self._undo_redo(self._change_tile, (tile_x, tile_y, self.selected_tile_id, False),
+                            (tile_x, tile_y, old_tile_id, False), text="Draw")
+            self._modified_tiles += 1
+
+        elif self.tool == "fill":
+            self.flood_fill(tile_x, tile_y)
+            self.app.setCanvasCursor("ME_Canvas_Map", "target")     # Change mouse cursor back from "wait"
+
+        elif self.tool == "info":
+            # log(4, "EDITOR", f"Tile {tile_x}, {tile_y}")
+
+            # Get the ID of the tile at the mouse click coordinates
+            tile_id = self.get_tile_id(tile_x, tile_y)
+
+            # Display info about this tile
+            self.tile_info(tile_id, tile_x, tile_y)
+
+            self.selected_tile_id = tile_id
+            self.app.setLabel("ME_Selected_Tile_Position", f"[{tile_x}, {tile_y}]")
+
+            if self.is_dungeon() is False:
+                # Find an NPC at this coordinates and show it in NPC editor
+                npc_index = self.find_npc(tile_x, tile_y)
+                if npc_index > -1:
+                    # log(4, "EDITOR", f"Found NPC #{npc_index}")
+                    self.npc_index = npc_index
+                    self.npc_info(npc_index)
+                    self.app.setOptionBox("NPCE_Option_NPC_List", npc_index)
+                    self.app.showLabelFrame("NPCE_Frame_Info")
+                    # app.setButton("NPCE_Button_Create_Apply", "Apply Changes")
+
+        elif self.tool == "move_entrance":
+            self.select_tool("draw")
+            if self.selected_entrance < 0 or len(self.app.getAllListItems("EE_List_Entrances")) < 1:
+                return
+
+            self.change_entrance(self.selected_entrance, tile_x, tile_y)
+
+        elif self.tool == "move_moongate":
+            self.select_tool("draw")
+            if self.selected_moongate < 0 or len(self.app.getAllListItems("EE_List_Moongates")) < 1:
+                return
+
+            self.change_moongate(self.selected_moongate, tile_x, tile_y)
+
+        elif self.tool == "move_npc":
+            self.move_npc(tile_x, tile_y)
+            # Select draw tool after we're done moving
+            self.select_tool("draw")
+
+    # ----------------------------------------------------------------------------------------------------------------------
+
+    def _map_button1_up(self, _event=None) -> None:
+        if self.tool != "draw":
+            return
+
+        # Display last tile position
+        self.app.setLabel("ME_Selected_Tile_Position", f"[{self._last_tile.x}, {self._last_tile.y}]")
+
+        self._undo_actions.append(self._modified_tiles)
+        self._redo_actions = []
+        self._modified_tiles = 0
+        self._update_undo_buttons()
+
+    # ----------------------------------------------------------------------------------------------------------------------
+
+    def _map_button1_drag(self, event) -> None:
+        if self.tool != "draw":
+            return
+
+        tile_x = event.x >> 4
+        tile_y = event.y >> 4
+
+        if self._last_tile.x == tile_x and self._last_tile.y == tile_y:
+            return
+
+        # Save coordinates for future editing
+        self._last_tile(tile_x, tile_y)
+
+        old_tile_id = self.get_tile_id(tile_x, tile_y)
+
+        # self._change_tile(tile_x, tile_y, self.selected_tile_id, False)
+        self._undo_redo(self._change_tile, (tile_x, tile_y, self.selected_tile_id, False),
+                        (tile_x, tile_y, old_tile_id, False), text="Draw")
+        self._modified_tiles += 1
+
     # ----------------------------------------------------------------------------------------------------------------------
 
     def map_input(self, widget: str) -> None:
@@ -1820,6 +1979,12 @@ class MapEditor:
                 self.export_map(file_name)
                 directory = os.path.dirname(file_name)
                 self.settings.set("last map export path", directory)
+
+        elif widget == "ME_Button_Undo":
+            self._undo()
+
+        elif widget == "ME_Button_Redo":
+            self._redo()
 
         elif widget == "ME_Option_Map_Colours":
             # Do nothing if ROM doesn't support custom map colours
@@ -1914,6 +2079,11 @@ class MapEditor:
                                 image="res/close.gif",
                                 tooltip="Close and Discard Changes", row=0, column=3)
 
+                self.app.button("ME_Button_Undo", self.map_input, image="res/undo.gif", sticky="E",
+                                tooltip="Nothing to Undo", row=0, column=5)
+                self.app.button("ME_Button_Redo", self.map_input, image="res/redo.gif", sticky="E",
+                                tooltip="Nothing to Redo", row=0, column=6)
+
             # Tile picker / toolbox
             with self.app.frame("ME_Frame_Tile_Picker", row=1, column=0, padding=[4, 0], stretch='COLUMN', sticky='EW'):
                 self.app.button("ME_Button_Draw", self.map_input, name="Draw", image="res/pencil.gif",
@@ -1925,11 +2095,11 @@ class MapEditor:
                 self.app.button("ME_Button_Info", self.map_input, name="Info", image="res/zoom.gif",
                                 tooltip="Tile Info", height=32, row=0, column=3)
                 self.app.canvas("ME_Canvas_Tiles", row=0, column=4, width=128, height=32, stretch='NONE', map=None,
-                                bg="black").bind("<Button-1>", self.map_pick_tile, add="")
+                                bg="black").bind("<Button-1>", self.map_pick_tile, add='')
                 self.app.setCanvasCursor("ME_Canvas_Tiles", "hand2")
 
             # Tile info frame
-            with self.app.labelFrame("Tile Info", row=2, column=0, stretch='BOTH', sticky='EW'):
+            with self.app.labelFrame("Tile Info", padding=[1, 1], row=2, column=0, stretch='BOTH', sticky='EW'):
                 self.app.canvas("ME_Canvas_Selected_Tile", row=0, column=0, width=16, height=16, stretch='NONE',
                                 map=None, bg=colour.PALE_NAVY)
                 self.app.label("ME_Selected_Tile_Name", "", row=0, column=1)
@@ -1937,10 +2107,10 @@ class MapEditor:
                 self.app.label("ME_Selected_Tile_Position", "", row=0, column=3)
 
                 # Special tile info
-                with self.app.frame("ME_Frame_Special_Tile", row=0, column=4, padding=[8, 0]):
-                    self.app.label("ME_Special_Tile_Name", "Special", row=0, column=0)
+                with self.app.frame("ME_Frame_Special_Tile", row=0, column=4, padding=[4, 1]):
+                    self.app.label("ME_Special_Tile_Name", "Special", row=0, column=0, font=10)
                     self.app.optionBox("ME_Special_Tile_Value", ["", "", "", ""], row=0, column=1, width=10,
-                                       change=self.select_dungeon_special_type)
+                                       change=self.select_dungeon_special_type, font=9)
 
             # Colours and special options
             with self.app.frame("ME_Frame_Map_Options", row=3, column=0, padding=[4, 4], stretch='ROW', sticky='EW'):
@@ -1961,7 +2131,7 @@ class MapEditor:
             with self.app.scrollPane("ME_Scroll_Pane", row=4, column=0, stretch='BOTH', padding=[0, 0], sticky='NEWS'):
                 # Map Canvas
                 self.app.canvas("ME_Canvas_Map", row=0, column=0, width=1024, height=1024, map=None,
-                                bg="black").bind("<Button-1>", self.map_edit_tile, add="")
+                                bg="black")
 
                 # Dungeon tools
                 with self.app.frame("ME_Frame_Dungeon_Tools", row=0, column=1, padding=[8, 0], sticky='SEWN',
@@ -2153,6 +2323,12 @@ class MapEditor:
                                         tooltip="Edit Dialogue Text", row=1, column=1, font=9)
                         self.app.button("NPCE_Button_Position", self.map_input, name="Set Position", row=1, column=2,
                                         font=9)
+
+        # Bind events
+        self.canvas_map = self.app.getCanvas("ME_Canvas_Map")
+        self.canvas_map.bind("<ButtonPress-1>", self._map_button1_down, add='')
+        self.canvas_map.bind("<B1-Motion>", self._map_button1_drag, add='')
+        self.canvas_map.bind("<ButtonRelease-1>", self._map_button1_up, add='')
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -2567,7 +2743,7 @@ class MapEditor:
             # Show progress
             self.app.setLabel("Progress_Label", "Loading map, please wait...")
             self.app.showSubWindow("Map_Progress")
-            root = self.app.getCanvas("ME_Canvas_Map").winfo_toplevel()
+            root = self.canvas_map.winfo_toplevel()
             root.update()
             progress = 0.0
             self.app.setMeter("ME_Progress_Meter", value=progress)
@@ -2637,23 +2813,38 @@ class MapEditor:
             return
 
         if self.is_dungeon() is False:
-            self._flood_fill(x, y, self.selected_tile_id, old_tile_id)
+            self._map_flood_fill(x, y, self.selected_tile_id, old_tile_id)
+            self._redo_actions = []
+            self._undo_actions.append(self._modified_tiles)
+            self._modified_tiles = 0
+            self._update_undo_buttons()
 
         else:
             # Don't fill dungeons with special tiles, to avoid problems with pointers
             if self.selected_tile_id != 0 and self.selected_tile_id != 0xD and self.selected_tile_id != 0xF:
                 self.info(f"Cannot fill dungeon with tile #${self.selected_tile_id:X}.")
+                self.app.soundError()
                 return
 
             # If the old ID is a special tile, behave like the "draw" tool
             if old_tile_id != 0 and old_tile_id != 0xD and old_tile_id != 0xF:
-                self.change_tile(x, y, self.selected_tile_id)
+                # self._change_tile(x, y, self.selected_tile_id)
+                self._undo_redo(self._change_tile, (x, y, self.selected_tile_id),
+                                (x, y, old_tile_id), text="Draw")
+                self._redo_actions = []
+                self._undo_actions.append(1)
+                self._modified_tiles = 0
+                self._update_undo_buttons()
             else:
                 self._dungeon_flood_fill(x, y, self.selected_tile_id, old_tile_id)
+                self._redo_actions = []
+                self._undo_actions.append(self._modified_tiles)
+                self._modified_tiles = 0
+                self._update_undo_buttons()
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _flood_fill(self, x: int, y: int, new_tile_id: int, old_tile_id: int) -> None:
+    def _map_flood_fill(self, x: int, y: int, new_tile_id: int, old_tile_id: int) -> None:
         """
         Does what it says on the tin.
 
@@ -2672,7 +2863,9 @@ class MapEditor:
 
         queue = list()
 
-        self.change_tile(x, y, new_tile_id)
+        # self._change_tile(x, y, new_tile_id)
+        self._undo_redo(self._change_tile, (x, y, new_tile_id), (x, y, old_tile_id), text="Flood fill")
+        self._modified_tiles += 1
 
         queue.append((x, y))
 
@@ -2684,28 +2877,38 @@ class MapEditor:
             node_x = node[0] - 1
             node_y = node[1]
             if node_x >= 0 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
 
             node_x = node[0] + 1
             node_y = node[1]
             if node_x <= 63 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
 
             node_x = node[0]
             node_y = node[1] - 1
             if node_y >= 0 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
 
             node_x = node[0]
             node_y = node[1] + 1
             if node_y <= 63 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
-
-        self.select_tool("fill")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -2728,7 +2931,9 @@ class MapEditor:
 
         queue = list()
 
-        self.change_tile(x, y, new_tile_id)
+        # self._change_tile(x, y, new_tile_id)
+        self._undo_redo(self._change_tile, (x, y, new_tile_id), (x, y, old_tile_id), text="Flood fill")
+        self._modified_tiles += 1
 
         queue.append((x, y))
 
@@ -2738,32 +2943,42 @@ class MapEditor:
             node_x = node[0] - 1
             node_y = node[1]
             if node_x >= 0 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
 
             node_x = node[0] + 1
             node_y = node[1]
             if node_x <= 15 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
 
             node_x = node[0]
             node_y = node[1] - 1
             if node_y >= 0 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
 
             node_x = node[0]
             node_y = node[1] + 1
             if node_y <= 15 and self.get_tile_id(node_x, node_y) == old_tile_id:
-                self.change_tile(node_x, node_y, new_tile_id)
+                # self._change_tile(node_x, node_y, new_tile_id)
+                self._undo_redo(self._change_tile, (node_x, node_y, new_tile_id),
+                                (node_x, node_y, old_tile_id), text="Flood fill")
+                self._modified_tiles += 1
                 queue.append((node_x, node_y))
-
-        self.select_tool("fill")
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def change_tile(self, x: int, y: int, tile_id: int, show_info: bool = True) -> None:
+    def _change_tile(self, x: int, y: int, tile_id: int, show_info: bool = True) -> None:
         """
         Changes the tile at the specified coordinates to the a new ID
 
@@ -2863,13 +3078,13 @@ class MapEditor:
                         fountain_id = 0
                     else:
                         fountain_id = self.dungeon_data[dungeon_id].fountain_ids[fountain_index]
-                        self.info(f"Found fountain type {fountain_id} at {x}, {y}.")
+                        # self.info(f"Found fountain type {fountain_id} at {x}, {y}.")
 
                 # If this is a new fountain, insert it in the list after the previous one
                 else:
                     fountain_id = 0
                     self.dungeon_data[dungeon_id].fountain_ids.insert(fountain_index, fountain_id)
-                    self.info(f"Inserting new fountain, index {fountain_index} at {x}, {y}.")
+                    # self.info(f"Inserting new fountain, index {fountain_index} at {x}, {y}.")
 
                 # Update the label with the fountains count
                 self.show_fountains_count()
@@ -2895,13 +3110,13 @@ class MapEditor:
                         mark_id = 0
                     else:
                         mark_id = self.dungeon_data[dungeon_id].mark_ids[mark_index]
-                        self.info(f"Found Mark type {mark_id} at {x}, {y}.")
+                        # self.info(f"Found Mark type {mark_id} at {x}, {y}.")
 
                 # If this is a new Mark, insert it in the list after the previous one
                 else:
                     mark_id = 0
                     self.dungeon_data[dungeon_id].mark_ids.insert(mark_index, mark_id)
-                    self.info(f"Inserting new Mark, index {mark_index} at {x}, {y}.")
+                    # self.info(f"Inserting new Mark, index {mark_index} at {x}, {y}.")
 
                 # Update label with mark count
                 self.show_marks_count()
@@ -2917,13 +3132,30 @@ class MapEditor:
             map_index = x + (y << 6)
             canvas_index = map_index
 
-            self.app.hideFrame("ME_Frame_Special_Tile")
+            # self.app.hideFrame("ME_Frame_Special_Tile")
 
         # self.info(f"Editing cached image #{self.canvas_images[index]}.")
         # Update cached map data
         self.map[map_index] = tile_id
         # Update canvas image
-        self.app.getCanvas("ME_Canvas_Map").itemconfig(self.canvas_map_images[canvas_index], image=self.tiles[tile_id])
+        self.canvas_map.itemconfig(self.canvas_map_images[canvas_index], image=self.tiles[tile_id])
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _update_undo_buttons(self) -> None:
+        if len(self._undo_actions) < 1:
+            self.app.disableButton("ME_Button_Undo")
+            self.app.setButtonTooltip("ME_Button_Undo", "Nothing to Undo")
+        else:
+            self.app.enableButton("ME_Button_Undo")
+            self.app.setButtonTooltip("ME_Button_Undo", "Undo: " + self._undo_redo.get_undo_text())
+
+        if len(self._redo_actions) < 1:
+            self.app.disableButton("ME_Button_Redo")
+            self.app.setButtonTooltip("ME_Button_Redo", "Nothing to Redo")
+        else:
+            self.app.enableButton("ME_Button_Redo")
+            self.app.setButtonTooltip("ME_Button_Undo", "Undo: " + self._undo_redo.get_redo_text())
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -2931,8 +3163,6 @@ class MapEditor:
         """
         Exactly what you would expect.
         """
-        canvas = self.app.getCanvas("ME_Canvas_Map")
-
         first = 0
         last = 64 * 64
         canvas_index = 0
@@ -2944,7 +3174,7 @@ class MapEditor:
 
         for i in range(first, last):
             tile_id = self.map[i]
-            canvas.itemconfig(self.canvas_map_images[canvas_index], image=self.tiles[tile_id])
+            self.canvas_map.itemconfig(self.canvas_map_images[canvas_index], image=self.tiles[tile_id])
             canvas_index = canvas_index + 1
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -3160,8 +3390,7 @@ class MapEditor:
         self.app.addCanvasImage("NPCE_Canvas_New_Sprite", 8, 8, self.npc_sprites[selection & 0x7F])
 
         # Update canvas image
-        self.app.getCanvas("ME_Canvas_Map").itemconfig(self.canvas_npc_images[self.npc_index],
-                                                       image=self.npc_sprites[selection & 0x7F])
+        self.canvas_map.itemconfig(self.canvas_npc_images[self.npc_index], image=self.npc_sprites[selection & 0x7F])
 
         # Update data table
         self.npc_data[self.npc_index].sprite_id = selection
@@ -3312,10 +3541,8 @@ class MapEditor:
         self.npc_data.append(npc)
 
         # Add an image for this NPC onto the map canvas
-        canvas = self.app.getCanvas("ME_Canvas_Map")
-        canvas.itemconfigure(self.canvas_npc_images[npc_index], state="normal")
-        canvas.coords(self.canvas_npc_images[npc_index],
-                      (npc.starting_x << 4) + 8, (npc.starting_y << 4) + 8)
+        self.canvas_map.itemconfigure(self.canvas_npc_images[npc_index], state="normal")
+        self.canvas_map.coords(self.canvas_npc_images[npc_index], (npc.starting_x << 4) + 8, (npc.starting_y << 4) + 8)
 
         # Update widgets
         npc_list = self.app.getOptionBoxWidget("NPCE_Option_NPC_List").options
@@ -3347,8 +3574,7 @@ class MapEditor:
         self.npc_data[npc_index].starting_y = y
 
         # Move the NPC image on the map
-        canvas = self.app.getCanvas("ME_Canvas_Map")
-        canvas.coords(self.canvas_npc_images[npc_index], (x << 4) + 8, (y << 4) + 8)
+        self.canvas_map.coords(self.canvas_npc_images[npc_index], (x << 4) + 8, (y << 4) + 8)
 
         # Update the label showing the position
         self.app.setLabel("NPCE_Starting_Position", f"Starting Pos: {x}, {y}")
@@ -3540,18 +3766,17 @@ class MapEditor:
 
         # Update the icon on the map if coordinates changed
         if new_x > -1 or new_y > -1:
-            canvas = self.app.getCanvas("ME_Canvas_Map")
             icon = self.canvas_icon_moongates[moongate_index] if moongate_index < 8 else self.canvas_icon_dawn
 
             position = self.moongates[moongate_index]
             if position.x > 63 or position.y > 63:
                 # Moongate disabled: hide icon
-                canvas.itemconfigure(icon, state="hidden")
+                self.canvas_map.itemconfigure(icon, state="hidden")
 
             else:
                 # Moongate moved, update icon coordinates
-                canvas.coords(icon, (position.x << 4) + 8, (position.y << 4) + 8)
-                canvas.itemconfigure(icon, state="normal")
+                self.canvas_map.coords(icon, (position.x << 4) + 8, (position.y << 4) + 8)
+                self.canvas_map.itemconfigure(icon, state="normal")
 
             # Update the item in the list box
             name = f"{moongate_index}" if moongate_index < 8 else "Dawn"
@@ -3593,14 +3818,13 @@ class MapEditor:
         self.entrances[entrance_index].y = new_y
 
         # Move the entrance icon on the map
-        canvas = self.app.getCanvas("ME_Canvas_Map")
-        canvas.coords(self.canvas_icon_entrances[entrance_index], (new_x << 4) + 8, (new_y << 4) + 8)
+        self.canvas_map.coords(self.canvas_icon_entrances[entrance_index], (new_x << 4) + 8, (new_y << 4) + 8)
 
         # Hide or un-hide the icon as needed after moving it
         if new_x > 63 or new_y > 63:
-            canvas.itemconfigure(self.canvas_icon_entrances[entrance_index], state="hidden")
+            self.canvas_map.itemconfigure(self.canvas_icon_entrances[entrance_index], state="hidden")
         else:
-            canvas.itemconfigure(self.canvas_icon_entrances[entrance_index], state="normal")
+            self.canvas_map.itemconfigure(self.canvas_icon_entrances[entrance_index], state="normal")
 
         # Update the widget with the list of entrances
         if self.map_index == 0xF:
@@ -3718,9 +3942,9 @@ class MapEditor:
                 dungeon_level = self.dungeon_level
 
             offset = dungeon_level << 8
-            tile_id = self.map[offset + x + (16 * y)]
+            tile_id = self.map[offset + x + (y << 4)]
         else:
-            tile_id = self.map[x + (64 * y)]
+            tile_id = self.map[x + (y << 6)]
 
         return tile_id
 
@@ -4427,74 +4651,6 @@ class MapEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def map_edit_tile(self, event: any) -> None:
-        """
-        Called when the user clicks on the map canvas.
-
-        Parameters
-        ----------
-        event
-            Mouse click event instance
-        """
-        tile_x = event.x >> 4
-        tile_y = event.y >> 4
-
-        # Save coordinates for future editing
-        self._last_tile.x = tile_x
-        self._last_tile.y = tile_y
-
-        if self.tool == "draw":
-            self.change_tile(tile_x, tile_y, self.selected_tile_id, True)
-            # Also display tile position
-            self.app.setLabel("ME_Selected_Tile_Position", f"[{tile_x}, {tile_y}]")
-
-        elif self.tool == "fill":
-            self.flood_fill(tile_x, tile_y)
-
-        elif self.tool == "info":
-            # log(4, "EDITOR", f"Tile {tile_x}, {tile_y}")
-
-            # Get the ID of the tile at the mouse click coordinates
-            tile_id = self.get_tile_id(tile_x, tile_y)
-
-            # Display info about this tile
-            self.tile_info(tile_id, tile_x, tile_y)
-
-            self.selected_tile_id = tile_id
-            self.app.setLabel("ME_Selected_Tile_Position", f"[{tile_x}, {tile_y}]")
-
-            if self.is_dungeon() is False:
-                # Find an NPC at this coordinates and show it in NPC editor
-                npc_index = self.find_npc(tile_x, tile_y)
-                if npc_index > -1:
-                    # log(4, "EDITOR", f"Found NPC #{npc_index}")
-                    self.npc_index = npc_index
-                    self.npc_info(npc_index)
-                    self.app.setOptionBox("NPCE_Option_NPC_List", npc_index)
-                    self.app.showLabelFrame("NPCE_Frame_Info")
-                    # app.setButton("NPCE_Button_Create_Apply", "Apply Changes")
-
-        elif self.tool == "move_entrance":
-            self.select_tool("draw")
-            if self.selected_entrance < 0 or len(self.app.getAllListItems("EE_List_Entrances")) < 1:
-                return
-
-            self.change_entrance(self.selected_entrance, tile_x, tile_y)
-
-        elif self.tool == "move_moongate":
-            self.select_tool("draw")
-            if self.selected_moongate < 0 or len(self.app.getAllListItems("EE_List_Moongates")) < 1:
-                return
-
-            self.change_moongate(self.selected_moongate, tile_x, tile_y)
-
-        elif self.tool == "move_npc":
-            self.move_npc(tile_x, tile_y)
-            # Select draw tool after we're done moving
-            self.select_tool("draw")
-
-    # ------------------------------------------------------------------------------------------------------------------
-
     def npc_select_graphics(self, option_box: str) -> None:
         """
         An item has been selected from the NPC Sprite Option Box in the NPC Editor sub-window
@@ -4662,8 +4818,7 @@ class MapEditor:
         widget
             The OptionBox where the event occurred
         """
-        tile_x = self._last_tile.x
-        tile_y = self._last_tile.y
+        tile_x, tile_y = self._last_tile.x, self._last_tile.y
 
         try:
             special_id = int(self.app.getOptionBox(widget)[0])
