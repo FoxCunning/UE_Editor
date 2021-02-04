@@ -14,6 +14,7 @@ from appJar.appjar import ItemLookupError
 from debug import log
 from palette_editor import PaletteEditor
 from rom import ROM
+from undo_redo import UndoRedo
 
 
 class BattlefieldEditor:
@@ -69,6 +70,14 @@ class BattlefieldEditor:
         self._canvas_tiles: Canvas = Canvas()
         self._canvas_map: Canvas = Canvas()
 
+        # We keep track of how many tiles are modified with a single operation, for the undo/redo manager
+        self._modified_tiles: int = 0
+
+        self._undo_redo: UndoRedo = UndoRedo()
+        # These keep count of how many actions to process in each single undo/redo
+        self._undo_actions: List[int] = []
+        self._redo_actions: List[int] = []
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def error(self, message: str):
@@ -111,6 +120,7 @@ class BattlefieldEditor:
 
         self._canvas_map = self.app.getCanvasWidget("BE_Canvas_Map")
         self._canvas_map.bind("<ButtonPress-1>", self._map_left_down, add='')
+        self._canvas_map.bind("<ButtonRelease-1>", self._map_left_up, add='')
         self._canvas_map.bind("<B1-Motion>", self._map_left_drag, add='')
         self._canvas_map.bind("<Button-3>", self._map_right_click, add='')
 
@@ -122,6 +132,14 @@ class BattlefieldEditor:
         # Default selections
         self.select_map(0)
         self.select_pattern(0)
+
+        # Clear undo/redo history
+        self._modified_tiles = 0
+        self._undo_redo.clear()
+        self._undo_actions = []
+        self._redo_actions = []
+
+        self._update_undo_buttons()
 
         self.app.showSubWindow("Battlefield_Editor", hide=False)
 
@@ -172,6 +190,15 @@ class BattlefieldEditor:
                 self.app.button("BE_Button_Cancel", self.map_input, image="res/close.gif", width=32, height=32,
                                 tooltip="Cancel and Close Window",
                                 sticky="W", row=0, column=1)
+
+                self.app.canvas("BE_Separator", width=32, height=32, row=0, column=2)
+
+                self.app.button("BE_Button_Undo", self.map_input, image="res/undo.gif", width=32, height=32,
+                                tooltip="Nothing to Undo",
+                                sticky="E", row=0, column=3)
+                self.app.button("BE_Button_Redo", self.map_input, image="res/redo.gif", width=32, height=32,
+                                tooltip="Nothing to Redo",
+                                sticky="E", row=0, column=4)
 
             with self.app.frame("BE_Frame_Controls", padding=[4, 1], row=1, column=0):
                 self.app.checkBox("BE_Check_Grid", True, name="Show grid", change=self.map_input,
@@ -397,10 +424,16 @@ class BattlefieldEditor:
         if widget == "BE_Button_Cancel":
             self.close_window()
 
-        if widget == "BE_Button_Save":
+        elif widget == "BE_Button_Save":
             self.save_map_data()
             self.app.soundWarning()
             self.close_window()
+
+        elif widget == "BE_Button_Undo":
+            self._undo()
+
+        elif widget == "BE_Button_Redo":
+            self._redo()
 
         elif widget == "BE_Grid_Colour":
             # Pick a new colour
@@ -531,6 +564,21 @@ class BattlefieldEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _update_undo_buttons(self) -> None:
+        if len(self._undo_actions) < 1:
+            self.app.disableButton("BE_Button_Undo")
+        else:
+            self.app.enableButton("BE_Button_Undo")
+            self.app.setButtonTooltip("BE_Button_Undo", "Undo: " + self._undo_redo.get_undo_text())
+
+        if len(self._redo_actions) < 1:
+            self.app.disableButton("BE_Button_Redo")
+        else:
+            self.app.enableButton("BE_Button_Redo")
+            self.app.setButtonTooltip("BE_Button_Undo", "Undo: " + self._undo_redo.get_redo_text())
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def draw_map(self) -> None:
         """
         Populates the map canvas with patterns and draws /creates the grid if required.
@@ -630,6 +678,32 @@ class BattlefieldEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _undo(self, _event=None) -> None:
+        try:
+            count = self._undo_actions.pop()
+        except IndexError:
+            return
+
+        self._undo_redo.undo(count)
+
+        self._redo_actions.append(count)
+        self._update_undo_buttons()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _redo(self, _event=None) -> None:
+        try:
+            count = self._redo_actions.pop()
+        except IndexError:
+            return
+
+        self._undo_redo.redo(count)
+
+        self._undo_actions.append(count)
+        self._update_undo_buttons()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _tiles_left_click(self, event: any) -> None:
         """
         Callback for left mouse click on the tile picker canvas.
@@ -655,7 +729,11 @@ class BattlefieldEditor:
         if t == self._last_edited:
             return
 
-        self._map_edit_tile(t)
+        self._last_edited = t
+        old_tile = self._map_data[t]
+
+        self._undo_redo(self._map_edit_tile, (t, self._selected_tile), (t, old_tile), text="Draw")
+        self._modified_tiles += 1
 
         # Move selection rectangle
         if self._map_rectangle > 0:
@@ -665,13 +743,25 @@ class BattlefieldEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _map_left_up(self, _event: any = None) -> None:
+        self._undo_actions.append(self._modified_tiles)
+        self._redo_actions = []
+        self._modified_tiles = 0
+        self._update_undo_buttons()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _map_left_down(self, event: any) -> None:
         # Calculate tile index
         x = event.x >> 5
         y = event.y >> 5
         t = x + (y * 9)
+
         self._last_edited = t
-        self._map_edit_tile(t)
+        old_tile = self._map_data[t]
+        self._modified_tiles += 1
+
+        self._undo_redo(self._map_edit_tile, (t, self._selected_tile), (t, old_tile), text="Draw")
 
         # Move selection rectangle
         if self._map_rectangle > 0:
@@ -692,7 +782,8 @@ class BattlefieldEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _map_edit_tile(self, tile: int) -> None:
-        self._map_data[tile] = self._selected_tile
-        if self._map_items[tile] > 0:
-            self._canvas_map.itemconfigure(self._map_items[tile], image=self._patterns_cache[self._selected_tile])
+    def _map_edit_tile(self, tile_index: int, new_tile: int) -> None:
+        self._map_data[tile_index] = new_tile
+
+        if self._map_items[tile_index] > 0:
+            self._canvas_map.itemconfigure(self._map_items[tile_index], image=self._patterns_cache[new_tile])
