@@ -2,6 +2,7 @@ __author__ = "Fox Cunning"
 
 import configparser
 import os
+import tkinter
 from typing import List
 
 from PIL import Image, ImageTk
@@ -598,8 +599,13 @@ class TextEditor:
             log(3, "TEXT EDITOR", f"Invalid string type '{string_type}'.")
             return
 
-        self.app.clearTextArea("TE_Text")
+        text_widget = self.app.getTextAreaWidget("TE_Text")
+        text_widget.bind("<KeyRelease>", lambda _e: TextEditor.highlight_keywords(text_widget))
+
+        self.app.clearTextArea("TE_Text", callFunction=False)
         self.app.setTextArea("TE_Text", self.text)
+        TextEditor.highlight_keywords(text_widget)
+
         self.app.setLabel("TE_Label_Type", f"{string_type} Text")
         self.app.setEntry("TE_Entry_Address", f"0x{self.address:02X}")
 
@@ -695,6 +701,34 @@ class TextEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    _DICTIONARY = {'@': colour.DARK_OLIVE,
+                   '%': colour.DARK_BLUE,
+                   '#': colour.DARK_BROWN,
+                   '&': colour.DARK_ORANGE,
+                   '$': colour.DARK_LIME,
+                   '^': colour.DARK_TEAL,
+                   '*': colour.DARK_MAGENTA,
+                   '~': colour.DARK_RED}
+
+    @staticmethod
+    def highlight_keywords(widget: tkinter.Text) -> None:
+        """
+        Adapted from https://stackoverflow.com/questions/23120504/tkinter-text-widget-keyword-colouring
+        """
+        for key, clr in TextEditor._DICTIONARY.items():
+            start_index = '1.0'
+            while True:
+                start_index = widget.search(key, start_index, tkinter.END)
+                if start_index:
+                    end_index = widget.index("%s+%dc" % (start_index, (len(key))))
+                    widget.tag_add(key, start_index, end_index)
+                    widget.tag_config(key, foreground=clr, background=colour.PALE_GREEN)
+                    start_index = end_index
+                else:
+                    break
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def modify_text(self, new_text: str, new_address: int, new_portrait: int = -1, new_npc_name: int = -1) -> None:
         """
         Modifies the currently selected string.
@@ -759,6 +793,7 @@ class TextEditor:
 
         self.app.clearTextArea("Text_Preview")
         self.app.setTextArea("Text_Preview", new_text)
+        TextEditor.highlight_keywords(self.app.getTextAreaWidget("Text_Preview"))
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -1536,6 +1571,8 @@ class TextEditor:
                     self.app.message(f"SD_Notes", n, width=740, sticky="NEW", row=row, column=0, colspan=3, font=11)
                     row += 1
 
+                self._special_routine.bank = int(section.get("BANK", "0xD"), 16)
+
                 for p in range(32):
                     description = section.get(f"DESCRIPTION_{p}")
                     if description is None:
@@ -1546,9 +1583,15 @@ class TextEditor:
 
                     tooltip = section.get(f"TOOLTIP_{p}", f"Value for parameter {p}")
 
-                    # offset = int(section.get(f"OFFSET_{p}", "0"), 16)
+                    pointer = int(section.get(f"POINTER_{p}", "0xFFFF"), 16)
+                    if pointer == 0xFFFF:
+                        address = self._special_routine.address
+                    else:
+                        address = self.rom.read_word(self._special_routine.bank,
+                                                     self._special_routine.address + pointer)
+
                     offsets = section.get(f"OFFSET_{p}", "0").split(',')
-                    param.address = [(self._special_routine.address + int(n, 16)) for n in offsets]
+                    param.address = [(address + int(n, 16)) for n in offsets]
 
                     param_type = section.get(f"TYPE_{p}", "H")[0]
                     param.type = Parameter.get_type(param_type)
@@ -1562,15 +1605,15 @@ class TextEditor:
 
                         table_size = int(section.get(f"SIZE_{p}", "1"), 10)
 
-                        param.table_address = self.rom.read_word(0xD, param.address[0])
+                        param.table_address = self.rom.read_word(self._special_routine.bank, param.address[0])
 
                         address = param.table_address
                         for v in range(table_size):
                             if param.table_type == Parameter.TYPE_WORD or param.table_type == Parameter.TYPE_CHECK:
-                                param.table_values.append(self.rom.read_word(0xD, address))
+                                param.table_values.append(self.rom.read_word(self._special_routine.bank, address))
                                 address += 2
                             else:
-                                param.table_values.append(self.rom.read_byte(0xD, address))
+                                param.table_values.append(self.rom.read_byte(self._special_routine.bank, address))
                                 address += 1
 
                         copy_values = section.get(f"TABLE_COPY_{p}", "")
@@ -1579,11 +1622,11 @@ class TextEditor:
 
                     # Read value
                     if param.type == Parameter.TYPE_POINTER or param_type == Parameter.TYPE_CHECK:
-                        param.value = self.rom.read_word(0xD, param.address[0])
+                        param.value = self.rom.read_word(self._special_routine.bank, param.address[0])
                     elif param.type == Parameter.TYPE_TABLE:
                         pass
                     else:
-                        param.value = self.rom.read_byte(0xD, param.address[0])
+                        param.value = self.rom.read_byte(self._special_routine.bank, param.address[0])
 
                     # Add the newly created parameter to our routine instance
                     self._special_routine.parameters.append(param)
@@ -1594,12 +1637,13 @@ class TextEditor:
                     if param.type == Parameter.TYPE_DECIMAL:
                         self.app.entry(f"SD_Value_{p:02}", f"{param.value}", tooltip=tooltip, sticky="W", width=6,
                                        change=self._special_input,
-                                       bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, font=10)
+                                       bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, colspan=2, font=10)
 
                     elif param.type == Parameter.TYPE_HEX:
                         self.app.entry(f"SD_Value_{p:02}", f"0x{param.value:02X}", tooltip=tooltip, sticky="W", width=6,
                                        change=self._special_input,
-                                       bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, font=10)
+
+                                       bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, colspan=2, font=10)
 
                     elif param.type == Parameter.TYPE_STRING:
                         self.app.entry(f"SD_Value_{p:02}", f"0x{param.value:02X}", tooltip=tooltip, sticky="W", width=6,
@@ -1607,6 +1651,21 @@ class TextEditor:
                                        bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, row=row, column=1, font=10)
                         self.app.button(f"SD_Edit_String_{p:02}", self._special_input, image="res/edit-dlg-small.gif",
                                         sticky="W", width=16, height=16, tooltip="Edit this string", row=row, column=2)
+
+                    elif param.type == Parameter.TYPE_MARK:
+                        marks = read_text(self.rom, 0xC, 0xA608).splitlines(False)
+                        self.app.optionBox(f"MARKS Param {p:02}", marks, kind="ticks",
+                                           change=self._special_input,
+                                           width=14, sticky="NEW", row=row, column=1, colspan=2, font=9)
+                        bit = 1
+                        for b in range(4):
+                            if (param.value & bit) != 0:
+                                self.app.setOptionBox(f"MARKS Param {p:02}", marks[b],
+                                                      value=True, callFunction=False)
+                            else:
+                                self.app.setOptionBox(f"MARKS Param {p:02}", marks[b],
+                                                      value=False, callFunction=False)
+                            bit = bit << 1
 
                     elif param.type == Parameter.TYPE_TABLE:
                         # Table index
@@ -1640,19 +1699,26 @@ class TextEditor:
                             self.app.entry(f"SD_Table_Value_{p:02}", f"{param.table_values[0]}", tooltip=tooltip,
                                            bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
                                            width=6, sticky="W", row=row, column=2, font=10)
-                        elif param_type == Parameter.TYPE_HEX:
+                        elif param.table_type == Parameter.TYPE_HEX:
                             self.app.entry(f"SD_Table_Value_{p:02}", f"0x{param.table_values[0]:02X}", tooltip=tooltip,
                                            bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
                                            width=6, sticky="W", row=row, column=2, font=10)
+                        elif param.table_type == Parameter.TYPE_STRING:
+                            self.app.entry(f"SD_Table_Value_{p:02}", f"0x{param.table_values[0]:02X}", tooltip=tooltip,
+                                           bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
+                                           width=6, sticky="W", row=row, column=2, font=10)
+                            self.app.button(f"SD_Edit_Table_String_{p:02}", self._special_input,
+                                            image="res/edit-dlg-small.gif", tooltip="Edit this string",
+                                            width=16, height=16, sticky="W", row=row, column=3)
                         else:
-                            # TODO Support other value types (location, NPC, string...)
+                            # TODO Support other value types (location, NPC...)
                             self.app.entry(f"SD_Table_Value_{p:02}", f"{param.table_values[0]}", tooltip=tooltip,
                                            bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
                                            width=6, sticky="W", row=row, column=2, font=10)
 
                     else:
-                        self.app.label(f"SD_Unsupported_{p:02}", "Unsupported parameter type", sticky="E",
-                                       fg=colour.PALE_RED, row=row, column=1, font=11)
+                        self.app.label(f"SD_Unsupported_{p:02}", "Unsupported parameter type", sticky="W",
+                                       fg=colour.PALE_RED, row=row, column=1, colspan=2, font=11)
 
                     # Move down one row for the next parameter
                     row += 1
@@ -1666,18 +1732,55 @@ class TextEditor:
             except KeyError:
                 self.app.message("SD_Message_Error", "No definitions found for this dialogue.", sticky="NEWS",
                                  fg=colour.PALE_RED, width=740, row=0, column=0, font=12)
-            except ValueError or IndexError as error:
+            except ValueError or configparser.DuplicateOptionError or IndexError as error:
                 self.app.message("SD_Message_Error", f"Error parsing '{self._special_definitions}':\n{error}",
                                  sticky="NEWS", width=740, fg=colour.PALE_RED, row=0, column=0, font=12)
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _special_input(self, widget: str) -> None:
-        if widget[:15] == "SD_Edit_String_":    # ----------------------------------------------------------------------
-            p = int(widget[-2:])
-            value = self._special_routine.parameters[p].value
+    def _save_special_routine(self) -> bool:
+        for param in self._special_routine.parameters:
+            bank = param.bank if param.address < 0xC000 else 0xF
 
-            self.show_window(value, "Special")
+            if param.type == Parameter.TYPE_TABLE:
+                # TODO Save table values
+                pass
+
+            elif param.type == Parameter.TYPE_WORD or param.type == Parameter.TYPE_CHECK:
+                # 16-bit values
+                self.rom.write_word(bank, param.address, param.value)
+
+            else:
+                # Everything else is a 16-bit value
+                self.rom.write_byte(bank, param.address, param.value)
+
+        return True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _special_input(self, widget: str) -> None:
+        if widget == "SD_Button_Cancel":    # --------------------------------------------------------------------------
+            self.close_special_window()
+
+        elif widget[:15] == "SD_Edit_String_":  # ----------------------------------------------------------------------
+            p = int(widget[-2:])
+
+            try:
+                value = int(self.app.getEntry(f"SD_Value_{p:02}"), 16)
+                self.show_window(value, "Special")
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget(f"SD_Value_{p:02}").selection_range(0, "end")
+
+        elif widget[:21] == "SD_Edit_Table_String_":    # --------------------------------------------------------------
+            p = int(widget[-2:])
+
+            try:
+                value = int(self.app.getEntry(f"SD_Table_Value_{p:02}"), 16)
+                self.show_window(value, "Special")
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget(f"SD_Table_Value_{p:02}").selection_range(0, "end")
 
         elif widget[:9] == "SD_Index_":     # --------------------------------------------------------------------------
             p = int(widget[-2:])
@@ -1694,7 +1797,7 @@ class TextEditor:
 
             destination = f"SD_Table_Value_{p:02}"
             # The widget type where we write this value depends on the value type in the table
-            if param.table_type == Parameter.TYPE_HEX:
+            if param.table_type == Parameter.TYPE_HEX or param.table_type == Parameter.TYPE_STRING:
                 self.app.clearEntry(destination, callFunction=False, setFocus=True)
                 self.app.setEntry(destination, f"0x{value:02X}", callFunction=False)
             elif param.table_type == Parameter.TYPE_LOCATION:

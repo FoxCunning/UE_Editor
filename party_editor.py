@@ -1751,10 +1751,10 @@ class PartyEditor:
             self.app.clearOptionBox("PE_Option_Spell", callFunction=False)
             if self.selected_index == 0:
                 names_list = self.spell_names_0
-                selection = 0
+                selection = 16  # First Cleric spell
             elif self.selected_index == 1:
                 names_list = self.spell_names_1
-                selection = 16
+                selection = 0   # First Wizard spell
             else:  # Common routines
                 names_list: List[str] = []
                 for c in self.routines[32:]:
@@ -2077,12 +2077,14 @@ class PartyEditor:
                 self.app.entry(widget, fg=colour.MEDIUM_RED)
 
         elif widget[:7] == "PE_NPC_":
+            # To preserve the "static" NPC flag, we extract it from the old value and then add it to the new one
             try:
                 parameter_id = int(widget[-2:], 10)
                 routine_id = self._selected_routine_id()
                 value = self._get_selection_index(widget)
-                self.routines[routine_id].parameters[parameter_id] = value
-                self._show_npc_sprite(value, f"PE_NPC_Sprite_{parameter_id:02}")
+                static_flag = self.routines[routine_id].parameters[parameter_id].value & 0x80
+                self.routines[routine_id].parameters[parameter_id].value = value | static_flag
+                self._show_npc_sprite(value & 0x7F, f"PE_NPC_Sprite_{parameter_id:02}")
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
                 self.app.entry(widget, fg=colour.MEDIUM_RED)
@@ -2786,6 +2788,7 @@ class PartyEditor:
                                                   "COMMAND", parser)
 
                     if values["Custom"] is False:
+                        self.routines[self.selected_index].bank = values["Bank"]
                         self.routines[self.selected_index].custom_code = False
                         self.routines[self.selected_index].notes = values["Notes"]
                         self.routines[self.selected_index].parameters = values["Parameters"]
@@ -2848,6 +2851,7 @@ class PartyEditor:
             values = self._decode_routine(i, self.routines[i].address, "TOOL", parser)
             if values["Custom"] is False:
                 self.routines[i].custom_code = False
+                self.routines[i].bank = values["Bank"]
                 self.routines[i].notes = values["Notes"]
                 self.routines[i].parameters = values["Parameters"]
 
@@ -3113,6 +3117,7 @@ class PartyEditor:
                 spell.custom_code = True
             else:
                 spell.custom_code = False
+                spell.bank = values["Bank"]
                 spell.mp_cast = values["MP"]
                 spell.mp_address = values["MP Address"]
                 spell.parameters = values["Parameters"]
@@ -3168,6 +3173,7 @@ class PartyEditor:
             else:
                 spell.custom_code = False
                 # These don't have an MP cost, so we use the MP Address value as the routine address
+                spell.bank = values["Bank"]
                 spell.address = values["MP Address"]
                 spell.parameters = values["Parameters"]
             self.routines.append(spell)
@@ -3215,6 +3221,7 @@ class PartyEditor:
                 if values["Custom"] is False:
                     self.routines[i].custom_code = False
                     self.routines[i].notes = values["Notes"]
+                    self.routines[i].bank = values["Bank"]
                     self.routines[i].parameters = values["Parameters"]
 
                 else:
@@ -3249,6 +3256,7 @@ class PartyEditor:
                 if values["Custom"] is False:
                     self.routines[i].custom_code = False
                     self.routines[i].notes = values["Notes"]
+                    self.routines[i].bank = values["Bank"]
                     self.routines[i].parameters = values["Parameters"]
                 else:
                     self.routines[i].custom_code = True
@@ -3282,7 +3290,7 @@ class PartyEditor:
         -------
         dict:
             An a dictionary: {"Custom": bool, "Name": str, "MP": int, "MP Address": int, "Notes": str,
-            "parameters": List[Spell.Parameter]}.
+            "Parameters": List[Spell.Parameter], "Bank": int}.
         """
         decoded = {
             "Custom": False,
@@ -3290,7 +3298,8 @@ class PartyEditor:
             "MP": 0,
             "MP Address": 0,
             "Notes": "",
-            "Parameters": []
+            "Parameters": [],
+            "Bank": 0xF
         }
 
         if parser.has_section(f"{routine_type}_{routine_id}") is False:
@@ -3299,6 +3308,10 @@ class PartyEditor:
             return decoded
         section = parser[f"{routine_type}_{routine_id}"]
         decoded["Name"] = section.get("NAME", "(Unnamed Routine)")
+
+        # See if there is a custom bank value
+        routine_bank = int(section.get("BANK", "0xF"), 16)
+        decoded["Bank"] = routine_bank
 
         # Get actual MP cost
         if routine_type == "SPELL":
@@ -3309,7 +3322,7 @@ class PartyEditor:
             else:
                 try:
                     mp_address = address + int(offset, 16)
-                    decoded["MP"] = self.rom.read_byte(0xF, mp_address)
+                    decoded["MP"] = self.rom.read_byte(routine_bank, mp_address)
                     decoded["MP Address"] = mp_address
                 except ValueError:
                     self.app.warningBox(f"Decode {routine_type}",
@@ -3384,7 +3397,7 @@ class PartyEditor:
             if value != "none":
                 try:
                     pointer_offset = int(value, 16)
-                    pointer = self.rom.read_word(0xF, address + pointer_offset)
+                    pointer = self.rom.read_word(routine_bank, address + pointer_offset)
                     if pointer < 0x8000 or pointer > 0xFFFF:
                         if self._ignore_warnings is False:
                             if self.app.okBox(f"Decode {routine_type}",
@@ -3431,7 +3444,9 @@ class PartyEditor:
             parameter.address = parameter_address
 
             # Figure out which bank contains this parameter
-            bank = 0xF if parameter.address >= 0xC000 else 0
+            bank = 0xF if parameter.address >= 0xC000 else int(section.get(f"BANK_{p}", "0"), 16)
+
+            parameter.bank = bank
 
             # We need to know if the parameter is a Word or Byte, and we read the op code for that
             code = self.rom.read_byte(bank, parameter.address - 1)
@@ -4610,14 +4625,15 @@ class PartyEditor:
                     self.app.setOptionBox(f"PE_Check_Parameter_{p:02}", index=check_id, callFunction=False)
 
                 elif parameter.type == parameter.TYPE_NPC:
+                    # We ignore (but preserve) the "static" flag for non-moving NPCs
                     self.app.optionBox(f"PE_NPC_Parameter_{p:02}", npc_options, change=change_function,
                                        width=12, sticky="NW", row=1 + p, column=1, font=10)
-                    self.app.setOptionBox(f"PE_NPC_Parameter_{p:02}", index=parameter.value, callFunction=False)
+                    self.app.setOptionBox(f"PE_NPC_Parameter_{p:02}", index=parameter.value & 0x7F, callFunction=False)
                     self.app.canvas(f"PE_NPC_Sprite_{p:02}", sticky="NE", width=32, height=32, bg=colour.MEDIUM_GREY,
                                     row=1 + p, column=2)
 
-                    if 0 <= parameter.value <= 0x1E:
-                        self._show_npc_sprite(parameter.value, f"PE_NPC_Sprite_{p:02}")
+                    if 0 <= (parameter.value & 0x7F) <= 0x1E:
+                        self._show_npc_sprite(parameter.value & 0x7F, f"PE_NPC_Sprite_{p:02}")
 
                 else:
                     self.warning(f"Unknown type: '{parameter.type}' for parameter #{p}.")
@@ -5332,9 +5348,12 @@ class PartyEditor:
                     if p.address >= 0xC000:
                         self.rom.write_word(0xF, p.address, p.value)
                     elif p.address >= 0x8000:
-                        self.rom.write_word(0x0, p.address, p.value)
-                        if p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
-                            self.rom.write_word(0x6, p.address, p.value)
+                        if p.bank == 0:
+                            self.rom.write_word(0x0, p.address, p.value)
+                            if p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
+                                self.rom.write_word(0x6, p.address, p.value)
+                        else:
+                            self.rom.write_word(p.bank, p.address, p.value)
                     else:
                         success = False
 
@@ -5361,9 +5380,12 @@ class PartyEditor:
                         if p.address >= 0xC000:
                             self.rom.write_byte(0xF, p.address, p.value)
                         elif p.address >= 0x8000:
-                            self.rom.write_byte(0x0, p.address, p.value)
-                            if p.address >= 0xBF10:
-                                self.rom.write_byte(0x6, p.address, p.value)
+                            if p.bank == 0:
+                                self.rom.write_byte(0x0, p.address, p.value)
+                                if p.address >= 0xBF10:
+                                    self.rom.write_byte(0x6, p.address, p.value)
+                            else:
+                                self.rom.write_byte(p.bank, p.address, p.value)
                         else:
                             success = False
 
@@ -5639,10 +5661,13 @@ class PartyEditor:
                         p.type == Parameter.TYPE_CHECK:
                     if p.address >= 0xC000:
                         self.rom.write_word(0xF, p.address, p.value)
+
                     elif p.address >= 0x8000:
-                        self.rom.write_word(0x0, p.address, p.value)
-                        if p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
+                        self.rom.write_word(p.bank, p.address, p.value)
+
+                        if p.bank == 0 and p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
                             self.rom.write_word(0x6, p.address, p.value)
+
                     else:
                         success = False
 
@@ -5668,9 +5693,11 @@ class PartyEditor:
                     else:
                         if p.address >= 0xC000:
                             self.rom.write_byte(0xF, p.address, p.value)
+
                         elif p.address >= 0x8000:
-                            self.rom.write_byte(0x0, p.address, p.value)
-                            if p.address >= 0xBF10:
+                            self.rom.write_byte(p.bank, p.address, p.value)
+
+                            if p.bank == 0 and p.address >= 0xBF10:
                                 self.rom.write_byte(0x6, p.address, p.value)
                         else:
                             success = False
@@ -5717,7 +5744,7 @@ class PartyEditor:
             self.rom.write_bytes(0xF, 0xD460, data)
 
         # Save spell menu routine (progressive/uneven MP)
-        if self.app.getRadioButton("PE_Radio_MP")[:2] == 'I':
+        if self.app.getRadioButton("PE_Radio_MP")[:1] == 'I':
             # Incremental MP cost
             data = bytearray(b'\x20\x41\xD4\xA2\x00\xC9\x09\x90\x03\xAA\xA9\x08\x85\x9C\x86\x9D'
                              b'\xA9\x0A\x8D\xD0\x03\xA9\x06\x8D\xD1\x03\xA9\x0A\x8D\xD2\x03\xA5'
@@ -5761,11 +5788,11 @@ class PartyEditor:
         # AF26  $C9 $14        CMP #$14                 ;Check if in Castle Death
         # AF2C  $C9 $0F        CMP #$0F                 ;Check if in Ambrosia
         # AF32  $C9 $06        CMP #$06                 ;Check if in Castle British
-        value = self._get_selection_index("PE_Map_Flags_0x02")
+        value = self._get_selection_index("PE_Map_Flag_0x02")
         self.rom.write_byte(0xB, 0xAF27, value)
-        value = self._get_selection_index("PE_Map_Flags_0x04")
+        value = self._get_selection_index("PE_Map_Flag_0x04")
         self.rom.write_byte(0xB, 0xAF2D, value)
-        value = self._get_selection_index("PE_Map_Flags_0x10")
+        value = self._get_selection_index("PE_Map_Flag_0x10")
         self.rom.write_byte(0xB, 0xAF33, value)
 
         # Save MP cost and parameter values for each spell
@@ -5798,10 +5825,12 @@ class PartyEditor:
                             p.type == Parameter.TYPE_CHECK:
                         if p.address >= 0xC000:
                             self.rom.write_word(0xF, p.address, p.value)
+
                         elif p.address >= 0x8000:
-                            self.rom.write_word(0x0, p.address, p.value)
-                            if p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
+                            self.rom.write_word(p.bank, p.address, p.value)
+                            if p.bank == 0 and p.address >= 0xBF10:  # A few subroutines must also be mirrored in bank 6
                                 self.rom.write_word(0x6, p.address, p.value)
+
                         else:
                             success = False
 
@@ -5827,10 +5856,13 @@ class PartyEditor:
                         else:
                             if p.address >= 0xC000:
                                 self.rom.write_byte(0xF, p.address, p.value)
+
                             elif p.address >= 0x8000:
-                                self.rom.write_byte(0x0, p.address, p.value)
-                                if p.address >= 0xBF10:
+                                self.rom.write_byte(p.bank, p.address, p.value)
+
+                                if p.bank == 0 and p.address >= 0xBF10:
                                     self.rom.write_byte(0x6, p.address, p.value)
+
                             else:
                                 success = False
 

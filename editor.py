@@ -1118,6 +1118,9 @@ def text_editor_input(widget: str) -> None:
         Name of the Button widget being pressed
     """
     if widget == "Text_Apply":
+        # Used to re-select the active text
+        selected_index = text_editor.index
+
         # Get the currently selected text type
         if text_editor.type == "Dialogue" or text_editor.type == "Special":
             # Rebuild pointer tables
@@ -1153,8 +1156,8 @@ def text_editor_input(widget: str) -> None:
 
         # Reload currently selected string
         select_text_type("Text_Type")
-        if text_editor.index >= 0:
-            app.selectListItemAtPos("Text_Id", text_editor.index, callFunction=True)
+        if selected_index >= 0:
+            app.selectListItemAtPos("Text_Id", selected_index, callFunction=True)
 
     elif widget == "TE_Button_Close":
         text_editor.hide_window(False)
@@ -1174,13 +1177,13 @@ def text_editor_input(widget: str) -> None:
                 # Try to unpack the string at the new address
                 new_string = text_editor.unpack_text(rom, new_address)
 
-                # TODO Add code for NPC and Enemy Names
             else:
                 new_string = ""
 
             # Update the output widget with the new text
             app.clearTextArea("TE_Text")
             app.setTextArea("TE_Text", new_string)
+            TextEditor.highlight_keywords(app.getTextAreaWidget("TE_Text"))
 
             # Set the new text and address variables in the Text Editor
             text_editor.text = new_string
@@ -1192,6 +1195,8 @@ def text_editor_input(widget: str) -> None:
                          "Text_Editor")
 
     elif widget == "TE_Button_Accept":
+        text_id = text_editor.index
+
         # Get new text and address
         new_text: str = app.getTextArea("TE_Text")
         if text_editor.type == "Dialogue" or text_editor.type == "Special":
@@ -1218,14 +1223,15 @@ def text_editor_input(widget: str) -> None:
         try:
             new_address = int(app.getEntry("TE_Entry_Address"), 16)
         except ValueError:
-            value = app.getEntry('TE_Entry_Address')
+            value = app.getEntry("TE_Entry_Address")
             app.errorBox("Invalid Value", f"The address specified ('{value}') is not valid.\n"
                                           "Please only use hexadecimal numbers in the format '0x1234'.", "Text_Editor")
             return
 
-        # TODO Update address in the items list
-
         text_editor.modify_text(new_text, new_address, new_portrait, new_name)
+        # Update address in the items list
+        app.setListItemAtPos("Text_Id", text_id, f"0x{text_id:02X} @0x{new_address:04X}")
+
         # Hide window
         app.hideSubWindow("Text_Editor", useStopFunction=False)
 
@@ -2136,21 +2142,21 @@ if __name__ == "__main__":
         with app.tab("Text", padding=[0, 0]):
             with app.frame("TextEditor_Left", row=0, column=0, padding=[2, 2], inPadding=[0, 0],
                            sticky='NW', bg=colour.PALE_OLIVE):
-                app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky='NW', stretch='NONE', font=10)
+                app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky="NW", stretch="NONE", font=10)
                 app.textArea("Text_Preview", row=1, column=0, colspan=2, sticky="NEW", stretch="ROW", scroll=True,
                              end=False, height=10, rowspan=2).setFont(family="Consolas", size=11)
                 app.button("Text_Apply", name="Apply Changes", value=text_editor_input, row=3, column=0,
                            sticky='NW', stretch='NONE')
-                app.button("Text_More", name="More Actions", value=edit_text, row=3, column=1, sticky='NW',
+                app.button("Text_More", name="More Actions", value=edit_text, row=3, column=1, sticky="NW",
                            stretch='NONE')
 
-            with app.frame("TextEditor_Right", row=0, column=1, sticky='NE', padding=[2, 2], bg=colour.PALE_BROWN):
+            with app.frame("TextEditor_Right", row=0, column=1, sticky="NE", padding=[2, 2], bg=colour.PALE_BROWN):
                 app.optionBox("Text_Type", ["- Choose Type -", "Dialogue", "Special", "NPC Names", "Enemy Names",
                                             "Menus / Intro"],
-                              change=select_text_type, row=0, column=4, sticky='NW', colspan=2, stretch='NONE',
+                              change=select_text_type, row=0, column=4, sticky="NW", colspan=2, stretch="NONE",
                               bg=colour.PALE_ORANGE)
-                app.listBox("Text_Id", value=[], change=select_text_id, row=1, column=4, sticky='NE',
-                            stretch='NONE', bg=colour.WHITE)
+                app.listBox("Text_Id", value=[], change=select_text_id, row=1, column=4, sticky="NE",
+                            group=True, multi=False, stretch='NONE', bg=colour.WHITE)
 
         # PALETTES Tab -------------------------------------------------------------------------------------------------
         with app.tab("Palettes", padding=[4, 2]):
@@ -2549,7 +2555,7 @@ if __name__ == "__main__":
 
         # Text Editor Sub-Window ---------------------------------------------------------------------------------------
         with app.subWindow("Text_Editor", "Text Editor", size=[420, 380], modal=False, resizable=False,
-                           stopFunction=text_editor_stop):
+                           stopFunction=text_editor_stop, bg=colour.MEDIUM_GREY):
             # Buttons
             with app.frame("TE_Frame_Top", row=0, colspan=2, sticky="NEW", stretch="ROW", padding=[8, 2]):
                 app.button("TE_Button_Accept", text_editor_input, name="Accept and Close", image="res/floppy.gif",
@@ -2558,25 +2564,33 @@ if __name__ == "__main__":
                            tooltip="Discard Changes and Close", row=0, column=2, sticky='E')
 
             # Text
-            with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.MEDIUM_GREY, sticky="NEW", stretch='COLUMN',
-                           padding=[2, 2]):
-                app.label("TE_Label_Text", "Unpacked string:", row=0, column=0)
-                app.textArea("TE_Text", "", width=22, stretch='BOTH', sticky='NEWS', scroll=True,
+            with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.DARK_GREY, sticky="NEW", stretch='COLUMN',
+                           rowspan=2, padding=[2, 2]):
+                app.label("TE_Label_Text", "Unpacked string:", row=0, column=0, fg=colour.WHITE)
+                app.textArea("TE_Text", "", width=22, stretch='BOTH', sticky='NEWS', scroll=True, bg=colour.WHITE,
                              row=1, column=0).setFont(family="Consolas", size=12)
 
+            # Guide
+            with app.frame("TE_Frame_TopRight", row=1, column=1, fg=colour.BLACK, padding=[2, 2]):
+                app.message("TE_Message_Guide", "@ = Active character's name\n" +
+                            "% = Enemy name (in battle)\n# = 16-bit numeric value\n" +
+                            "& = Next string becomes new dialogue\n^ = Ask YES/NO after dialogue\n" +
+                            "$ = Unlocks the 'PRAY' command\n* = Unlocks the 'BRIBE' command\n" +
+                            "~ = String terminator", width=164, sticky="NEWS", font=9)
+
             # Address
-            with app.frame("TE_Frame_Right", row=1, column=1, bg=colour.PALE_VIOLET,
-                           padding=[2, 2]):
-                app.label("TE_Label_Type", "(Text type)")
-                app.label("TE_Label_Address", "Address:")
-                app.entry("TE_Entry_Address", "", case="upper")
-                app.button("TE_Button_Reload_Text", value=text_editor_input, name="Reload Text")
+            with app.frame("TE_Frame_Right", row=2, column=1, bg=colour.DARK_GREY, fg=colour.WHITE, padding=[2, 2]):
+                app.label("TE_Label_Type", "(Text type)", row=0, column=0, colspan=2, font=11)
+                # app.label("TE_Label_Address", "Address:", row=1, column=0, colspan=2, font=11)
+                app.entry("TE_Entry_Address", "", width=16, row=1, column=0, case="upper", font=11)
+                app.button("TE_Button_Reload_Text", text_editor_input, image="res/reload-small.gif",
+                           row=1, column=1, width=16, height=16)
 
             # Dialogue name and portrait
-            with app.frame("TE_Frame_Bottom", row=2, colspan=2, sticky='SEW', stretch='COLUMN',
-                           padding=[2, 2]):
+            with app.frame("TE_Frame_Bottom", row=3, colspan=2, sticky='SEW', stretch='COLUMN',
+                           padding=[2, 2], bg=colour.WHITE):
                 with app.labelFrame("Dialogue Properties", 0, 0, padding=[4, 4]):
-                    with app.frame("TE_Frame_Dialogue_Left", row=0, column=0, bg=colour.WHITE, sticky="NEW",
+                    with app.frame("TE_Frame_Dialogue_Left", row=0, column=0, sticky="NEW",
                                    stretch='COLUMN'):
                         app.label("TE_Label_Name", "NPC Name: ", row=0, column=0)
                         app.optionBox("TE_Option_Name", ["(0xFF) No Name"], row=0, column=1, width=20)

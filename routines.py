@@ -25,7 +25,8 @@ class Parameter:
     # Bank 0xF if address >= 0xC000; banks 0x0 and 0x6 otherwise
     # For special dialogue routines, this can be a list of addresses, for values that must be written to more than one
     #   location
-    address = 0
+    address: int = 0
+    bank: int = 0xF
     # Could be a byte (e.g. for LDA or CMP), or word (e.g. for a JMP or JSR instruction)
     value: int = 0
     # Description that will be displayed in the editor
@@ -103,7 +104,9 @@ class Routine:
     mp_cast: int = 0
     # Address where the MP to cast value is stored in ROM
     mp_address: int = 0
-    # Address of the subroutine, typically in bank 0xF
+    # ROM bank where the routine is found, 0xF by default
+    bank: int = 0xF
+    # Address of the subroutine
     address: int = 0
     # This will be True if the spell code was not recognised and parameters could not be extracted
     custom_code: bool = True
