@@ -11,6 +11,7 @@ import appJar
 import colour
 from appJar import gui
 from debug import log
+from editor_settings import EditorSettings
 from rom import ROM
 
 from routines import Routine, Parameter
@@ -298,12 +299,14 @@ def _empty_image(width: int, height: int) -> Image:
 
 class TextEditor:
 
-    def __init__(self, rom: ROM, colours: list, app: gui):
+    def __init__(self, rom: ROM, colours: list, app: gui, settings: EditorSettings):
 
         self.text: str = ""  # Text being edited (uncompressed)
         self.type: str = ""  # String type (determines where the pointer is)
         self.index: int = -1  # Index of the pointer to this string
         self.address: int = 0  # Address of compressed text in bank 05
+
+        self.settings = settings
 
         self.special_index = -1  # Same, for special (e.g. shop) dialogues
         self._special_routine: Routine = Routine()
@@ -720,7 +723,7 @@ class TextEditor:
             while True:
                 start_index = widget.search(key, start_index, tkinter.END)
                 if start_index:
-                    end_index = widget.index("%s+%dc" % (start_index, (len(key))))
+                    end_index = widget.index(f"{start_index}+{len(key)}c")
                     widget.tag_add(key, start_index, end_index)
                     widget.tag_config(key, foreground=clr, background=colour.PALE_GREEN)
                     start_index = end_index
@@ -1480,6 +1483,8 @@ class TextEditor:
 
         self.app.hideSubWindow("Special_Dialogue", useStopFunction=False)
         self.app.emptySubWindow("Special_Dialogue")
+        self._special_unsaved_changes = False
+
         return True
 
     # ------------------------------------------------------------------------------------------------------------------
@@ -1593,6 +1598,8 @@ class TextEditor:
                     offsets = section.get(f"OFFSET_{p}", "0").split(',')
                     param.address = [(address + int(n, 16)) for n in offsets]
 
+                    param.bank = 0xF if param.address[0] >= 0xC000 else self._special_routine.bank
+
                     param_type = section.get(f"TYPE_{p}", "H")[0]
                     param.type = Parameter.get_type(param_type)
 
@@ -1605,28 +1612,29 @@ class TextEditor:
 
                         table_size = int(section.get(f"SIZE_{p}", "1"), 10)
 
-                        param.table_address = self.rom.read_word(self._special_routine.bank, param.address[0])
+                        param.table_address = self.rom.read_word(param.bank, param.address[0])
 
                         address = param.table_address
                         for v in range(table_size):
                             if param.table_type == Parameter.TYPE_WORD or param.table_type == Parameter.TYPE_CHECK:
-                                param.table_values.append(self.rom.read_word(self._special_routine.bank, address))
+                                param.table_values.append(self.rom.read_word(param.bank, address))
                                 address += 2
                             else:
-                                param.table_values.append(self.rom.read_byte(self._special_routine.bank, address))
+                                param.table_values.append(self.rom.read_byte(param.bank, address))
                                 address += 1
 
                         copy_values = section.get(f"TABLE_COPY_{p}", "")
                         if copy_values != "":
-                            param.table_copy = [int(value, 16) for value in copy_values.split(',')]
+                            param.table_copy = [self._special_routine.address + int(value, 16)
+                                                for value in copy_values.split(',')]
 
                     # Read value
                     if param.type == Parameter.TYPE_POINTER or param_type == Parameter.TYPE_CHECK:
-                        param.value = self.rom.read_word(self._special_routine.bank, param.address[0])
+                        param.value = self.rom.read_word(param.bank, param.address[0])
                     elif param.type == Parameter.TYPE_TABLE:
                         pass
                     else:
-                        param.value = self.rom.read_byte(self._special_routine.bank, param.address[0])
+                        param.value = self.rom.read_byte(param.bank, param.address[0])
 
                     # Add the newly created parameter to our routine instance
                     self._special_routine.parameters.append(param)
@@ -1711,7 +1719,7 @@ class TextEditor:
                                             image="res/edit-dlg-small.gif", tooltip="Edit this string",
                                             width=16, height=16, sticky="W", row=row, column=3)
                         else:
-                            # TODO Support other value types (location, NPC...)
+                            # TODO Support other value types (LOCATION, BOOL, NPC...)
                             self.app.entry(f"SD_Table_Value_{p:02}", f"{param.table_values[0]}", tooltip=tooltip,
                                            bg=colour.MEDIUM_OLIVE, fg=colour.WHITE, change=self._special_input,
                                            width=6, sticky="W", row=row, column=2, font=10)
@@ -1739,28 +1747,102 @@ class TextEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _save_special_routine(self) -> bool:
+        """
+        Returns
+        -------
+        bool
+            True is successfully saved, False otherwise (e.g. address out of boundary)
+        """
         for param in self._special_routine.parameters:
-            bank = param.bank if param.address < 0xC000 else 0xF
 
-            if param.type == Parameter.TYPE_TABLE:
-                # TODO Save table values
-                pass
+            for param_address in param.address:
+                bank = param.bank if param_address < 0xC000 else 0xF
 
-            elif param.type == Parameter.TYPE_WORD or param.type == Parameter.TYPE_CHECK:
-                # 16-bit values
-                self.rom.write_word(bank, param.address, param.value)
+                if param.type == Parameter.TYPE_TABLE:
+                    address = param.table_address
+                    bank = 0xF if address >= 0xC000 else param.bank
 
-            else:
-                # Everything else is a 16-bit value
-                self.rom.write_byte(bank, param.address, param.value)
+                    for v in range(len(param.table_values)):
+
+                        # 16-bit table value
+                        if param.table_type == Parameter.TYPE_WORD:
+                            self.rom.write_word(bank, address, param.table_values[v])
+                            address += 2
+
+                            if len(param.table_copy) > (v * 2):
+                                # Low byte
+                                c = v << 1
+                                self.rom.write_byte(bank, param.table_copy[c], param.table_values[v] & 0x00FF)
+                                # High byte
+                                c += 1
+                                self.rom.write_byte(bank, param.table_copy[c], param.table_values[v] >> 8)
+
+                        # 8-bit table values
+                        else:
+                            self.rom.write_byte(bank, address, param.table_values[v])
+                            address += 1
+
+                            if len(param.table_copy) > v:
+                                self.rom.write_byte(bank, param.table_copy[v], param.table_values[v])
+
+                elif param.type == Parameter.TYPE_WORD or param.type == Parameter.TYPE_CHECK:
+                    # 16-bit values
+                    self.rom.write_word(bank, param_address, param.value)
+
+                else:
+                    # Everything else is an 8-bit value
+                    self.rom.write_byte(bank, param_address, param.value)
 
         return True
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def _special_input(self, widget: str) -> None:
-        if widget == "SD_Button_Cancel":    # --------------------------------------------------------------------------
+        if widget == "SD_Button_Apply":     # --------------------------------------------------------------------------
+            if self._save_special_routine():
+                self.app.setStatusbar(f"Special routine 0x{self.special_index:02X} saved.")
+                self._special_unsaved_changes = False
+                # Close window depending on settings
+                if self.settings.get("close sub-window after saving"):
+                    self.close_special_window()
+            else:
+                self.app.soundError()
+                self.app.errorBox("Special Dialogue Editor", "Errors encountered while saving routine parameters.\n" +
+                                  "Check offsets and table sizes in definitions file.", "Special_Editor")
+
+        elif widget == "SD_Button_Reload":  # --------------------------------------------------------------------------
+            with self.app.scrollPane("SD_Pane_Parameters"):
+                self.app.emptyCurrentContainer()
+                self._read_special_routine()
+                self._special_unsaved_changes = False
+
+        elif widget == "SD_Button_Cancel":  # --------------------------------------------------------------------------
             self.close_special_window()
+
+        elif widget[:9] == "SD_Value_":     # --------------------------------------------------------------------------
+            p = int(widget[-2:])
+            param = self._special_routine.parameters[p]
+
+            text = self.app.getEntry(widget)
+
+            try:
+                base = 16 if text[:2] == "0x" else 10
+                value = int(text, base)
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget(widget).selection_range(0, "end")
+                return
+
+            # Make sure 8-bit values are 8-bit long
+            if value > 0xFF:
+                if param.type != Parameter.TYPE_WORD and param.type != Parameter.TYPE_CHECK:
+                    self.app.soundError()
+                    self.app.getEntryWidget(widget).selection_range(0, "end")
+                    return
+
+            # All good, assign value
+            param.value = value
+            self._special_unsaved_changes = True
 
         elif widget[:15] == "SD_Edit_String_":  # ----------------------------------------------------------------------
             p = int(widget[-2:])
@@ -1781,6 +1863,23 @@ class TextEditor:
             except ValueError:
                 self.app.soundError()
                 self.app.getEntryWidget(f"SD_Table_Value_{p:02}").selection_range(0, "end")
+
+        elif widget[:12] == "MARKS Param ":     # ----------------------------------------------------------------------
+            p = int(widget[-2:])
+            param = self._special_routine.parameters[p]
+            values = self.app.getOptionBox(widget)
+
+            bit_mask = 0
+            bit = 1
+
+            for tick in values:
+                if values.get(tick, False):
+                    bit_mask |= bit
+
+                bit = bit << 1
+
+            param.value = bit_mask
+            self._special_unsaved_changes = True
 
         elif widget[:9] == "SD_Index_":     # --------------------------------------------------------------------------
             p = int(widget[-2:])

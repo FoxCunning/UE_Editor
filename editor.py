@@ -540,7 +540,7 @@ def open_rom(file_name: str) -> None:
             map_colours.append(colour_value[2])  # Blue
 
         # This automatically loads text pointer tables and caches dialogue and special strings
-        text_editor = TextEditor(rom, map_colours, app)
+        text_editor = TextEditor(rom, map_colours, app, settings)
 
         app.setMeter("PE_Progress_Meter", 30)
         app.topLevel.update()

@@ -36,17 +36,17 @@ class Parameter:
     # 0 = Decimal, 1 = 8-bit Hex, 2 = 16-bit Address, 3 = Attribute index, 4 = Dialogue ID, etc. (see constants below)
     type: int = 0
     # Constants used for types
-    TYPE_DECIMAL = 0
-    TYPE_HEX = 1
-    TYPE_POINTER = 2
-    TYPE_WORD = 2
-    TYPE_ATTRIBUTE = 3
-    TYPE_BOOL = 4
-    TYPE_STRING = 5
-    TYPE_CHECK = 6
-    TYPE_LOCATION = 7
-    TYPE_MARK = 8
-    TYPE_NPC = 9
+    TYPE_DECIMAL = 0        # 8-bit decimal
+    TYPE_HEX = 1            # 8-bit hex
+    TYPE_POINTER = 2        # 16-bit hex/decimal
+    TYPE_WORD = 2           # 16-bit hex/decimal
+    TYPE_ATTRIBUTE = 3      # 8-bit decimal
+    TYPE_BOOL = 4           # 0 or 1 (as 8-bit value in ROM)
+    TYPE_STRING = 5         # 8-bit hex
+    TYPE_CHECK = 6          # 16-bit hex
+    TYPE_LOCATION = 7       # 8-bit hex/decimal
+    TYPE_MARK = 8           # 8-bit hex/decimal
+    TYPE_NPC = 9            # 8-bit hex/decimal
     TYPE_TABLE = 10
 
     table_address: int = 0
@@ -54,8 +54,9 @@ class Parameter:
     # Determines the the type of values, e.g. decimal, hex, word, etc.
     table_type: int = 0
     table_values: list = field(default_factory=list)
-    # If specified, each value from the table will be copied to the offsets in this list
-    # For tables containing 16-bit values, the list will contain pairs of low, high offsets for each value
+    # If specified, each value from the table will be copied to the addresses in this list
+    # For tables containing 16-bit values, the list will contain pairs of addresses respectively for low and high
+    # byte of each value
     table_copy: list = field(default_factory=list)
 
     _TYPES = {
