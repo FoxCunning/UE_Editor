@@ -1048,3 +1048,612 @@ TYPE_11=STRING
 DESCRIPTION_12=Failure dialogue
 OFFSET_12=0xCF
 TYPE_12=STRING
+
+
+
+; ============================================================================
+;
+;							SPECIAL DIALOGUES
+;
+; ============================================================================
+
+
+; ------------------------------------------
+;					ORACLE
+; ------------------------------------------
+[SPECIAL_0]
+DESCRIPTION_0=Base dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Refusal dialogue string
+OFFSET_1=0x14
+TYPE_1=STRING
+
+DESCRIPTION_2=Price list string
+OFFSET_2=0x24
+TYPE_2=STRING
+
+DESCRIPTION_3=Insufficient money string
+OFFSET_3=0x6C
+TYPE_3=STRING
+
+DESCRIPTION_4=Base prophecy string
+OFFSET_4=0x82
+TYPE_4=STRING
+
+DESCRIPTION_5=Final dialogue string
+OFFSET_5=0x89
+TYPE_5=STRING
+
+DESCRIPTION_6=Base prophecy cost
+TOOLTIP=Total cost = (prophecy index + 1) * base cost
+OFFSET_6=0x54
+TYPE_6=DECIMAL
+
+DESCRIPTION_7=Base/top prophecy table
+OFFSET_7=0x7F
+TYPE_7=TABLE
+INDEX_TYPE_7=LOCATION
+VALUE_TYPE_7=DECIMAL
+SIZE_7=21
+
+
+; ------------------------------------------
+;					HEALER
+; ------------------------------------------
+[SPECIAL_1]
+DESCRIPTION_0=Base dialogue string
+OFFSET_0=0x01
+TYPE_0=STRING
+
+DESCRIPTION_1=Base price list string
+OFFSET_1=0x0E
+TYPE_1=STRING
+
+DESCRIPTION_2=Insufficient money string
+OFFSET_2=0x90
+TYPE_2=STRING
+
+DESCRIPTION_3=Success dialogue string
+OFFSET_3=0xE7,0x116,0x147,0x19E
+TYPE_3=STRING
+
+DESCRIPTION_4=Goodbye dialogue string
+OFFSET_4=0x11D,0x14E,0x1A5
+TYPE_4=STRING
+
+DESCRIPTION_5=Healthy patient string
+OFFSET_5=0xF3,0x1B7,0x1BC
+TYPE_5=STRING
+
+DESCRIPTION_6=Dead patient string
+OFFSET_6=0x15
+TYPE_6=STRING
+
+DESCRIPTION_7=Successful resurrection string
+OFFSET_7=0x197
+TYPE_7=STRING
+
+DESCRIPTION_8=Failed resurrection string
+OFFSET_8=0x1B0
+TYPE_8=STRING
+
+DESCRIPTION_9=Blood donation string
+OFFSET_9=0x1ED
+TYPE_9=STRING
+
+DESCRIPTION_10=Can't donate blood string
+OFFSET_10=0x1D1
+TYPE_10=STRING
+
+DESCRIPTION_11=Gold for donating blood
+OFFSET_11=0x1DF
+TYPE_11=DECIMAL
+
+DESCRIPTION_12=Healing services table
+TOOLTIP_12=Locations with value '1' have 'cure cold' and 'give blood' instead of 'heal'
+OFFSET_12=0x0A
+TYPE_12=TABLE
+INDEX_TYPE_12=LOCATION
+VALUE_TYPE_12=DECIMAL
+SIZE_12=21
+
+DESCRIPTION_13=Healing prices table
+OFFSET_13=0x7C
+TYPE_13=TABLE
+INDEX_TYPE_13=DECIMAL
+VALUE_TYPE_13=WORD
+SIZE_13=4
+TABLE_COPY_13=0xD9,0xDD,0x108,0x10C,0x139,0x13D,0x161,0x165
+
+
+; ------------------------------------------
+;				WEAPON SHOP
+; ------------------------------------------
+[SPECIAL_2]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Base price list string
+OFFSET_1=0x28
+TYPE_1=STRING
+
+DESCRIPTION_2=Unusable weapon warning
+OFFSET_2=0x68
+TYPE_2=STRING
+
+DESCRIPTION_3=Can't carry any more string
+OFFSET_3=0x8B
+TYPE_3=STRING
+
+DESCRIPTION_4=Not enough money string
+OFFSET_4=0x8D
+TYPE_4=STRING
+
+DESCRIPTION_5=Shop quality table
+TOOLTIP_5=Locations with value '0' sell Dagger to Spear, value '2' sell Broad Axe to Sun Sword
+OFFSET_5=0x24
+TYPE_5=TABLE
+INDEX_TYPE_5=LOCATION
+SIZE_5=21
+VALUE_TYPE_5=DECIMAL
+
+DESCRIPTION_6=Buy cost table
+TOOLTIP_6=Prices when buying weapons, from Dagger to Sun Sword
+OFFSET_6=0xA2
+TYPE_6=TABLE
+INDEX_TYPE_6=DECIMAL
+SIZE_6=14
+VALUE_TYPE_6=WORD
+
+DESCRIPTION_7=Item worn dialogue string
+OFFSET_7=0xF7
+TYPE_7=STRING
+
+DESCRIPTION_8=Can't buy dialogue string
+OFFSET_8=0x108
+TYPE_8=STRING
+
+DESCRIPTION_9=Purchase offer string
+OFFSET_9=0x11F
+TYPE_9=STRING
+
+DESCRIPTION_10=Sell price table
+TOOLTIP_10=Money gained when selling weapons, from Dagger to Sun Sword
+OFFSET_10=0x115
+TYPE_10=TABLE
+INDEX_TYPE_10=DECIMAL
+SIZE_10=14
+VALUE_TYPE_10=WORD
+
+
+DESCRIPTION_11=Thank you string
+OFFSET_11=0xC2
+TYPE_11=STRING
+
+DESCRIPTION_12=Goodbye dialogue string
+OFFSET_12=0xD8
+TYPE_12=STRING
+
+
+; ------------------------------------------
+;				ARMOUR SHOP
+; ------------------------------------------
+[SPECIAL_3]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Price list string
+OFFSET_1=0x3E
+TYPE_1=STRING
+
+DESCRIPTION_2=Unusable armour warning
+OFFSET_2=0x53
+TYPE_2=STRING
+
+DESCRIPTION_3=Can't carry any more string
+OFFSET_3=0x76
+TYPE_3=STRING
+
+DESCRIPTION_4=Not enough money string
+OFFSET_4=0x98
+TYPE_4=STRING
+
+DESCRIPTION_5=Buy cost table
+TOOLTIP_5=Prices when buying armour, from Cloth to Dragon
+OFFSET_5=0x8D
+TYPE_5=TABLE
+INDEX_TYPE_5=DECIMAL
+SIZE_5=6
+VALUE_TYPE_5=WORD
+
+DESCRIPTION_6=Item worn dialogue string
+OFFSET_6=0x464
+TYPE_6=STRING
+
+DESCRIPTION_7=Can't buy dialogue string
+OFFSET_7=0x472
+TYPE_7=STRING
+
+DESCRIPTION_8=Purchase offer string
+OFFSET_8=0x489
+TYPE_8=STRING
+
+DESCRIPTION_9=Sell price table
+TOOLTIP_9=Money gained when selling armour, from Cloth to Dragon
+OFFSET_9=0x47F
+TYPE_9=TABLE
+INDEX_TYPE_9=DECIMAL
+SIZE_9=6
+VALUE_TYPE_9=WORD
+
+
+DESCRIPTION_10=Thank you string
+OFFSET_10=0x8F
+TYPE_10=STRING
+
+DESCRIPTION_11=Goodbye dialogue string
+OFFSET_11=0xC3
+TYPE_11=STRING
+
+
+; ------------------------------------------
+;				GROCERY SHOP
+; ------------------------------------------
+[SPECIAL_4]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Price list string
+OFFSET_1=0x2F
+TYPE_1=STRING
+
+DESCRIPTION_2=Not enough money string
+OFFSET_2=0x52
+TYPE_2=STRING
+
+DESCRIPTION_3=Thank you dialogue string
+OFFSET_3=0x6E
+TYPE_3=STRING
+
+DESCRIPTION_4=Food price table
+OFFSET_4=0x62
+TYPE_4=TABLE
+INDEX_TYPE_4=DECIMAL
+VALUE_TYPE_4=DECIMAL
+TOOLTIP_4=Prices for 10, 50 and 100 food
+
+DESCRIPTION_5=Goodbye string
+OFFSET_5=0x84
+TYPE_5=STRING
+
+
+; ------------------------------------------
+;					PUB
+; ------------------------------------------
+[SPECIAL_5]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Not enough money string
+OFFSET_1=0x36
+TYPE_1=STRING
+
+DESCRIPTION_2=Casual dialogue string
+OFFSET_2=0x3E
+TYPE_2=STRING
+
+DESCRIPTION_3=Another drink question
+OFFSET_3=0x4D
+TYPE_3=STRING
+
+DESCRIPTION_4=Drinking too much string
+OFFSET_4=0x71
+TYPE_4=STRING
+
+DESCRIPTION_5=Cost of a drink
+OFFSET_5=0x29
+TYPE_5=DECIMAL
+
+DESCRIPTION_6=Drinks needed for 1st hint
+OFFSET_6=0x49,0x57
+TYPE_6=DECIMAL
+
+DESCRIPTION_7=Barkeep dialogue (1st hint)
+OFFSET_7=0x5D
+TYPE_7=TABLE
+INDEX_TYPE_7=LOCATION
+VALUE_TYPE_7=STRING
+SIZE_7=20
+
+DESCRIPTION_8=Drinks needed for 2nd hint
+TOOLTIP_8=Normally one more than 1st hint
+OFFSET_8=0x6D
+TYPE_8=DECIMAL
+
+DESCRIPTION_9=Barkeep dialogue (2nd hint)
+OFFSET_9=0x82
+TYPE_9=TABLE
+INDEX_TYPE_9=LOCATION
+VALUE_TYPE_9=STRING
+SIZE_9=20
+
+DESCRIPTION_10=Goodbye dialogue string
+OFFSET_10=0x8F
+TYPE_10=STRING
+
+
+; ------------------------------------------
+;				GUILD SHOP
+; ------------------------------------------
+[SPECIAL_6]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=1
+TYPE_0=STRING
+
+DESCRIPTION_1=Price list string
+OFFSET_1=0x2F
+TYPE_1=STRING
+
+DESCRIPTION_2=Can't carry any more string
+OFFSET_2=0x47
+TYPE_2=STRING
+
+DESCRIPTION_3=Not enough money string
+OFFSET_3=0x67
+TYPE_3=STRING
+
+DESCRIPTION_4=Thank you dialogue string
+OFFSET_4=0x7C
+TYPE_4=STRING
+
+DESCRIPTION_5=Price table
+OFFSET_5=0x58
+TYPE_5=TABLE
+INDEX_TYPE_5=DECIMAL
+VALUE_TYPE_5=DECIMAL
+SIZE_5=5
+
+DESCRIPTION_6=Goodbye dialogue string
+OFFSET_6=0x92
+TYPE_6=STRING
+
+
+; ------------------------------------------
+;					STABLES
+; ------------------------------------------
+[SPECIAL_7]
+DESCRIPTION_0=Welcome and price string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Refusal to buy dialogue
+OFFSET_1=0xF
+TYPE_1=STRING
+
+DESCRIPTION_2=Cost (high byte)
+OFFSET_2=0x28
+TYPE_2=HEX
+
+DESCRIPTION_3=Cost (low byte)
+OFFSET_3=0x2C
+TYPE_3=HEX
+
+DESCRIPTION_4=Not enough money dialogue
+OFFSET_4=0x35
+TYPE_4=STRING
+
+DESCRIPTION_5=Goodbye dialogue
+OFFSET_5=0x43
+TYPE_5=STRING
+
+
+; ------------------------------------------
+;					INN
+; ------------------------------------------
+[SPECIAL_8]
+DESCRIPTION_0=Welcome dialogue
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Saving successful dialogue
+OFFSET_1=0x16
+TYPE_1=STRING
+
+
+; ------------------------------------------
+;					TEMPLE
+; ------------------------------------------
+[SPECIAL_9]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Temple menu string
+OFFSET_1=0x1F
+TYPE_1=STRING
+
+DESCRIPTION_2=Ask for donation dialogue
+OFFSET_2=0x35
+TYPE_2=STRING
+
+DESCRIPTION_3=Who will pay dialogue
+OFFSET_3=0x3C
+TYPE_3=STRING
+
+DESCRIPTION_4=Revive cost (high byte)
+OFFSET_4=0x53,0x8E
+TYPE_4=HEX
+
+DESCRIPTION_5=Revive cost (low byte)
+OFFSET_5=0x5C,0x92
+TYPE_5=HEX
+
+DESCRIPTION_6=Not enough money dialogue
+OFFSET_6=0x60
+TYPE_6=STRING
+
+DESCRIPTION_7=Character not dead dialogue
+OFFSET_7=0x89
+TYPE_7=STRING
+
+DESCRIPTION_8=Revive failed dialogue
+OFFSET_8=0xB4
+TYPE_8=STRING
+
+DESCRIPTION_9=Revive successful dialogue
+OFFSET_9=0xCD
+TYPE_9=STRING
+
+
+; ------------------------------------------
+;					CASINO
+; ------------------------------------------
+[SPECIAL_10]
+DESCRIPTION_0=Welcome dialogue string
+OFFSET_0=0x1
+TYPE_0=STRING
+
+DESCRIPTION_1=Goodbye dialogue
+OFFSET_1=0xF
+TYPE_1=STRING
+
+DESCRIPTION_2=Price list string
+OFFSET_2=0x3B
+TYPE_2=STRING
+
+DESCRIPTION_3=Betting amount
+OFFSET_3=0x4B
+TYPE_3=TABLE
+INDEX_TYPE_3=DECIMAL
+VALUE_TYPE_3=DECIMAL
+SIZE_3=3
+TOOLTIP_3=The player will get twice this amount when winning a bet
+
+DESCRIPTION_4=Not enough money dialogue
+OFFSET_4=0x59
+TYPE_4=STRING
+
+DESCRIPTION_5=Stone/Scissors/Paper
+OFFSET_5=0x7A
+TYPE_5=STRING
+
+DESCRIPTION_6=Sound Effect
+OFFSET_6=0x8B
+TYPE_6=HEX
+
+DESCRIPTION_7=Victory dialogue
+OFFSET_7=0xFA
+TYPE_7=STRING
+
+DESCRIPTION_8=Tie dialogue
+POINTER_8=0xD4
+OFFSET_8=0x1
+TYPE_8=STRING
+
+DESCRIPTION_9=Loss dialogue
+POINTER_9=0xE4
+OFFSET_9=0x4
+TYPE_9=STRING
+
+
+; ------------------------------------------
+;			AMBROSIAN ALTARS
+; ------------------------------------------
+[SPECIAL_11]
+DESCRIPTION_0=Welcome dialogue strings
+OFFSET_0=0x7
+TYPE_0=TABLE
+INDEX_TYPE_0=DECIMAL
+VALUE_TYPE_0=STRING
+SIZE_0=4
+
+DESCRIPTION_1=Donation cost
+OFFSET_1=0x1A
+TYPE_1=DECIMAL
+
+DESCRIPTION_2=Not enough money dialogue
+OFFSET_2=0x27
+TYPE_2=STRING
+
+DESCRIPTION_3=Attribute gain
+TOOLTIP_3=This amount will be added to the attribute corresponding to this shrine, up to racial maximum
+OFFSET_3=0x48
+TYPE_3=DECIMAL
+
+DESCRIPTION_4=Thank you dialogue
+OFFSET_4=0x5C
+TYPE_4=STRING
+
+DESCRIPTION_5=Goodbye dialogues
+OFFSET_5=0x72
+TYPE_5=STRING
+
+
+; ------------------------------------------
+;				LORD BRITISH
+; ------------------------------------------
+[SPECIAL_12]
+DESCRIPTION_0=Music ID
+OFFSET_0=0x9
+TYPE_0=HEX
+
+DESCRIPTION_1=Required mark
+OFFSET_1=0x11
+TYPE_1=MARK
+
+DESCRIPTION_2=Max level without mark
+OFFSET_2=0x15
+TYPE_2=DECIMAL
+
+DESCRIPTION_3=Min level with mark
+TOOLTIP_3=This should be 1 + max level without mark
+OFFSET_3=0x36
+TYPE_3=DECIMAL
+
+DESCRIPTION_4=Max level with mark
+TOOLTIP_4=This is the highest level achievable in the game
+OFFSET_4=0x65
+TYPE_4=DECIMAL
+
+DESCRIPTION_5=Level up SFX ID
+OFFSET_5=0x25,0x54
+TYPE_5=HEX
+
+DESCRIPTION_6=Level up dialogue
+OFFSET_6=0x1E,0x4D
+TYPE_6=STRING
+
+DESCRIPTION_7=Not enough XP dialogue
+OFFSET_7=0x3A,0x69
+TYPE_7=STRING
+
+DESCRIPTION_8=Max level dialogue
+OFFSET_8=0x6E
+TYPE_8=STRING
+
+
+; ------------------------------------------
+;				SHERRY
+; ------------------------------------------
+[SPECIAL_13]
+DESCRIPTION_0=Music ID
+OFFSET_0=0x1
+TYPE_0=HEX
+
+DESCRIPTION_1=Greeting dialogue
+OFFSET_1=0x5,0x22
+TYPE_1=STRING
+
+DESCRIPTION_2=Positive answer
+OFFSET_2=0x18
+TYPE_2=STRING
+
+DESCRIPTION_3=Negative answer
+OFFSET_3=0x35
+TYPE_3=STRING
