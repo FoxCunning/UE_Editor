@@ -299,12 +299,12 @@ class MusicEditor:
         # --- General ---
         # TODO Allow users to choose more options via settings
         if sys.platform == "win32":
-            self._sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
-                                                        winhost=settings.get("audio host"), buffersize=1024).boot()
+            self.sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
+                                                       winhost=settings.get("audio host"), buffersize=1024).boot()
         else:
-            self._sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
-                                                        buffersize=1024).boot()
-        self._sound_server.setAmp(0.2)
+            self.sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
+                                                       buffersize=1024).boot()
+        self.sound_server.setAmp(0.2)
 
         self._triangle_volume = 0.2
 
@@ -392,11 +392,11 @@ class MusicEditor:
 
     def _save_current_track_title(self) -> None:
         # If any definition filename matches the currently loaded ROM filename, then use that one
-        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_music.ini"
+        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_audio.ini"
         if os.path.exists(os.path.dirname(self.rom.path) + '/' + file_name):
             file_name = os.path.dirname(self.rom.path) + '/' + file_name
-        elif os.path.exists("music.ini"):
-            file_name = "music.ini"
+        elif os.path.exists("audio.ini"):
+            file_name = "audio.ini"
 
         title: str = f"{self.app.getEntry('SE_Track_Name')}"
         if len(title) < 1:
@@ -442,20 +442,11 @@ class MusicEditor:
         track_titles: List[List[str]] = [[], []]
 
         # If any definition filename matches the currently loaded ROM filename, then use that one
-        """
-        rom_file = os.path.basename(self.rom.path).rsplit('.')[0].lower()
-
-        if os.path.exists(f"{rom_file}_music.ini"):
-            file_name = f"{rom_file}_music.ini"
-        else:
-            file_name = "music.ini"
-
-        """
-        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_music.ini"
+        file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_audio.ini"
         if os.path.exists(os.path.dirname(self.rom.path) + '/' + file_name):
             file_name = os.path.dirname(self.rom.path) + '/' + file_name
-        elif os.path.exists("music.ini"):
-            file_name = "music.ini"
+        elif os.path.exists("audio.ini"):
+            file_name = "audio.ini"
 
         # Get number of tracks in bank 8 from ROM
         bank_8_count = self.rom.read_byte(0x8, 0x8001)
@@ -504,10 +495,10 @@ class MusicEditor:
 
         # If playing, stop and wait for the thread to finish
         self.stop_playback()
-        if self._sound_server.getIsStarted():
-            self._sound_server.stop()
-        if self._sound_server.getIsBooted():
-            self._sound_server.shutdown()
+        if self.sound_server.getIsStarted():
+            self.sound_server.stop()
+        if self.sound_server.getIsBooted():
+            self.sound_server.shutdown()
 
         self.app.hideSubWindow("Track_Editor", useStopFunction=False)
         self.app.emptySubWindow("Track_Editor")
@@ -536,10 +527,10 @@ class MusicEditor:
 
         # If playing test notes, stop and wait for the thread to finish
         self.stop_playback()
-        if self._sound_server.getIsStarted():
-            self._sound_server.stop()
-        if self._sound_server.getIsBooted():
-            self._sound_server.shutdown()
+        if self.sound_server.getIsStarted():
+            self.sound_server.stop()
+        if self.sound_server.getIsBooted():
+            self.sound_server.shutdown()
 
         self.app.hideSubWindow("Instrument_Editor", useStopFunction=False)
         self.app.emptySubWindow("Instrument_Editor")
@@ -566,7 +557,7 @@ class MusicEditor:
             self._play_thread.join(1)
             if self._play_thread.is_alive():
                 self.warning("Timeout waiting for playback thread.")
-                self._sound_server.stop()
+                self.sound_server.stop()
 
             if self._slow_event.is_set():
                 self.warning("Slow playback detected! This may be due to too many non-note events in a track, or " +
@@ -974,7 +965,7 @@ class MusicEditor:
         self.app.topLevel.update()
 
         # Set the volume slider to the current amp factor
-        self.app.setScale("SE_Master_Volume", int(self._sound_server.amp * 100), callFunction=False)
+        self.app.setScale("SE_Master_Volume", int(self.sound_server.amp * 100), callFunction=False)
         self.app.setScale("SE_Triangle_Volume", int(self._triangle_volume * 100), callFunction=False)
 
         # Some operations are better done once the mouse button is released, rather than continuously while it's down
@@ -3390,7 +3381,7 @@ class MusicEditor:
         Callback for left mouse button release on master volume widget.
         """
         value = self.app.getScale("SE_Master_Volume") / 100
-        self._sound_server.setAmp(value)
+        self.sound_server.setAmp(value)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -4297,19 +4288,19 @@ class MusicEditor:
             tracks = self._track_data
 
         # --- Init code ---
-        if self._sound_server.getIsBooted() < 1:
-            self._sound_server.boot()
+        if self.sound_server.getIsBooted() < 1:
+            self.sound_server.boot()
             # Give the sound server some time to boot
             time.sleep(0.5)
-            if not self._sound_server.getIsBooted():
+            if not self.sound_server.getIsBooted():
                 time.sleep(1.5)
 
-        if self._sound_server.getIsStarted():
+        if self.sound_server.getIsStarted():
             # Already playing
             return
 
-        self._sound_server.amp = 0.50
-        self._sound_server.start()
+        self.sound_server.amp = 0.50
+        self.sound_server.start()
 
         # Approximate NTSC timing
         frame_interval = 0.0166  # 1 / 60
@@ -4900,7 +4891,7 @@ class MusicEditor:
             c = 0
 
             interval = frame_interval - (time.time() - start_time)
-            if interval >= 0:
+            if interval > 0:
                 time.sleep(interval)
             else:
                 self._slow_event.set()
@@ -4914,4 +4905,4 @@ class MusicEditor:
         channel_oscillator[3].stop()
 
         # self.info("Sound playback thread terminated.")
-        self._sound_server.stop()
+        self.sound_server.stop()

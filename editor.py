@@ -34,6 +34,7 @@ from palette_editor import PaletteEditor
 from party_editor import PartyEditor
 from rom import ROM, feature_names
 from music_editor import MusicEditor
+from sfx_editor import SFXEditor
 from text_editor import TextEditor, read_text
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -59,6 +60,7 @@ party_editor: PartyEditor
 cutscene_editor: CutsceneEditor
 music_editor: MusicEditor
 battlefield_editor: BattlefieldEditor
+sfx_editor: SFXEditor
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -458,6 +460,7 @@ def open_rom(file_name: str) -> None:
     global cutscene_editor
     global music_editor
     global battlefield_editor
+    global sfx_editor
 
     app.setStatusbar(f"Opening ROM file '{file_name}'", field=0)
     val = rom.open(file_name)
@@ -604,6 +607,12 @@ def open_rom(file_name: str) -> None:
 
         app.setMeter("PE_Progress_Meter", 70)
         app.topLevel.update()
+
+        # Sound effect editor
+        sfx_editor = SFXEditor(app, settings, rom, music_editor)
+        names = sfx_editor.read_sfx_names()
+        app.changeOptionBox("ST_Option_SFX", [f"0x{n:02X} {names[n]}" for n in range(52)])
+        app.setOptionBox("ST_Option_SFX", 0)
 
         # Battlefield map editor
         battlefield_editor = BattlefieldEditor(app, rom, palette_editor)
@@ -1640,6 +1649,17 @@ def sound_tab_input(widget: str) -> None:
         track = get_option_index("ST_Option_Music")
         music_editor.show_track_editor(bank, track)
 
+    elif widget == "ST_Edit_SFX":
+        sfx_id = get_option_index("ST_Option_SFX", app.getOptionBox("ST_Option_SFX"))
+        sfx_editor.show_window(sfx_id)
+
+    elif widget == "ST_Option_SFX":
+        sfx_id = get_option_index("ST_Option_SFX", app.getOptionBox("ST_Option_SFX"))
+        channel, flag = sfx_editor.get_sfx_info(sfx_id)
+        channel_names = ["Pulse 0", "Pulse 1", "Triangle", "Noise"]
+
+        app.setLabel("ST_Label_Info", f"Channel: {channel_names[channel]}, Volume Only: {flag}")
+
     else:
         log(3, "MUSIC EDITOR", f"Unimplemented callback for widget '{widget}'.")
 
@@ -2438,16 +2458,18 @@ if __name__ == "__main__":
                     app.label("ST_Label_Tracks", "Music in this bank:", sticky="E", row=0, column=0, font=11)
                     app.optionBox("ST_Option_Music", ["- No Tracks -"], width=24, sticky="W", row=0, column=1, font=10)
 
-                    app.button("ST_Edit_Music", sound_tab_input, text="Edit Track", sticky="W",
+                    app.button("ST_Edit_Music", sound_tab_input, text="Edit Track", sticky="E",
                                bg=colour.WHITE, tooltip="Open the Track Editor",
                                width=12, row=0, column=2, font=10)
 
             # --- SFX Frame
             with app.labelFrame("ST_Frame_SFX", name="Sound Effects", padding=[4, 2], sticky="SEW",
                                 bg=colour.PALE_BROWN, row=1, column=0):
-                app.optionBox("ST_Option_SFX", ["- Unimplemented -"], sticky="E", row=0, column=0, font=10)
+                app.optionBox("ST_Option_SFX", [f"0x{n:02X} (No Name)" for n in range(52)], width=32,
+                              change=sound_tab_input, sticky="E", row=0, column=0, font=10)
                 app.button("ST_Edit_SFX", sound_tab_input, text="Edit SFX", tooltip="Open the Sound Effect editor",
                            bg=colour.WHITE, sticky="W", row=0, column=1, font=10)
+                app.label("ST_Label_Info", "Channel: ", sticky="WE", row=1, column=0, font=10)
 
         #       ##### End of tab definitions #####
 
@@ -2581,7 +2603,6 @@ if __name__ == "__main__":
             # Address
             with app.frame("TE_Frame_Right", row=2, column=1, bg=colour.DARK_GREY, fg=colour.WHITE, padding=[2, 2]):
                 app.label("TE_Label_Type", "(Text type)", row=0, column=0, colspan=2, font=11)
-                # app.label("TE_Label_Address", "Address:", row=1, column=0, colspan=2, font=11)
                 app.entry("TE_Entry_Address", "", width=16, row=1, column=0, case="upper", font=11)
                 app.button("TE_Button_Reload_Text", text_editor_input, image="res/reload-small.gif",
                            row=1, column=1, width=16, height=16)
