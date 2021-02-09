@@ -207,9 +207,12 @@ class TriangleChannel:
         """
         if self._linear_ctr_reload_flag:
             self._linear_ctr = self.linear_ctr_reload_value
+            if self._length_ctr > 0:
+                self.output.setMul(1)
         elif self._linear_ctr > 0:
             self._linear_ctr -= 1
-        elif self._linear_ctr == 0:
+
+        if self._linear_ctr == 0:
             # Mute channel when the counter has reached zero
             self.output.setMul(0)
 
@@ -228,10 +231,9 @@ class TriangleChannel:
             Byte value to write to the register
         """
         self.control_flag = (value & 0x80) > 0
-        self.linear_ctr_reload_value = value & 0x7F
+        self._length_ctr = 0
 
-        if self.control_flag:
-            self.output.setMul(1.)
+        self.linear_ctr_reload_value = value & 0x7F
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -270,6 +272,9 @@ class TriangleChannel:
         self.output.setFreq(1789773 / (((self.timer_high | self.timer_low) + 1) << 5))
 
         self._linear_ctr_reload_flag = True
+        if not self.control_flag:
+            self._length_ctr = self.length_ctr_load
+            self.output.setMul(1.)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
