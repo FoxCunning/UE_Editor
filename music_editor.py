@@ -304,9 +304,9 @@ class MusicEditor:
         else:
             self.sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
                                                        buffersize=1024).boot()
-        self.sound_server.setAmp(0.2)
+        self.sound_server.setAmp(0.5)
 
-        self._triangle_volume = 0.2
+        self._triangle_volume = 0.5
 
         self.track_titles: List[List[str]] = [["- No Tracks -"], ["- No Tracks-"]]
 
