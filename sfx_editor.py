@@ -134,7 +134,7 @@ class SFXEditor:
             self._volume_line = 0
             self._timer_line = 0
 
-            generator = self.app.subWindow("SFX_Editor", size=[600, 440], padding=[2, 2], title="Sound Effect Editor",
+            generator = self.app.subWindow("SFX_Editor", size=[600, 460], padding=[2, 2], title="Sound Effect Editor",
                                            resizable=False, modal=False, blocking=False,
                                            bg=colour.DARK_ORANGE, fg=colour.WHITE, stopFunction=self.close_window)
 
@@ -179,7 +179,7 @@ class SFXEditor:
                                           selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
                                           row=1, column=1)
                         self.app.label("XE_Pulse_Label_CV_Flag", "Constant Volume", sticky="E",
-                                       row=2, column=0, font=0)
+                                       row=2, column=0, font=10)
                         self.app.checkBox("XE_Pulse_CV_Flag", True, name="", sticky="W",
                                           selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
                                           row=2, column=1)
@@ -312,12 +312,18 @@ class SFXEditor:
 
                     # --- Register 2
 
-                    self.app.label("XE_Data_Label_3", "Period Value", sticky="NE", row=4, column=0, font=10)
+                    self.app.checkBox("XE_Data_Noise_Mode", False, text="Loop Noise", sticky="NW",
+                                      selectcolor=colour.MEDIUM_ORANGE,
+                                      row=4, column=0, colspan=2, font=10)
+
+                    self.app.label("XE_Data_Label_3", "Period Value", sticky="NE", row=5, column=0, font=10)
                     self.app.entry("XE_Data_Reg_2", 0, change=self._sfx_input, width=6, sticky="NW",
                                    kind="numeric", limit=5,
-                                   row=4, column=1, font=9, bg=colour.MEDIUM_ORANGE, fg=colour.WHITE)
+                                   row=5, column=1, font=9, bg=colour.MEDIUM_ORANGE, fg=colour.WHITE)
                     self.app.label("XE_Data_Freq", "Frequency: 0 Hz", sticky="NEW",
-                                   row=5, column=0, colspan=2, font=10, fg=colour.LIGHT_LIME)
+                                   row=6, column=0, colspan=2, font=10, fg=colour.LIGHT_LIME)
+
+                # Volume / Timer envelope Graph
 
                 with self.app.frame("XE_Frame_Data_Bottom", sticky="W", padding=[1, 1], row=1, column=0, colspan=2):
                     self.app.canvas("XE_Canvas_SFX", map=None, width=320, height=200, bg=colour.BLACK,
@@ -326,7 +332,11 @@ class SFXEditor:
         self._canvas_sfx = self.app.getCanvasWidget("XE_Canvas_SFX")
 
         self.read_sfx_data()
+
         self._sfx_info()
+
+        # Draw graph
+        self._draw_sfx_graph()
 
         self.app.showSubWindow("SFX_Editor")
 
@@ -359,6 +369,9 @@ class SFXEditor:
 
             self._setup_values[0] = register_value | value
 
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_period=False)
+
         elif widget == "XE_Pulse_Timer":    # --------------------------------------------------------------------------
             try:
                 value = int(self.app.getEntry(widget)) & 0x7FF
@@ -370,6 +383,9 @@ class SFXEditor:
             except TypeError:
                 return
 
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_volume=False)
+
         elif widget == "XE_Pulse_Length_Load":  # ----------------------------------------------------------------------
             value = self.app.getScale(widget)
             register_value = self._setup_values[3] & 0xF8
@@ -377,6 +393,8 @@ class SFXEditor:
             self.app.setLabel("XE_Pulse_Label_4", f"Length Ctr Load: {value:02}")
 
             self._setup_values[3] = register_value | (value << 3)
+
+            self._unsaved_changes = True
 
         elif widget == "XE_Noise_LC_Flag":  # --------------------------------------------------------------------------
             value = 0x20 if self.app.getCheckBox(widget) else 0x00
@@ -387,6 +405,8 @@ class SFXEditor:
                 self.app.disableScale("XE_Noise_Load")
 
             self._setup_values[0] = (self._setup_values[0] & 0x1F) | value
+
+            self._unsaved_changes = True
 
         elif widget == "XE_Noise_CV_Flag":  # --------------------------------------------------------------------------
             value = 0x10 if self.app.getCheckBox(widget) else 0x00
@@ -400,6 +420,9 @@ class SFXEditor:
 
             self._setup_values[0] = (self._setup_values[0] & 0x2F) | value
 
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_period=False)
+
         elif widget == "XE_Noise_Volume":   # --------------------------------------------------------------------------
             value: int = self.app.getScale(widget)
 
@@ -411,10 +434,15 @@ class SFXEditor:
 
             self._setup_values[0] = (self._setup_values[0] & 0xF0) | (value & 0x0F)
 
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_period=False)
+
         elif widget == "XE_Noise_Loop":
             value = 0x80 if self.app.getCheckBox(widget) else 0x00
 
             self._setup_values[2] = (self._setup_values[2] & 0x0F) | value
+
+            self._unsaved_changes = True
 
         elif widget == "XE_Noise_Period":   # --------------------------------------------------------------------------
             value: int = self.app.getScale(widget)
@@ -425,11 +453,21 @@ class SFXEditor:
 
             self._setup_values[2] = (self._setup_values[0] & 0xF0) | value
 
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_volume=False)
+
         elif widget == "XE_Noise_Load":     # --------------------------------------------------------------------------
             value = self.app.getScale(widget)
             self.app.setLabel("XE_Noise_Label_2", f"Length Ctr Load: {value:02}")
 
             self._setup_values[3] = value << 3
+
+            self._unsaved_changes = True
+
+        elif widget == "XE_Data_List":
+            selection = self.app.getListBoxPos(widget)
+            if len(selection) > 0:
+                self._event_info(selection[0])
 
         else:
             self.info(f"Unimplemented input from '{widget}'.")
@@ -636,6 +674,9 @@ class SFXEditor:
                 self.app.enableScale("XE_Pulse_Length_Load")
 
         # List data entries
+        self.app.clearEntry("XE_Data_Size", callFunction=False, setFocus=False)
+        self.app.setEntry("XE_Data_Size", self._size, callFunction=False)
+
         self.app.clearListBox("XE_Data_List")
         index = 0
         v = 0
@@ -652,8 +693,80 @@ class SFXEditor:
         # Select top entry
         self.app.selectListItemAtPos("XE_Data_List", 0, callFunction=True)
 
-        # Draw graph
-        self._draw_sfx_graph()
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _event_info(self, event_id: int) -> None:
+        # --- Register 0
+        index = event_id * (1 if self._volume_only else 2)
+
+        # Only Pulse channels have this
+        if self._channel < 2:
+            duty = self._sfx_data[index] >> 6
+            self.app.enableOptionBox("XE_Data_Duty")
+            self.app.setOptionBox("XE_Data_Duty", duty, callFunction=False)
+        else:
+            self.app.disableOptionBox("XE_Data_Duty")
+
+        if self._channel != 2:
+            lc_flag = (self._sfx_data[index] & 0x20) > 0
+            self.app.setCheckBoxText("XE_Data_LC_Flag", "Length Ctr Halt")
+            self.app.setCheckBox("XE_Data_LC_Flag", lc_flag, callFunction=False)
+
+            cv_flag = (self._sfx_data[index] & 0x10) > 0
+            self.app.enableCheckBox("XE_Data_CV_Flag")
+            self.app.setCheckBox("XE_Data_CV_Flag", cv_flag, callFunction=False)
+
+        # For the Triangle channel, use the LC Flag widget for the Control Flag instead, then disable the CV widget
+        else:
+            control_flag = (self._sfx_data[index] & 80) > 0
+            self.app.setCheckBoxText("XE_Data_LC_Flag", "Control Flag")
+            self.app.setCheckBox("XE_Data_LC_Flag", control_flag, callFunction=False)
+            self.app.disableCheckBox("XE_Data_CV_Flag")
+
+        if self._channel != 2:
+            volume = self._sfx_data[index] & 0x0F
+            if (self._sfx_data[index] & 0x10) > 0:
+                # Constant Volume
+                self.app.setLabel("XE_Data_Label_2", f"Volume: {volume:02}")
+            else:
+                # Envelope Enabled
+                self.app.setLabel("XE_Data_Label_2", f"Env. Period: {volume:02}")
+            self.app.setScaleRange("XE_Data_Reg_0", 0, 15)
+            self.app.setScale("XE_Data_Reg_0", volume, callFunction=False)
+
+        # For the Triangle channel, this is the linear counter reload value
+        else:
+            linear_ctr_reload = self._sfx_data[index] & 0x7F
+            self.app.setLabel("XE_Data_Label_2", f"Linear Ctr: {linear_ctr_reload:02}")
+            self.app.setScaleRange("XE_Data_Reg_0", 0, 0x7F)
+            self.app.setScale("XE_Data_Reg_0", linear_ctr_reload, callFunction=False)
+
+        # --- Register 2
+        index += 1
+
+        self.app.clearEntry("XE_Data_Reg_2", callFunction=False, setFocus=False)
+
+        # The Noise channel uses the period value differently
+        if self._channel == 3:
+            noise_mode = (self._sfx_data[index] & 0x80) > 0
+            self.app.enableCheckBox("XE_Data_Noise_Mode")
+            self.app.setCheckBox("XE_Data_Noise_Mode", noise_mode, callFunction=False)
+
+            period = self._sfx_data[index] & 0x0F
+
+            lookup_table = [4811.2, 2405.6, 1202.8, 601.4, 300.7, 200.5, 150.4, 120.3, 95.3, 75.8, 50.6, 37.9, 25.3,
+                            18.9, 9.5, 4.7]
+
+            freq = round(lookup_table[period] / 1 if noise_mode else 93, 2)
+
+        else:
+            period = self._sfx_data[index]
+            timer_high = self._setup_values[3] & 0x03
+            timer = (timer_high << 8) | period
+            freq = round(1789773 / ((timer + 1) << (5 if self._channel == 2 else 4)), 2)
+
+        self.app.setEntry("XE_Data_Reg_2", period, callFunction=False)
+        self.app.setLabel("XE_Data_Freq", f"Frequency: {freq} Hz")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -739,7 +852,7 @@ class SFXEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _draw_sfx_graph(self) -> None:
+    def _draw_sfx_graph(self, draw_volume: bool = True, draw_period: bool = True) -> None:
         # This will be similar to the code used in the Instrument Editor
         width = self._canvas_sfx.winfo_reqwidth()
 
@@ -769,46 +882,49 @@ class SFXEditor:
 
         volume_points = []
         timer_points = []
+        timer = 0
         x = 0  # Start from the left of the canvas
 
         # TODO Use envelope values instead of volume if enabled
         # TODO Sweep unit values for timer if enabled
 
         # Setup values first
-        if self._channel < 2:
-            duty = self._setup_values[0] >> 6
-        else:
-            duty = 3
+        if draw_volume:
+            if self._channel < 2:
+                duty = self._setup_values[0] >> 6
+            else:
+                duty = 3
 
-        volume = self._setup_values[0] & 0x0F
+            volume = self._setup_values[0] & 0x0F
 
-        # Starting points
-        volume_points.append((x, base_height))
+            # Starting points
+            volume_points.append((x, base_height))
 
-        # Move right a bit
-        volume_points.append((x + trail, base_height))
+            # Move right a bit
+            volume_points.append((x + trail, base_height))
 
-        # Go up, depending on volume
-        y = base_height - (volume * vertical_step)
-        volume_points.append((x + trail, y))
+            # Go up, depending on volume
+            y = base_height - (volume * vertical_step)
+            volume_points.append((x + trail, y))
 
-        # Draw the "hat", depending on duty
-        volume_points.append((x + trail + hat[duty], y))
+            # Draw the "hat", depending on duty
+            volume_points.append((x + trail + hat[duty], y))
 
-        # Go back down
-        volume_points.append((x + trail + hat[duty], base_height))
+            # Go back down
+            volume_points.append((x + trail + hat[duty], base_height))
 
-        # Move to the end of this line
-        volume_points.append((x + length, base_height))
+            # Move to the end of this line
+            volume_points.append((x + length, base_height))
 
-        if self._channel == 3:
-            timer = self._setup_values[2] & 0x0F
-            y = (timer << 3) + 10
-        else:
-            timer = self._setup_values[2]
-            y = ((timer + 1) >> 2) + 10
+        if draw_period:
+            if self._channel == 3:
+                timer = self._setup_values[2] & 0x0F
+                y = (timer << 3) + 10
+            else:
+                timer = self._setup_values[2]
+                y = ((timer + 1) >> 2) + 10
 
-        timer_points.append((x, y))
+            timer_points.append((x, y))
 
         # Next line will start here
         x = x + length
@@ -816,55 +932,67 @@ class SFXEditor:
         # Now for the entries...
         d = 0   # Position in the array, since entries can be either one- or two-byte long
         for i in range(self._size):
-            duty = 3 if self._channel > 1 else self._sfx_data[d] >> 6
-            volume = self._sfx_data[d] & 0x0F
+            if draw_volume:
+                duty = 3 if self._channel > 1 else self._sfx_data[d] >> 6
+                volume = self._sfx_data[d] & 0x0F
+
+                volume_points.append((x, base_height))
+                volume_points.append((x + trail, base_height))
+                y = base_height - (volume * vertical_step)
+                volume_points.append((x + trail, y))
+                volume_points.append((x + trail + hat[duty], y))
+                volume_points.append((x + trail + hat[duty], base_height))
+                volume_points.append((x + length, base_height))
+
             d += 1
-
-            volume_points.append((x, base_height))
-            volume_points.append((x + trail, base_height))
-            y = base_height - (volume * vertical_step)
-            volume_points.append((x + trail, y))
-            volume_points.append((x + trail + hat[duty], y))
-            volume_points.append((x + trail + hat[duty], base_height))
-            volume_points.append((x + length, base_height))
-
             x = x + length
 
             if self._volume_only:
                 # Use sweep unit value, if enabled
                 # ...otherwise, use the previous timer value
-                if self._channel == 3:
-                    y = (timer << 2) + 10
-                else:
-                    y = ((timer + 1) >> 2) + 10
-                timer_points.append((x, y))
+                if draw_period:
+                    if self._channel == 3:  # The noise channel has a different use of its period value
+                        y = (timer << 2) + 10
+                    else:
+                        y = ((timer + 1) >> 2) + 10
+                    timer_points.append((x, y))
 
             else:
-                if self._channel == 3:
-                    timer = self._sfx_data[d] & 0x0F
-                    y = (timer << 3) + 10
-                else:
-                    timer = self._sfx_data[d]
-                    y = ((timer + 1) >> 2) + 10
-                timer_points.append((x, y))
+                if draw_period:
+                    if self._channel == 3:
+                        timer = self._sfx_data[d] & 0x0F
+                        y = (timer << 3) + 10
+                    else:
+                        timer = self._sfx_data[d]
+                        y = ((timer + 1) >> 2) + 10
+                    timer_points.append((x, y))
+
+                # If only updating volume, this value is simply ignored
                 d += 1
 
         # Make sure we cover the whole graph area horizontally
-        last = volume_points[-1]
-        volume_points[-1] = (320, last[1])
-        last = timer_points[-1]
-        timer_points[-1] = (320, last[1])
+        if draw_volume:
+            last = volume_points[-1]
+            volume_points[-1] = (320, last[1])
 
-        flat = [a for x in volume_points for a in x]
-        if self._volume_line > 0:
-            self._canvas_sfx.coords(self._volume_line, *flat)
-            self._canvas_sfx.itemconfigure(self._volume_line, width=line_width)
-        else:
-            self._volume_line = self._canvas_sfx.create_line(*flat, width=line_width, fill=colour.LIGHT_ORANGE)
+            flat = [a for x in volume_points for a in x]
+            if self._volume_line > 0:
+                self._canvas_sfx.coords(self._volume_line, *flat)
+                self._canvas_sfx.itemconfigure(self._volume_line, width=line_width)
+            else:
+                self._volume_line = self._canvas_sfx.create_line(*flat, width=line_width, fill=colour.LIGHT_ORANGE)
 
-        flat = [a for x in timer_points for a in x]
-        if self._timer_line > 0:
-            self._canvas_sfx.coords(self._timer_line, *flat)
-            self._canvas_sfx.itemconfigure(self._timer_line, width=line_width)
-        else:
-            self._timer_line = self._canvas_sfx.create_line(*flat, width=line_width, fill=colour.LIGHT_GREEN)
+        if draw_period:
+            last = timer_points[-1]
+            timer_points[-1] = (320, last[1])
+
+            flat = [a for x in timer_points for a in x]
+            if self._timer_line > 0:
+                self._canvas_sfx.coords(self._timer_line, *flat)
+                self._canvas_sfx.itemconfigure(self._timer_line, width=line_width)
+            else:
+                self._timer_line = self._canvas_sfx.create_line(*flat, width=line_width, fill=colour.LIGHT_GREEN)
+
+        # Make sure the timer line is always drawn on top of the volume/duty bars
+        if not draw_period and self._timer_line > 0:
+            self._canvas_sfx.tag_raise(self._timer_line)
