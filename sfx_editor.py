@@ -283,7 +283,7 @@ class SFXEditor:
                     self.app.label("XE_Data_Label_0", "Data Size", sticky="W", row=0, column=0, font=10)
                     self.app.entry("XE_Data_Size", 1, kind="numeric", limit=4, width=4, sticky="W",
                                    row=0, column=1, font=9, submit=self._sfx_input)
-                    self.app.listBox("XE_Data_List", [], width=12, height=8, sticky="W", change=self._sfx_input,
+                    self.app.listBox("XE_Data_List", [], width=12, height=10, sticky="W", change=self._sfx_input,
                                      bg=colour.MEDIUM_ORANGE, fg=colour.WHITE,
                                      row=1, column=0, colspan=2, multi=False, group=True, font=9)
 
@@ -307,7 +307,7 @@ class SFXEditor:
                     self.app.scale("XE_Data_Reg_0", direction="horizontal", range=[0, 15], value=0, increment=1,
                                    sticky="NW", show=False, bg=colour.DARK_ORANGE,
                                    row=3, column=1, font=9).bind("<ButtonRelease-1>", lambda _e:
-                                                                 self._data_input("XE_Data_Volume"))
+                                                                 self._data_input("XE_Data_Reg_0"))
 
                     # --- Register 2
 
@@ -395,16 +395,110 @@ class SFXEditor:
 
                 self._sfx_data[pos] = reg_value | (0x20 if flag else 0)
 
+                # There is no Length Counter Load control to enable/disable: the second byte only controls the period
+
             self._unsaved_changes = True
             self._update_data_list(index)
 
-        else:
+        elif widget == "XE_Data_CV_Flag":   # --------------------------------------------------------------------------
+            flag = self.app.getCheckBox(widget)
+
+            reg_value = self._sfx_data[pos] & 0xEF
+            self._sfx_data[pos] = reg_value | (0x10 if flag else 0)
+
+            # Switch between volume and envelope labels
+            volume = self._sfx_data[pos] & 0x0F
+            if (self._sfx_data[pos] & 0x10) > 0:
+                # Constant Volume
+                self.app.setLabel("XE_Data_Label_2", f"  Volume: {volume:02}")
+            else:
+                # Envelope Enabled
+                self.app.setLabel("XE_Data_Label_2", f"Envelope: {volume:02}")
+
+            self._unsaved_changes = True
+            self._update_data_list(index)
+            self._draw_sfx_graph(draw_period=False)
+
+        elif widget == "XE_Data_Reg_0":     # --------------------------------------------------------------------------
+            value = self.app.getScale(widget)
+
+            reg_value = self._sfx_data[pos] & 0xF0
+            self._sfx_data[pos] = reg_value | value
+
+            if (self._sfx_data[pos] & 0x10) > 0:
+                # Constant Volume
+                self.app.setLabel("XE_Data_Label_2", f"  Volume: {value:02}")
+            else:
+                # Envelope Enabled
+                self.app.setLabel("XE_Data_Label_2", f"Envelope: {value:02}")
+
+            self._unsaved_changes = True
+            self._update_data_list(index)
+            self._draw_sfx_graph(draw_period=False)
+
+        elif widget == "XE_Data_Noise_Mode":    # ----------------------------------------------------------------------
+            pos += 1
+            flag = self.app.getCheckBox(widget)
+
+            reg_value = self._sfx_data[pos] & 0x7F
+            self._sfx_data[pos] = reg_value | (0x80 if flag else 0)
+
+            # Update frequency
+            period = self._sfx_data[pos] & 0x0F
+
+            freq = round(_NOISE_FREQ_TABLE[period] / (1 if flag else 93), 2)
+            self.app.setLabel("XE_Data_Freq", f"Frequency: {freq} Hz")
+
+            self._unsaved_changes = True
+            self._update_data_list(index)
+            self._draw_sfx_graph(draw_volume=False)
+
+        elif widget == "XE_Data_Reg_2":     # --------------------------------------------------------------------------
+            pos += 1
+
+            value = self.app.getEntry(widget)
+            if value is None:
+                return
+
+            # The Noise channel treats the period value differently
+            if self._channel == 3:
+                period = int(value) & 0x0F
+
+                # Mode flag
+                flag = (self._sfx_data[pos] & 0x80) > 0
+
+                reg_value = self._sfx_data[pos] & 0xF0
+                self._sfx_data[pos] = reg_value | period
+
+                # Update frequency display
+                freq = round(_NOISE_FREQ_TABLE[period] / (1 if flag else 93), 2)
+
+            # For all other channels, we need the whole timer value in order to display the correct frequency
+            else:
+                self._sfx_data[pos] = int(value) & 0xFF
+
+                timer = ((self._setup_values[3] & 0x07) << 8) | self._sfx_data[pos]
+                freq = round(1789773 / ((timer + 1) << (5 if self._channel == 2 else 4)), 2)
+
+            self.app.setLabel("XE_Data_Freq", f"Frequency: {freq} Hz")
+            self._unsaved_changes = True
+            self._update_data_list(index)
+            self._draw_sfx_graph(draw_volume=False)
+
+        else:   # ------------------------------------------------------------------------------------------------------
             self.info(f"Unimplemented input from setup widget: '{widget}'.")
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def _sfx_input(self, widget: str) -> None:
-        if widget == "XE_Close":    # ----------------------------------------------------------------------------------
+        if widget == "XE_Apply":    # ----------------------------------------------------------------------------------
+            if self.save_sfx_data():
+                self.app.setStatusbar("Sound effects saved")
+                self._unsaved_changes = False
+                if self.settings.get("close sub-window after saving"):
+                    self.app.hideSubWindow("SFX_Editor", useStopFunction=True)
+
+        elif widget == "XE_Close":  # ----------------------------------------------------------------------------------
             if self._unsaved_changes:
                 if not self.app.yesNoBox("SFX Editor", "Are you sure you want to close this window?\n" +
                                                        "Any unsaved changes will be lost.", "SFX_Editor"):
@@ -731,14 +825,15 @@ class SFXEditor:
         Tuple[int, bool]
             A tuple (channel, address, volume only flag, number of events).
         """
-        address = 0xA16B + (sfx_id << 2)
+        ptr = 0xA16B + (sfx_id << 2)
 
         # Read sfx entry from table in ROM buffer
 
-        value = self.rom.read_byte(0x9, address)
+        value = self.rom.read_byte(0x9, ptr)
         volume_only = (value & 0x10) > 0
         channel = value & 0x3
-        size = self.rom.read_byte(0x9, address + 1)
+        size = self.rom.read_byte(0x9, ptr + 1)
+        address = self.rom.read_word(0x9, ptr + 2)
 
         return channel, address, volume_only, size
 
@@ -821,6 +916,101 @@ class SFXEditor:
                 address += 1
 
         return self._volume_only, self._channel, self._address
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def save_sfx_data(self) -> bool:
+        """
+        Returns
+        -------
+        bool
+            True if save successful, False otherwise (e.g. no room for event data)
+        """
+        name = self.app.getEntry("XE_SFX_Name")
+        if name is None or len(name) < 1:
+            name = "(No Name)"
+        else:
+            # Save name in INI file
+            # If any definition filename matches the currently loaded ROM filename, then use that one
+            file_name = os.path.basename(self.rom.path).rsplit('.')[0] + "_audio.ini"
+            if os.path.exists(os.path.dirname(self.rom.path) + '/' + file_name):
+                file_name = os.path.dirname(self.rom.path) + '/' + file_name
+            elif os.path.exists("audio.ini"):
+                file_name = "audio.ini"
+
+            parser = configparser.ConfigParser()
+            parser.read(file_name)
+
+            if not parser.has_section("SFX"):
+                parser.add_section("SFX")
+
+            parser.set("SFX", f"{self._sfx_id}", name)
+
+        # Update SFX tab list
+        self.app.setOptionBox("ST_Option_SFX", self._sfx_id, value=f"0x{self._sfx_id:02X} {name}", callFunction=False)
+
+        # Map of valid ROM areas in Bank 9 where we can save our data
+        # Tuple: start address, size
+        memory = [(0xA23B, 2590), (0xA050, 176)]
+
+        # One buffer per memory area, we will only copy them to ROM if all data can be allocated successfully
+        buffers = [bytearray(), bytearray()]
+
+        # We will also recreate the table locally before copying it to ROM
+        table = bytearray()
+
+        # Go through all the sound effects and re-allocate them
+        for i in range(52):
+            if i == self._sfx_id:
+                # Save our new data
+                size = self._size
+                table.append(self._channel | (0x80 if self._volume_only else 0))
+                data = self._setup_values + self._sfx_data
+            else:
+                # Read data from ROM
+                ptr = 0xA16B + (i << 2)
+
+                size = self.rom.read_byte(0x9, ptr + 1)
+
+                channel = self.rom.read_byte(0x9, ptr)
+                table.append(channel)
+
+                old_address = self.rom.read_word(0x9, ptr + 2)
+                # 4 bytes of "setup values", then either 1 byte per event (volume only flag) or 2 bytes per event
+                data = self.rom.read_bytes(0x9, old_address, 4 + (size * (1 if (channel & 0x10) > 0 else 2)))
+
+            # Write number of events in the table
+            table.append(size)
+            # Get data size in bytes
+            data_size = len(data)
+
+            # See if it fits in the first area
+            if data_size <= memory[0][1]:
+                mem = 0
+            elif data_size <= memory[1][1]:
+                mem = 1
+            else:
+                self.app.errorBox("SFX Editor", f"Error saving sound effect #{i}: out of memory in ROM bank 9.",
+                                  "SFX_Editor")
+                return False
+
+            new_address = memory[mem][0]
+            table.append(new_address & 0x00FF)  # Low byte
+            table.append(new_address >> 8)      # High byte
+
+            # Advance the first available address and reduce size for the selected area
+            memory[mem] = new_address + data_size, memory[mem][1] - data_size
+
+            # Save data to our local buffer
+            buffers[mem] += data
+
+        # Memory successfully allocated, we can write both table and data to ROM
+        self.rom.write_bytes(0x9, 0xA16B, table)
+        self.rom.write_bytes(0x9, 0xA23B, buffers[0])
+        if len(buffers[1]) > 0:
+            self.rom.write_bytes(0x9, 0xA050, buffers[1])
+
+        return True
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -987,6 +1177,7 @@ class SFXEditor:
         # --- Register 0
         index = event_id * (1 if self._volume_only else 2)
 
+        # --- Reg 0, bits 7, 6
         # Only Pulse channels have this
         if self._channel < 2:
             duty = self._sfx_data[index] >> 6
@@ -995,6 +1186,7 @@ class SFXEditor:
         else:
             self.app.disableOptionBox("XE_Data_Duty")
 
+        # --- Reg 0, bits 5, 4
         if self._channel != 2:
             lc_flag = (self._sfx_data[index] & 0x20) > 0
             self.app.setCheckBoxText("XE_Data_LC_Flag", "Length Ctr Halt")
@@ -1004,6 +1196,7 @@ class SFXEditor:
             self.app.enableCheckBox("XE_Data_CV_Flag")
             self.app.setCheckBox("XE_Data_CV_Flag", cv_flag, callFunction=False)
 
+        # --- Reg 0, bit 7
         # For the Triangle channel, use the LC Flag widget for the Control Flag instead, then disable the CV widget
         else:
             control_flag = (self._sfx_data[index] & 0x80) > 0
@@ -1011,6 +1204,7 @@ class SFXEditor:
             self.app.setCheckBox("XE_Data_LC_Flag", control_flag, callFunction=False)
             self.app.disableCheckBox("XE_Data_CV_Flag")
 
+        # --- Reg 0, bits 3-0
         if self._channel != 2:
             volume = self._sfx_data[index] & 0x0F
             if (self._sfx_data[index] & 0x10) > 0:
@@ -1022,6 +1216,7 @@ class SFXEditor:
             self.app.setScaleRange("XE_Data_Reg_0", 0, 15)
             self.app.setScale("XE_Data_Reg_0", volume, callFunction=False)
 
+        # --- Reg 0, bit 7-0
         # For the Triangle channel, this is the linear counter reload value
         else:
             linear_ctr_reload = self._sfx_data[index] & 0x7F
@@ -1034,6 +1229,7 @@ class SFXEditor:
 
         self.app.clearEntry("XE_Data_Reg_2", callFunction=False, setFocus=False)
 
+        # --- Reg 2, bit 7 and 3-0
         # The Noise channel uses the period value differently
         if self._channel == 3:
             noise_mode = (self._sfx_data[index] & 0x80) > 0
@@ -1042,16 +1238,16 @@ class SFXEditor:
 
             period = self._sfx_data[index] & 0x0F
 
-            lookup_table = [4811.2, 2405.6, 1202.8, 601.4, 300.7, 200.5, 150.4, 120.3, 95.3, 75.8, 50.6, 37.9, 25.3,
-                            18.9, 9.5, 4.7]
+            freq = round(_NOISE_FREQ_TABLE[period] / (1 if noise_mode else 93), 2)
 
-            freq = round(lookup_table[period] / 1 if noise_mode else 93, 2)
-
+        # --- Reg 2, bits 7-0
         else:
             period = self._sfx_data[index]
             timer_high = self._setup_values[3] & 0x03
             timer = (timer_high << 8) | period
             freq = round(1789773 / ((timer + 1) << (5 if self._channel == 2 else 4)), 2)
+
+            self.app.disableCheckBox("XE_Data_Noise_Mode")
 
         self.app.setEntry("XE_Data_Reg_2", period, callFunction=False)
         self.app.setLabel("XE_Data_Freq", f"Frequency: {freq} Hz")
