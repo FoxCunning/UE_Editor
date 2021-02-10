@@ -95,10 +95,23 @@ class SFXEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def close_window(self):
+    def close_window(self) -> bool:
         self._unsaved_changes = False
 
         self.app.emptySubWindow("SFX_Editor")
+        self._volume_line = 0
+        self._timer_line = 0
+
+        if self._play_thread.is_alive():
+            self._size = 0
+            self._play_thread.join(500)
+        if self._play_thread.is_alive():
+            self.warning("Could not stop audio playback thread!")
+
+        # self.app.destroySubWindow("SFX_Editor")
+        self.app.hideSubWindow("SFX_Editor", useStopFunction=False)
+
+        return True
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -122,7 +135,8 @@ class SFXEditor:
             self._timer_line = 0
 
             generator = self.app.subWindow("SFX_Editor", size=[600, 440], padding=[2, 2], title="Sound Effect Editor",
-                                           bg=colour.DARK_ORANGE, fg=colour.WHITE)
+                                           resizable=False, modal=False, blocking=False,
+                                           bg=colour.DARK_ORANGE, fg=colour.WHITE, stopFunction=self.close_window)
 
         with generator:
             with self.app.frame("XE_Frame_Buttons", padding=[4, 2], sticky="NEW", row=0, column=0, colspan=2):
@@ -159,28 +173,36 @@ class SFXEditor:
                         self.app.label("XE_Label_S0", "Duty Cycle", sticky="E", row=0, column=0, font=10)
                         self.app.optionBox("XE_Duty_Cycle", ["12.5%", "25%", "50%", "75%"], width=12, sticky="W",
                                            row=0, column=1, font=9, change=self._sfx_input)
-                        self.app.checkBox("XE_Pulse_LC_Flag", True, name="Length Ctr Halt", sticky="W",
+                        self.app.label("XE_Pulse_Label_LC_Flag", "Length Ctr Halt", sticky="E",
+                                       row=1, column=0, font=10)
+                        self.app.checkBox("XE_Pulse_LC_Flag", True, name="", sticky="W",
                                           selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
-                                          row=1, column=0, colspan=2, font=10)
-                        self.app.checkBox("XE_Pulse_CV_Flag", True, name="Constant Volume", sticky="W",
+                                          row=1, column=1)
+                        self.app.label("XE_Pulse_Label_CV_Flag", "Constant Volume", sticky="E",
+                                       row=2, column=0, font=0)
+                        self.app.checkBox("XE_Pulse_CV_Flag", True, name="", sticky="W",
                                           selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
-                                          row=2, column=0, colspan=2, font=10)
+                                          row=2, column=1)
                         self.app.label("XE_Pulse_Label_0", "Volume: 00", sticky="SE", row=3, column=0, font=10)
                         self.app.scale("XE_Pulse_Volume", direction="horizontal", range=[0, 15], value=0, increment=1,
                                        sticky="W", show=False, bg=colour.DARK_ORANGE,
                                        row=3, column=1, font=9).bind("<ButtonRelease-1>", lambda _e:
                                                                      self._sfx_input("XE_Pulse_Volume"))
-                        self.app.checkBox("XE_Sweep_Enable", False, name="Enable Sweep", sticky="W",
+                        self.app.label("XE_Label_Sweep_Enabled", "Enable Sweep", sticky="E",
+                                       row=4, column=0, font=10)
+                        self.app.checkBox("XE_Sweep_Enable", False, name="", sticky="W",
                                           selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
-                                          row=4, column=0, colspan=2, font=10)
+                                          row=4, column=1)
                         self.app.label("XE_Pulse_Label_1", "Sweep Period: 00", sticky="SE", row=5, column=0, font=10)
                         self.app.scale("XE_Sweep_Period", direction="horizontal", range=[0, 7], value=0, increment=1,
                                        sticky="W", show=False, bg=colour.DARK_ORANGE,
                                        row=5, column=1, font=9).bind("<ButtonRelease-1>", lambda _e:
                                                                      self._sfx_input("XE_Sweep_Period"))
-                        self.app.checkBox("XE_Sweep_Negate", False, name="Negative Sweep", sticky="W",
+                        self.app.label("XE_Label_Sweep_Negate", "Negative Sweep", sticky="E",
+                                       row=6, column=0, font=10)
+                        self.app.checkBox("XE_Sweep_Negate", False, name="", sticky="W",
                                           selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
-                                          row=6, column=0, colspan=2, font=10)
+                                          row=6, column=1)
                         self.app.label("XE_Pulse_Label_2", "Shift Count: 00", sticky="SE", row=7, column=0, font=10)
                         self.app.scale("XE_Sweep_Shift", direction="horizontal", range=[0, 7], value=0, increment=1,
                                        sticky="W", show=False, bg=colour.DARK_ORANGE,
@@ -201,9 +223,11 @@ class SFXEditor:
                     # Triangle channel setup panel ---------------------------------------------------------------------
                     with self.app.frame("XE_Frame_Triangle_Setup", padding=[2, 2],
                                         bg=colour.DARK_ORANGE, fg=colour.WHITE):
-                        self.app.checkBox("XE_Triangle_Control_Flag", name="Control Flag", sticky="NW",
-                                          selectcolor=colour.DARK_ORANGE, change=self._sfx_input,
-                                          row=0, column=0, colspan=2, font=10)
+                        self.app.label("XE_Triangle_Label_Control_Flag", "Control Flag", sticky="E",
+                                       row=0, column=0, font=10)
+                        self.app.checkBox("XE_Triangle_Control_Flag", name="", sticky="W",
+                                          selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
+                                          row=0, column=1)
                         self.app.label("XE_Triangle_Label_0", "Linear Ctr Load", sticky="NE", row=1, column=0, font=10)
                         self.app.entry("XE_Linear_Load", 0, change=self._sfx_input, width=6, sticky="NW",
                                        kind="numeric", limit=5,
@@ -222,20 +246,24 @@ class SFXEditor:
                     # Noise channel setup panel ------------------------------------------------------------------------
                     with self.app.frame("XE_Frame_Noise_Setup", padding=[2, 2],
                                         bg=colour.DARK_ORANGE, fg=colour.WHITE):
-                        self.app.checkBox("XE_Noise_LC_Flag", False, name="LC Halt", sticky="NW",
-                                          selectcolor=colour.DARK_ORANGE, change=self._sfx_input,
-                                          row=0, column=0, colspan=2, font=10)
-                        self.app.checkBox("XE_Noise_CV_Flag", True, name="Constant Volume", sticky="NW",
-                                          selectcolor=colour.DARK_ORANGE, change=self._sfx_input,
-                                          row=1, column=0, colspan=2, font=10)
+                        self.app.label("XE_Noise_Label_LC_Flag", "LC Halt", sticky="E", row=0, column=0, font=10)
+                        self.app.checkBox("XE_Noise_LC_Flag", False, name="", sticky="W",
+                                          selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
+                                          row=0, column=1)
+                        self.app.label("XE_Noise_Label_CV_Flag", "Constant Volume", sticky="E",
+                                       row=1, column=0, font=10)
+                        self.app.checkBox("XE_Noise_CV_Flag", True, name="", sticky="W",
+                                          selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
+                                          row=1, column=1)
                         self.app.label("XE_Noise_Label_0", "Volume: 00", sticky="NE", row=2, column=0, font=10)
                         self.app.scale("XE_Noise_Volume", direction="horizontal", range=[0, 15], value=0, increment=1,
                                        sticky="NW", show=False, bg=colour.DARK_ORANGE,
                                        row=2, column=1, font=9).bind("<ButtonRelease-1>", lambda _e:
                                                                      self._sfx_input("XE_Noise_Volume"))
-                        self.app.checkBox("XE_Noise_Loop", True, name="Loop Noise", sticky="NW",
-                                          selectcolor=colour.DARK_ORANGE, change=self._sfx_input,
-                                          row=3, column=0, colspan=2, font=10)
+                        self.app.label("XE_Label_Noise_Loop", "Loop Noise", sticky="E", row=3, column=0, font=10)
+                        self.app.checkBox("XE_Noise_Loop", True, name="", sticky="W",
+                                          selectcolor=colour.MEDIUM_ORANGE, change=self._sfx_input,
+                                          row=3, column=1)
                         self.app.label("XE_Noise_Label_1", "Noise Period: 00", sticky="NE", row=4, column=0, font=10)
                         self.app.scale("XE_Noise_Period", direction="horizontal", range=[0, 15], value=0, increment=1,
                                        sticky="NW", show=False, bg=colour.DARK_ORANGE,
@@ -311,8 +339,8 @@ class SFXEditor:
                                                        "Any unsaved changes will be lost.", "SFX_Editor"):
                     return
 
+            self._unsaved_changes = False
             self.app.hideSubWindow("SFX_Editor", useStopFunction=True)
-            self.app.destroySubWindow("SFX_Editor")
 
         elif widget == "XE_Play_Stop":  # ------------------------------------------------------------------------------
             if self._play_thread.is_alive():
@@ -326,7 +354,9 @@ class SFXEditor:
             value = self.app.getScale(widget) & 0x0F
             register_value = self._setup_values[0] & 0xF0   # The other bits in the same register
 
-            self.app.setLabel("XE_Pulse_Label_0", f"Volume: {value:02}")
+            cv_flag = (self._setup_values[0] & 0x10) > 0
+            self.app.setLabel("XE_Pulse_Label_0", f"{'Volume' if cv_flag else 'Env. Period'}: {value:02}")
+
             self._setup_values[0] = register_value | value
 
         elif widget == "XE_Pulse_Timer":    # --------------------------------------------------------------------------
@@ -339,6 +369,14 @@ class SFXEditor:
                 self.app.setLabel("XE_Pulse_Freq", f"Frequency: {round(freq, 2)} Hz")
             except TypeError:
                 return
+
+        elif widget == "XE_Pulse_Length_Load":  # ----------------------------------------------------------------------
+            value = self.app.getScale(widget)
+            register_value = self._setup_values[3] & 0xF8
+
+            self.app.setLabel("XE_Pulse_Label_4", f"Length Ctr Load: {value:02}")
+
+            self._setup_values[3] = register_value | (value << 3)
 
         elif widget == "XE_Noise_LC_Flag":  # --------------------------------------------------------------------------
             value = 0x20 if self.app.getCheckBox(widget) else 0x00
@@ -389,7 +427,7 @@ class SFXEditor:
 
         elif widget == "XE_Noise_Load":     # --------------------------------------------------------------------------
             value = self.app.getScale(widget)
-            self.app.setLabel("XE_Noise_Label_2", f"Length Counter Load: {value:02}")
+            self.app.setLabel("XE_Noise_Label_2", f"Length Ctr Load: {value:02}")
 
             self._setup_values[3] = value << 3
 
@@ -398,12 +436,12 @@ class SFXEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def get_sfx_info(self, sfx_id: int) -> Tuple[int, bool]:
+    def get_sfx_info(self, sfx_id: int) -> Tuple[int, int, bool, int]:
         """
         Returns
         -------
         Tuple[int, bool]
-            A tuple (channel, volume only flag) for the requested sound effect.
+            A tuple (channel, address, volume only flag, number of events).
         """
         address = 0xA16B + (sfx_id << 2)
 
@@ -412,8 +450,9 @@ class SFXEditor:
         value = self.rom.read_byte(0x9, address)
         volume_only = (value & 0x10) > 0
         channel = value & 0x3
+        size = self.rom.read_byte(0x9, address + 1)
 
-        return channel, volume_only
+        return channel, address, volume_only, size
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -522,13 +561,24 @@ class SFXEditor:
 
             self.app.setCheckBox("XE_Noise_LC_Flag", lc_flag, callFunction=False)
             self.app.setCheckBox("XE_Noise_CV_Flag", cv_flag, callFunction=False)
-            self.app.setScale("XE_Noise_Volume", volume)
-            self._sfx_input("XE_Noise_Volume")  # Set volume label
+
+            self.app.setScale("XE_Noise_Volume", volume, callFunction=False)
+            # If the Constant Volume flag is clear, than this is the envelope period instead of volume
+            if (self._setup_values[0] & 0x10) > 0:
+                self.app.setLabel("XE_Noise_Label_0", f"Volume: {volume:02}")
+            else:
+                self.app.setLabel("XE_Noise_Label_0", f"Env. Period: {volume:02}")
+
             self.app.setCheckBox("XE_Noise_Loop", loop, callFunction=False)
+
             self.app.setScale("XE_Noise_Period", period)
-            self._sfx_input("XE_Noise_Period")  # Set period and frequency labels
+            freq = _NOISE_FREQ_TABLE[period]
+
+            self.app.setLabel("XE_Noise_Label_1", f"Period: {period:02}")
+            self.app.setLabel("XE_Noise_Freq", f"Frequency: {freq} Hz")
+
             self.app.setScale("XE_Noise_Load", length_ctr_load)
-            self._sfx_input("XE_Noise_Load")    # Set length counter load label
+            self.app.setLabel("XE_Noise_Label_2", f"Length Ctr Load: {length_ctr_load:02}")
             if lc_flag:
                 self.app.disableScale("XE_Noise_Load")
             else:
@@ -569,7 +619,8 @@ class SFXEditor:
             self.app.setCheckBox("XE_Pulse_LC_Flag", lc_flag, callFunction=False)
             self.app.setCheckBox("XE_Pulse_CV_Flag", cv_flag, callFunction=False)
             self.app.setScale("XE_Pulse_Volume", volume)
-            self._sfx_input("XE_Pulse_Volume")  # Set volume label
+
+            self.app.setLabel("XE_Pulse_Label_0", f"{'Volume' if cv_flag else 'Env. Period'}: {volume:02}")
 
             self.app.clearEntry("XE_Pulse_Timer", callFunction=False, setFocus=False)
             self.app.setEntry("XE_Pulse_Timer", timer, callFunction=False)
@@ -577,7 +628,8 @@ class SFXEditor:
             self.app.setLabel("XE_Pulse_Freq", f"Frequency: {round(freq, 2)} Hz")
 
             self.app.setScale("XE_Pulse_Length_Load", length_ctr_load)
-            self._sfx_input("XE_Pulse_Length_Load")  # Set length counter load label
+
+            self.app.setLabel("XE_Pulse_Label_4", f"Length Ctr Load: {length_ctr_load:02}")
             if lc_flag:
                 self.app.disableScale("XE_Pulse_Length_Load")
             else:
@@ -719,8 +771,8 @@ class SFXEditor:
         timer_points = []
         x = 0  # Start from the left of the canvas
 
-        # TODO Use envelope instead of volume if enabled
-        # TODO Sweep unit for timer if enabled
+        # TODO Use envelope values instead of volume if enabled
+        # TODO Sweep unit values for timer if enabled
 
         # Setup values first
         if self._channel < 2:

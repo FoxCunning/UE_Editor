@@ -1655,10 +1655,11 @@ def sound_tab_input(widget: str) -> None:
 
     elif widget == "ST_Option_SFX":
         sfx_id = get_option_index("ST_Option_SFX", app.getOptionBox("ST_Option_SFX"))
-        channel, flag = sfx_editor.get_sfx_info(sfx_id)
+        channel, address, flag, size = sfx_editor.get_sfx_info(sfx_id)
         channel_names = ["Pulse 0", "Pulse 1", "Triangle", "Noise"]
 
-        app.setLabel("ST_Label_Info", f"Channel: {channel_names[channel]}, Volume Only: {flag}")
+        app.setLabel("ST_Label_Info", f"Channel: {channel_names[channel]}, Volume Only: {'Yes' if flag else 'No'}, " +
+                     f"Size: {size} [Address: $09:{address:04X}]")
 
     else:
         log(3, "MUSIC EDITOR", f"Unimplemented callback for widget '{widget}'.")
@@ -2469,7 +2470,7 @@ if __name__ == "__main__":
                               change=sound_tab_input, sticky="E", row=0, column=0, font=10)
                 app.button("ST_Edit_SFX", sound_tab_input, text="Edit SFX", tooltip="Open the Sound Effect editor",
                            bg=colour.WHITE, sticky="W", row=0, column=1, font=10)
-                app.label("ST_Label_Info", "Channel: ", sticky="WE", row=1, column=0, font=10)
+                app.label("ST_Label_Info", "Channel: ", sticky="WE", row=1, column=0, colspan=2, font=10)
 
         #       ##### End of tab definitions #####
 
