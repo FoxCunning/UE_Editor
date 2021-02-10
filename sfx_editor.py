@@ -54,9 +54,6 @@ class SFXEditor:
 
         self.apu: APU = APU()
 
-        # self._voice_selector: pyo.Selector = pyo.Selector([self.apu.pulse_0, self.apu.pulse_1,
-        #                                                   self.apu.triangle, self.apu.noise])
-
         self._play_thread: threading.Thread = threading.Thread()
         self._playing: bool = True
 
@@ -147,10 +144,12 @@ class SFXEditor:
                 self.app.button("XE_Close", self._sfx_input, image="res/close.gif", bg=colour.LIGHT_ORANGE,
                                 row=0, column=3)
 
-                self.app.canvas("XE_Canvas_Empty", map=None, width=120, height=16, row=0, column=4)
+                self.app.label("XE_Label_SFX_Name", "Name:", sticky="WE", row=0, column=4, font=11)
+                self.app.entry("XE_SFX_Name", f"{self.sfx_names[sfx_id]}", bg=colour.MEDIUM_ORANGE, fg=colour.WHITE,
+                               row=0, column=5, width=20, font=12)
 
                 self.app.button("XE_Play_Stop", self._sfx_input, image="res/play.gif", bg=colour.LIGHT_ORANGE,
-                                row=0, column=5)
+                                row=0, column=6)
 
             with self.app.frame("XE_Frame_Setup", padding=[2, 2], sticky="NW", row=1, column=0):
                 self.app.label("XE_Label_Channel_0", "Channel", sticky="W",
@@ -283,9 +282,9 @@ class SFXEditor:
                 with self.app.frame("XE_Frame_Data_Left", sticky="W", padding=[2, 2], row=0, column=0):
                     self.app.label("XE_Data_Label_0", "Data Size", sticky="W", row=0, column=0, font=10)
                     self.app.entry("XE_Data_Size", 1, kind="numeric", limit=4, width=4, sticky="W",
-                                   row=0, column=1, font=9, change=self._sfx_input)
-                    self.app.listBox("XE_Data_List", [], width=12, height=8, bg=colour.MEDIUM_ORANGE, sticky="W",
-                                     change=self._sfx_input,
+                                   row=0, column=1, font=9, submit=self._sfx_input)
+                    self.app.listBox("XE_Data_List", [], width=12, height=8, sticky="W", change=self._sfx_input,
+                                     bg=colour.MEDIUM_ORANGE, fg=colour.WHITE,
                                      row=1, column=0, colspan=2, multi=False, group=True, font=9)
 
                 # Data controls ----------------------------------------------------------------------------------------
@@ -294,30 +293,30 @@ class SFXEditor:
                     # --- Register 0
 
                     self.app.label("XE_Data_Label_1", "Duty", sticky="NEW", row=0, column=0, font=10)
-                    self.app.optionBox("XE_Data_Duty", ["12.5%", "25%", "50%"], width=8, sticky="NW",
-                                       row=0, column=1, font=9)
+                    self.app.optionBox("XE_Data_Duty", ["12.5%", "25%", "50%", "75%"], change=self._data_input,
+                                       row=0, column=1, width=8, sticky="NW", font=9)
 
                     self.app.checkBox("XE_Data_LC_Flag", True, name="Length Ctr Halt", sticky="NW",
-                                      selectcolor=colour.MEDIUM_ORANGE,
+                                      selectcolor=colour.MEDIUM_ORANGE, change=self._data_input,
                                       row=1, column=0, colspan=2, font=10)
                     self.app.checkBox("XE_Data_CV_Flag", True, name="Constant Volume", sticky="NW",
-                                      selectcolor=colour.MEDIUM_ORANGE,
+                                      selectcolor=colour.MEDIUM_ORANGE, change=self._data_input,
                                       row=2, column=0, colspan=2, font=10)
 
                     self.app.label("XE_Data_Label_2", "Volume: 00", sticky="NE", row=3, column=0, font=10)
                     self.app.scale("XE_Data_Reg_0", direction="horizontal", range=[0, 15], value=0, increment=1,
                                    sticky="NW", show=False, bg=colour.DARK_ORANGE,
                                    row=3, column=1, font=9).bind("<ButtonRelease-1>", lambda _e:
-                                                                 self._sfx_input("XE_Data_Volume"))
+                                                                 self._data_input("XE_Data_Volume"))
 
                     # --- Register 2
 
                     self.app.checkBox("XE_Data_Noise_Mode", False, text="Loop Noise", sticky="NW",
-                                      selectcolor=colour.MEDIUM_ORANGE,
+                                      selectcolor=colour.MEDIUM_ORANGE, change=self._data_input,
                                       row=4, column=0, colspan=2, font=10)
 
                     self.app.label("XE_Data_Label_3", "Period Value", sticky="NE", row=5, column=0, font=10)
-                    self.app.entry("XE_Data_Reg_2", 0, change=self._sfx_input, width=6, sticky="NW",
+                    self.app.entry("XE_Data_Reg_2", 0, change=self._data_input, width=6, sticky="NW",
                                    kind="numeric", limit=5,
                                    row=5, column=1, font=9, bg=colour.MEDIUM_ORANGE, fg=colour.WHITE)
                     self.app.label("XE_Data_Freq", "Frequency: 0 Hz", sticky="NEW",
@@ -342,7 +341,69 @@ class SFXEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _sfx_input(self, widget) -> None:
+    def _get_selection_index(self, widget: str) -> int:
+        """
+        Returns
+        -------
+        int:
+            The index of the currently selected option from an OptionBox widget
+        """
+        value = "(nothing)"
+        try:
+            value = self.app.getOptionBox(widget)
+            box = self.app.getOptionBoxWidget(widget)
+            return box.options.index(value)
+        except ValueError as error:
+            self.error(f"ERROR: Getting selection index for '{value}' in '{widget}': {error}.")
+            return 0
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _data_input(self, widget: str) -> None:
+        # Get the selection index and calculate the position in the array depending on whether we use the first byte
+        # only or both bytes
+        selection = self.app.getListBoxPos("XE_Data_List")
+        if len(selection) < 1:
+            pos = 0
+            index = 0
+        else:
+            index = selection[0]
+            pos = selection[0] * (1 if self._volume_only else 2)
+
+        # Process event according to which widget has generated it
+
+        if widget == "XE_Data_Duty":    # ------------------------------------------------------------------------------
+            value = self._get_selection_index(widget)
+
+            reg_value = self._sfx_data[pos] & 0x3F
+            self._sfx_data[pos] = reg_value | (value << 6)
+
+            self._unsaved_changes = True
+            self._update_data_list(index)
+            self._draw_sfx_graph(draw_period=False)
+
+        elif widget == "XE_Data_LC_Flag":   # --------------------------------------------------------------------------
+            flag = self.app.getCheckBox(widget)
+
+            # For the Triangle channel, this is the Control flag instead
+            if self._channel == 2:
+                reg_value = self._sfx_data[pos] & 0x7F
+                self._sfx_data[pos] = reg_value | (0x80 if flag else 0)
+
+            else:
+                reg_value = self._sfx_data[pos] & 0xDF
+
+                self._sfx_data[pos] = reg_value | (0x20 if flag else 0)
+
+            self._unsaved_changes = True
+            self._update_data_list(index)
+
+        else:
+            self.info(f"Unimplemented input from setup widget: '{widget}'.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _sfx_input(self, widget: str) -> None:
         if widget == "XE_Close":    # ----------------------------------------------------------------------------------
             if self._unsaved_changes:
                 if not self.app.yesNoBox("SFX Editor", "Are you sure you want to close this window?\n" +
@@ -360,17 +421,138 @@ class SFXEditor:
                 self.app.setButtonTooltip("XE_Play_Stop", "Stop playback")
                 self._play_sfx()
 
+        elif widget[:11] == "XE_Channel_":  # --------------------------------------------------------------------------
+            new_channel = int(widget[-1], 10)
+            if new_channel != self._channel:
+                self._channel = new_channel
+                self._sfx_info()
+
+                selection = self.app.getListBoxPos("XE_Data_List")
+                if len(selection) > 0:
+                    self._event_info(selection[0])
+
+                self._draw_sfx_graph()
+
+                self._unsaved_changes = True
+
+        elif widget == "XE_Duty_Cycle":     # --------------------------------------------------------------------------
+            value = self._get_selection_index(widget)
+
+            if value == self._setup_values[0] >> 6:
+                # No change
+                return
+
+            register_value = self._setup_values[0] & 0x3F
+            self._setup_values[0] = (value << 6) | register_value
+
+            self._draw_sfx_graph(draw_period=False)
+            self._unsaved_changes = True
+
+        elif widget == "XE_Pulse_LC_Flag":  # --------------------------------------------------------------------------
+            flag = self.app.getCheckBox(widget)
+
+            if flag == (self._setup_values[0] & 0x20) > 0:
+                # No change
+                return
+
+            register_value = self._setup_values[0] & 0xDF
+            self._setup_values[0] = register_value | (0x20 if flag else 0)
+
+            if flag:
+                self.app.disableScale("XE_Pulse_Length_Load")
+            else:
+                self.app.enableScale("XE_Pulse_Length_Load")
+
+            # This only affects the duration of the sound, so no need to redraw the graph
+
+            self._unsaved_changes = True
+
+        elif widget == "XE_Pulse_CV_Flag":  # --------------------------------------------------------------------------
+            flag = self.app.getCheckBox(widget)
+
+            if flag == ((self._setup_values[0] & 0x10) > 0):
+                # No change
+                return
+
+            register_value = self._setup_values[0] & 0xEF
+            self._setup_values[0] = register_value | (0x10 if flag else 0)
+
+            value = self._setup_values[0] & 0x0F
+            self.app.setLabel("XE_Pulse_Label_0", f"{'Volume' if flag else 'Env. Period'}: {value:02}")
+
+            self._draw_sfx_graph(draw_period=False)
+            self._unsaved_changes = True
+
         elif widget == "XE_Pulse_Volume":   # --------------------------------------------------------------------------
             value = self.app.getScale(widget) & 0x0F
             register_value = self._setup_values[0] & 0xF0   # The other bits in the same register
 
-            cv_flag = (self._setup_values[0] & 0x10) > 0
-            self.app.setLabel("XE_Pulse_Label_0", f"{'Volume' if cv_flag else 'Env. Period'}: {value:02}")
+            flag = (self._setup_values[0] & 0x10) > 0
+            self.app.setLabel("XE_Pulse_Label_0", f"{'Volume' if flag else 'Env. Period'}: {value:02}")
 
             self._setup_values[0] = register_value | value
 
             self._unsaved_changes = True
             self._draw_sfx_graph(draw_period=False)
+
+        elif widget == "XE_Sweep_Enable":   # --------------------------------------------------------------------------
+            flag = self.app.getCheckBox(widget)
+
+            if flag == ((self._setup_values[1] & 0x80) > 0):
+                return
+
+            register_value = self._setup_values[1] & 0x7F
+            self._setup_values[1] = register_value | (0x80 if flag else 0)
+
+            if flag:
+                self.app.enableScale("XE_Sweep_Period")
+                self.app.enableScale("XE_Sweep_Shift")
+            else:
+                self.app.disableScale("XE_Sweep_Period")
+                self.app.disableScale("XE_Sweep_Shift")
+
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_volume=False)
+
+        elif widget == "XE_Sweep_Period":   # --------------------------------------------------------------------------
+            value = self.app.getScale(widget)
+
+            if value == (self._setup_values[1] & 0x70) >> 4:
+                return
+
+            register_value = self._setup_values[1] & 0x8F
+            self._setup_values = register_value | (value << 4)
+
+            self.app.setLabel("XE_Pulse_Label_1", f"Sweep Period: {value:02}")
+
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_volume=False)
+
+        elif widget == "XE_Sweep_Negate":   # --------------------------------------------------------------------------
+            flag = self.app.getCheckBox(widget)
+
+            if flag == ((self._setup_values[1] & 0x1) > 0):
+                return
+
+            register_value = self._setup_values[1] & 0xF7
+            self._setup_values[1] = register_value | (0x08 if flag else 0)
+
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_volume=False)
+
+        elif widget == "XE_Sweep_Shift":    # --------------------------------------------------------------------------
+            value = self.app.getScale(widget)
+
+            if value == self._setup_values[1] & 0x07:
+                return
+
+            register_value = self._setup_values[1] & 0xF8
+            self._setup_values[1] = register_value | value
+
+            self.app.setLabel("XE_Pulse_Label_2", f"Shift Count: {value:02}")
+
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_volume=False)
 
         elif widget == "XE_Pulse_Timer":    # --------------------------------------------------------------------------
             try:
@@ -395,6 +577,49 @@ class SFXEditor:
             self._setup_values[3] = register_value | (value << 3)
 
             self._unsaved_changes = True
+
+        elif widget == "XE_Triangle_Control_Flag":  # ------------------------------------------------------------------
+            flag = self.app.getCheckBox(widget)
+
+            if flag == ((self._setup_values[0] & 0x80) > 0):
+                return
+
+            register_value = self._setup_values[0] & 0x7F
+            self._setup_values[0] = register_value | (0x80 if flag else 0)
+
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_period=False)
+
+        elif widget == "XE_Linear_Load":    # --------------------------------------------------------------------------
+            value = self.app.getEntry(widget)
+
+            if value is None or int(value) == self._setup_values[0] & 0x7F:
+                return
+
+            register_value = self._setup_values[0] & 0x80
+            self._setup_values[0] = register_value | int(value)
+
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_period=False)
+
+        elif widget == "XE_Triangle_Timer":     # ----------------------------------------------------------------------
+            value = self.app.getEntry(widget)
+
+            if value is None:
+                return
+
+            timer_low = int(value) & 0x0FF
+            timer_high = int(value) >> 8
+
+            self._setup_values[2] = timer_low
+            self._setup_values[3] = (self._setup_values[3] & 0xF8) | timer_high
+
+            freq = 1789773 / (int(value + 1) << 5)
+
+            self.app.setLabel("XE_Triangle_Freq", f"Frequency: {round(freq, 2)} Hz")
+
+            self._unsaved_changes = True
+            self._draw_sfx_graph(draw_volume=False)
 
         elif widget == "XE_Noise_LC_Flag":  # --------------------------------------------------------------------------
             value = 0x20 if self.app.getCheckBox(widget) else 0x00
@@ -464,13 +689,38 @@ class SFXEditor:
 
             self._unsaved_changes = True
 
-        elif widget == "XE_Data_List":
+        elif widget == "XE_Data_Size":  # ------------------------------------------------------------------------------
+            value = self.app.getEntry(widget)
+
+            if value is None or int(value) == self._size or value < 1 or value > 64:
+                return
+
+            if value < self._size:
+                if not self.app.yesNoBox("SFX Editor", "Are you sure you want to reduce sound data size?\n" +
+                                         "The extra events will be permanently deleted.", "SFX_Editor"):
+                    return
+
+                # Decrease size
+                byte_size = int(value) * (1 if self._volume_only else 2)
+                self._sfx_data = self._sfx_data[0:byte_size]
+
+            else:
+                # Increase size, create copy of last event to fill the rest
+                new_events = self._sfx_data[-1:] if self._volume_only else self._sfx_data[-2:]
+                diff = int(value) - self._size
+                self._sfx_data = self._sfx_data + (new_events * diff)
+
+            self._size = int(value)
+            self._update_data_list()
+            self._draw_sfx_graph()
+
+        elif widget == "XE_Data_List":  # ------------------------------------------------------------------------------
             selection = self.app.getListBoxPos(widget)
             if len(selection) > 0:
                 self._event_info(selection[0])
 
         else:
-            self.info(f"Unimplemented input from '{widget}'.")
+            self.info(f"Unimplemented input from setup widget: '{widget}'.")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -575,12 +825,11 @@ class SFXEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _sfx_info(self) -> None:
-
-        if self._channel == 3:  # Noise channel
+        if self._channel == 3:      # Noise channel
             self.app.selectFrame("XE_Stack_Channel", 2)
-        elif self._channel == 2:  # Triangle channel
+        elif self._channel == 2:    # Triangle channel
             self.app.selectFrame("XE_Stack_Channel", 1)
-        else:  # Pulse channels
+        else:                       # Pulse channels
             self.app.selectFrame("XE_Stack_Channel", 0)
 
         # Highlight current channel
@@ -627,7 +876,7 @@ class SFXEditor:
             linear_ctr_reload: int = self._setup_values[0] & 0x7F
 
             timer_value: int = self._setup_values[2] | ((self._setup_values[3] & 0x3) << 8)
-            frequency = 1.789773 / (32 * (timer_value + 1))
+            frequency = 1789773 / ((timer_value + 1) << 5)
 
             length_ctr_load: int = (self._setup_values[3] & 0xF8) >> 3
 
@@ -643,11 +892,16 @@ class SFXEditor:
             self.app.clearEntry("XE_Triangle_Length_Load", callFunction=False, setFocus=False)
             self.app.setEntry("XE_Triangle_Length_Load", length_ctr_load, callFunction=False)
 
-        else:
+        else:                       # Pulse
             duty = (self._setup_values[0] >> 6)
             lc_flag = (self._setup_values[0] & 0x20) > 0
             cv_flag = (self._setup_values[0] & 0x10) > 0
             volume = self._setup_values[0] & 0x0F
+
+            sweep_enable = (self._setup_values[1] & 0x80) > 0
+            sweep_period = (self._setup_values[1] & 0x70) >> 4
+            sweep_negate = (self._setup_values[1] & 0x08) > 0
+            sweep_shift = self._setup_values[1] & 0x3
 
             timer = self._setup_values[2] | ((self._setup_values[3] & 0x03) << 8)
 
@@ -659,6 +913,23 @@ class SFXEditor:
             self.app.setScale("XE_Pulse_Volume", volume)
 
             self.app.setLabel("XE_Pulse_Label_0", f"{'Volume' if cv_flag else 'Env. Period'}: {volume:02}")
+
+            self.app.setCheckBox("XE_Sweep_Enable", sweep_enable, callFunction=False)
+
+            self.app.setLabel("XE_Pulse_Label_1", f"Sweep Period: {sweep_period:02}")
+            self.app.setScale("XE_Sweep_Period", sweep_period, callFunction=False)
+
+            self.app.setCheckBox("XE_Sweep_Negate", sweep_negate, callFunction=False)
+
+            self.app.setLabel("XE_Pulse_Label_2", f"Shift Count: {sweep_shift:02}")
+            self.app.setScale("XE_Sweep_Shift", sweep_shift, callFunction=False)
+
+            if sweep_enable:
+                self.app.enableScale("XE_Sweep_Period")
+                self.app.enableScale("XE_Sweep_Shift")
+            else:
+                self.app.disableScale("XE_Sweep_Period")
+                self.app.disableScale("XE_Sweep_Shift")
 
             self.app.clearEntry("XE_Pulse_Timer", callFunction=False, setFocus=False)
             self.app.setEntry("XE_Pulse_Timer", timer, callFunction=False)
@@ -673,7 +944,24 @@ class SFXEditor:
             else:
                 self.app.enableScale("XE_Pulse_Length_Load")
 
-        # List data entries
+        self._update_data_list()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _update_data_list(self, event_index: Optional[int] = None) -> None:
+        # Only update one item if event_index is specified
+        if event_index is not None:
+            v = event_index * (1 if self._volume_only else 2)
+            text = f"#{event_index:02}: ${self._sfx_data[v]:02X}"
+            if not self._volume_only:
+                text += f", ${self._sfx_data[v + 1]:02X}"
+
+            self.app.setListItemAtPos("XE_Data_List", event_index, text)
+            self.app.selectListItemAtPos("XE_Data_List", event_index, callFunction=False)
+
+            return
+
+        # Otherwise list all data entries
         self.app.clearEntry("XE_Data_Size", callFunction=False, setFocus=False)
         self.app.setEntry("XE_Data_Size", self._size, callFunction=False)
 
@@ -718,7 +1006,7 @@ class SFXEditor:
 
         # For the Triangle channel, use the LC Flag widget for the Control Flag instead, then disable the CV widget
         else:
-            control_flag = (self._sfx_data[index] & 80) > 0
+            control_flag = (self._sfx_data[index] & 0x80) > 0
             self.app.setCheckBoxText("XE_Data_LC_Flag", "Control Flag")
             self.app.setCheckBox("XE_Data_LC_Flag", control_flag, callFunction=False)
             self.app.disableCheckBox("XE_Data_CV_Flag")
@@ -791,12 +1079,6 @@ class SFXEditor:
         else:
             apu_channel = self.apu.noise
 
-        # self._voice_selector.setInputs([self.apu.pulse_0.output, self.apu.pulse_1.output,
-        #                                self.apu.triangle.output, self.apu.noise.output])
-        # self._voice_selector.setMode(1)
-        # self._voice_selector.setVoice(self._channel)
-        # self._voice_selector.out()
-
         apu_channel.write_reg0(self._setup_values[0])
         apu_channel.write_reg1(self._setup_values[1])
         apu_channel.write_reg2(self._setup_values[2])
@@ -839,9 +1121,6 @@ class SFXEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def stop_playback(self) -> None:
-        # if self._voice_selector.isOutputting():
-        #    self._voice_selector.stop()
-
         self.apu.stop()
 
         try:
@@ -875,7 +1154,7 @@ class SFXEditor:
               ___
              |   |
         _____|   |_____
-        trail     tail
+        trail     tail      tail = trail
         _______________
             length
         """
