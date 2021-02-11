@@ -647,8 +647,7 @@ class MusicEditor:
             address += 2
 
         # Read instrument data
-        if len(self._instruments) < 1:
-            self.read_instrument_data()
+        self.read_instrument_data()
 
         self.app.setMeter("PE_Progress_Meter", 10)
         self.app.topLevel.update()
@@ -4371,10 +4370,10 @@ class MusicEditor:
             reg_mask[2] = self.rom.read_bytes(0x8, 0x85A7, 4)
             reg_mask[3] = self.rom.read_bytes(0x8, 0x85AB, 4)
         elif self._bank == 9:
-            reg_mask[0] = self.rom.read_bytes(0x8, 0x85A2, 4)
-            reg_mask[1] = self.rom.read_bytes(0x8, 0x85A6, 4)
-            reg_mask[2] = self.rom.read_bytes(0x8, 0x85AA, 4)
-            reg_mask[3] = self.rom.read_bytes(0x8, 0x85AE, 4)
+            reg_mask[0] = self.rom.read_bytes(0x9, 0x85A3, 4)
+            reg_mask[1] = self.rom.read_bytes(0x9, 0x85A7, 4)
+            reg_mask[2] = self.rom.read_bytes(0x9, 0x85AB, 4)
+            reg_mask[3] = self.rom.read_bytes(0x9, 0x85AF, 4)
         else:
             self.app.errorBox("Music Editor", f"Unsupported ROM bank {self._bank}.", "Music_Editor")
             return
