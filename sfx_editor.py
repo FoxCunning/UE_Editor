@@ -7,14 +7,16 @@ import time
 import tkinter
 from typing import Optional, Tuple, List
 
+import pyo
+
 import appJar
 import colour
 from APU.APU import APU
 from debug import log
 from editor_settings import EditorSettings
-# ----------------------------------------------------------------------------------------------------------------------
-from music_editor import MusicEditor
 from rom import ROM
+
+# ----------------------------------------------------------------------------------------------------------------------
 
 _NOISE_FREQ_TABLE = [4811.2, 2405.6, 1202.8, 601.4, 300.7, 200.5, 150.4, 120.3,
                      95.3, 75.8, 50.6, 37.9, 25.3, 18.9, 9.5, 4.7]
@@ -26,13 +28,13 @@ class SFXEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def __init__(self, app: appJar.gui, settings: EditorSettings, rom: ROM, music_editor: MusicEditor):
+    def __init__(self, app: appJar.gui, settings: EditorSettings, rom: ROM, apu: APU, sound_server: pyo.Server):
         self.app = app
         self.rom = rom
         self.settings = settings
 
         # We need to access the Pyo server, and stop music playback before playing a SFX
-        self._music_editor = music_editor
+        self.sound_server = sound_server
 
         self.sfx_names: List[str] = []
 
@@ -52,7 +54,7 @@ class SFXEditor:
         # The rest of the data
         self._sfx_data: bytearray = bytearray()
 
-        self.apu: APU = APU()
+        self.apu: APU = apu
 
         self._play_thread: threading.Thread = threading.Thread()
         self._playing: bool = True
@@ -1255,10 +1257,10 @@ class SFXEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _play_sfx(self) -> None:
-        if not self._music_editor.sound_server.getIsBooted():
-            self._music_editor.sound_server.boot()
-        if not self._music_editor.sound_server.getIsStarted():
-            self._music_editor.sound_server.start()
+        if not self.sound_server.getIsBooted():
+            self.sound_server.boot()
+        if not self.sound_server.getIsStarted():
+            self.sound_server.start()
 
         # Mute channels
         self.apu.reset()

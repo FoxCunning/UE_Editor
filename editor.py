@@ -19,10 +19,13 @@ import shlex
 import subprocess
 import sys
 
+import pyo
+
 import colour
 
 from typing import List
 
+from APU.APU import APU
 from appJar import gui
 from battlefield_editor import BattlefieldEditor
 from editor_settings import EditorSettings
@@ -589,8 +592,19 @@ def open_rom(file_name: str) -> None:
         app.setMeter("PE_Progress_Meter", 60)
         app.topLevel.update()
 
+        app.setStatusbar("Booting sound server...")
+        if sys.platform == "win32":
+            sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
+                                                  winhost=settings.get("audio host"), buffersize=1024).boot()
+        else:
+            sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
+                                                  buffersize=1024).boot()
+        sound_server.setAmp(0.5)
+
+        apu = APU()
+
         # Music editor
-        music_editor = MusicEditor(app, rom, settings)
+        music_editor = MusicEditor(app, rom, settings, apu, sound_server)
         music_editor.read_track_titles()
 
         # Try to detect envelope bug
@@ -605,11 +619,12 @@ def open_rom(file_name: str) -> None:
         else:  # Custom / unrecognised music driver code
             app.disableCheckBox("ST_Fix_Envelope_Bug")
 
+        app.setStatusbar("Creating interfaces...")
         app.setMeter("PE_Progress_Meter", 70)
         app.topLevel.update()
 
         # Sound effect editor
-        sfx_editor = SFXEditor(app, settings, rom, music_editor)
+        sfx_editor = SFXEditor(app, settings, rom, apu, sound_server)
         names = sfx_editor.read_sfx_names()
         app.changeOptionBox("ST_Option_SFX", [f"0x{n:02X} {names[n]}" for n in range(52)])
         app.setOptionBox("ST_Option_SFX", 0)

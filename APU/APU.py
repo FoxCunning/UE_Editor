@@ -176,15 +176,15 @@ class TriangleChannel:
         self._linear_ctr: int = 0
         self._linear_ctr_reload_flag: bool = False
 
-        # seq = [(0, 1.), (15, 0.), (16, 0.), (31, 1.)]
-        # self.linear_table = pyo.LinTable(seq, 32)
-        seq = [(0, 1.), (31, 0.), (32, 0.), (63, 1.)]
-        self.linear_table = pyo.LinTable(seq, 64)
+        # --- Using LFO gives a full triangle wave ---
+        self.output = pyo.LFO(freq=0, sharp=1, type=3, mul=0)
 
-        self.output = pyo.Osc(self.linear_table, freq=0, interp=0, mul=0)
+        # --- Or we can create a half-triangle using a linear table ---
+        # seq = [(0, 1.), (31, 0.), (32, 0.), (63, 1.)]
+        # self.linear_table = pyo.LinTable(seq, 64)
+        # self.output = pyo.Osc(self.linear_table, freq=0, interp=0, mul=0)
 
-        # Using LFO gives a full triangle wave
-        # self.output = pyo.LFO(freq=0, sharp=1, type=3, mul=0)
+        self.volume: float = 1.
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -195,9 +195,13 @@ class TriangleChannel:
         if not self.control_flag:
             if self._length_ctr > 0:
                 self._length_ctr -= 1
-            elif self._linear_ctr == 0:
-                # Mute channel when the counter has reached zero
+
+        if self._linear_ctr == 0 and self._length_ctr == 0:
+            # Mute channel when the counter has reached zero
+            if self.output.mul > 0:
                 self.output.setMul(0)
+        elif self.output.mul == 0:
+            self.output.setMul(self.volume)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -207,14 +211,8 @@ class TriangleChannel:
         """
         if self._linear_ctr_reload_flag:
             self._linear_ctr = self.linear_ctr_reload_value
-            if self._length_ctr > 0:
-                self.output.setMul(1)
         elif self._linear_ctr > 0:
             self._linear_ctr -= 1
-
-        if self._linear_ctr == 0:
-            # Mute channel when the counter has reached zero
-            self.output.setMul(0)
 
         if not self.control_flag:
             self._linear_ctr_reload_flag = False
@@ -228,10 +226,15 @@ class TriangleChannel:
         Parameters
         ----------
         value: int
-            Byte value to write to the register
+            Byte value to write to the register:
+            C RRR RRRR
+            C = Linear Counter Control Flag / Length Counter Halt Flag
+             RRR RRRR = Linear Counter Reload Value
         """
         self.control_flag = (value & 0x80) > 0
         self._length_ctr = 0
+
+        # self.output.setMul(self.volume)
 
         self.linear_ctr_reload_value = value & 0x7F
 
@@ -274,7 +277,7 @@ class TriangleChannel:
         self._linear_ctr_reload_flag = True
         if not self.control_flag:
             self._length_ctr = self.length_ctr_load
-            self.output.setMul(1.)
+            # self.output.setMul(self.volume)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -429,18 +432,18 @@ class APU:
     # ------------------------------------------------------------------------------------------------------------------
 
     def reset(self) -> None:
-        self.pulse_0.write_reg0(0)
+        self.pulse_0.write_reg0(0x30)
         self.pulse_0.write_reg1(0)
         self.pulse_0.write_reg2(0)
         self.pulse_0.write_reg3(0)
-        self.pulse_1.write_reg0(0)
+        self.pulse_1.write_reg0(0x30)
         self.pulse_1.write_reg1(0)
         self.pulse_1.write_reg2(0)
         self.pulse_1.write_reg3(0)
-        self.triangle.write_reg0(0)
+        self.triangle.write_reg0(0x80)
         self.triangle.write_reg2(0)
         self.triangle.write_reg3(0)
-        self.noise.write_reg0(0)
+        self.noise.write_reg0(0x30)
         self.noise.write_reg2(0)
         self.noise.write_reg3(0)
 
@@ -494,3 +497,13 @@ class APU:
             self.pulse_1.half_frame()
             self.triangle.half_frame()
             self.noise.half_frame()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def set_triangle_volume(self, value: float) -> None:
+        if value > 1.:
+            value = 1.
+        elif value < 0.:
+            value = 0.
+
+        self.triangle.volume = value

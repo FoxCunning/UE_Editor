@@ -2,7 +2,6 @@ __author__ = "Fox Cunning"
 
 import configparser
 import os
-import sys
 import threading
 import time
 import tkinter
@@ -12,9 +11,10 @@ import pyo
 
 from dataclasses import dataclass, field
 from tkinter import Canvas
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import colour
+from APU.APU import APU
 from appJar import gui
 from appJar.appjar import ItemLookupError
 from debug import log
@@ -35,6 +35,18 @@ _NOTE_NAMES = ["C2 ", "C#2", "D2 ", "D#2", "E2 ", "F2 ", "F#2", "G2 ", "G#2", "A
 
 # This is to quickly get a duty representation based on the register's value
 _DUTY = ["12.5%", "  25%", "  50%", "  75%"]
+
+# Envelope lookup tables, one per envelope level (0-8) containing each one value per volume level (0-F)
+# This will be a lot quicker than calculating output levels every frame
+_ENV_TABLE = [[0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0],
+              [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1, 0x1],
+              [0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x1, 0x1, 0x2, 0x2, 0x2, 0x2, 0x3, 0x3, 0x3, 0x3],
+              [0x0, 0x0, 0x0, 0x0, 0x1, 0x1, 0x1, 0x1, 0x3, 0x3, 0x3, 0x3, 0x4, 0x4, 0x4, 0x4],
+              [0x0, 0x0, 0x1, 0x1, 0x2, 0x2, 0x3, 0x3, 0x4, 0x4, 0x5, 0x5, 0x6, 0x6, 0x7, 0x7],
+              [0x0, 0x0, 0x1, 0x1, 0x2, 0x2, 0x3, 0x3, 0x5, 0x5, 0x6, 0x6, 0x7, 0x7, 0x8, 0x8],
+              [0x0, 0x0, 0x1, 0x1, 0x3, 0x3, 0x4, 0x4, 0x6, 0x6, 0x7, 0x7, 0x9, 0x9, 0xA, 0xA],
+              [0x0, 0x0, 0x1, 0x1, 0x3, 0x3, 0x4, 0x4, 0x7, 0x7, 0x8, 0x8, 0xA, 0xA, 0xB, 0xB],
+              [0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF]]
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -60,7 +72,7 @@ class Instrument:
         if volume_id > self.envelope[envelope_id][0]:
             volume_id = self.envelope[envelope_id][0]
 
-        return (self.envelope[envelope_id][volume_id] & 0x3F) >> 1
+        return (self.envelope[envelope_id][volume_id] & 0x1F) >> 1
 
     def size(self, envelope_id: int) -> int:
         return self.envelope[envelope_id][0]
@@ -268,7 +280,7 @@ class TrackDataEntry:
 
 class MusicEditor:
 
-    def __init__(self, app: gui, rom: ROM, settings: EditorSettings):
+    def __init__(self, app: gui, rom: ROM, settings: EditorSettings, apu: APU, sound_server: pyo.Server):
         self.app = app
         self.rom = rom
 
@@ -297,14 +309,8 @@ class MusicEditor:
         self._instrument_redo_count: List[int] = []
 
         # --- General ---
-        # TODO Allow users to choose more options via settings
-        if sys.platform == "win32":
-            self.sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
-                                                       winhost=settings.get("audio host"), buffersize=1024).boot()
-        else:
-            self.sound_server: pyo.Server = pyo.Server(sr=settings.get("sample rate"), duplex=0, nchnls=1,
-                                                       buffersize=1024).boot()
-        self.sound_server.setAmp(0.5)
+        self.sound_server = sound_server
+        self.apu = apu
 
         self._triangle_volume = 0.5
 
@@ -331,6 +337,10 @@ class MusicEditor:
 
         # Starts from 1 and is decreased each frame. When 0, read next data segment.
         self._track_counter: List[int] = [1, 1, 1, 1]
+
+        # Each of the two ROM banks used for music contain two tables of period values for each note
+        self._note_period_lo: bytearray = bytearray()
+        self._note_period_hi: bytearray = bytearray()
 
         # Used for testing instruments
         self._test_octave: int = 0  # 0: Treble, 1: Alto, 2: Bass
@@ -387,6 +397,11 @@ class MusicEditor:
 
     def info(self, message: str):
         log(4, f"{self.__class__.__name__}", message)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def is_playing(self) -> bool:
+        return self._playing
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -495,10 +510,6 @@ class MusicEditor:
 
         # If playing, stop and wait for the thread to finish
         self.stop_playback()
-        if self.sound_server.getIsStarted():
-            self.sound_server.stop()
-        if self.sound_server.getIsBooted():
-            self.sound_server.shutdown()
 
         self.app.hideSubWindow("Track_Editor", useStopFunction=False)
         self.app.emptySubWindow("Track_Editor")
@@ -527,10 +538,6 @@ class MusicEditor:
 
         # If playing test notes, stop and wait for the thread to finish
         self.stop_playback()
-        if self.sound_server.getIsStarted():
-            self.sound_server.stop()
-        if self.sound_server.getIsBooted():
-            self.sound_server.shutdown()
 
         self.app.hideSubWindow("Instrument_Editor", useStopFunction=False)
         self.app.emptySubWindow("Instrument_Editor")
@@ -563,11 +570,22 @@ class MusicEditor:
                 self.warning("Slow playback detected! This may be due to too many non-note events in a track, or " +
                              "a slow machine, or slow audio host API.")
 
+        self.apu.reset()
+        self.apu.stop()
+
     # ------------------------------------------------------------------------------------------------------------------
 
     def start_playback(self, update_tracker: bool = False, seek: bool = False, tracks=None) -> None:
         # self._stop_event.clear()
+
         self._playing = True
+
+        if update_tracker:
+            if self._update_thread.is_alive():
+                self.warning("UI Update thread already running!")
+            else:
+                self._update_thread = threading.Thread(target=self._tracker_update_loop, args=())
+                self._update_thread.start()
 
         if self._play_thread.is_alive():
             self.warning("Playback thread already running!")
@@ -577,14 +595,10 @@ class MusicEditor:
                                                      args=((self._selected_channel, self._selected_element), tracks,))
             else:
                 self._play_thread = threading.Thread(target=self._play_loop, args=((0, 0), tracks,))
-            self._play_thread.start()
 
-        if update_tracker:
-            if self._update_thread.is_alive():
-                self.warning("UI Update thread already running!")
-            else:
-                self._update_thread = threading.Thread(target=self._tracker_update_loop, args=())
-                self._update_thread.start()
+            self.apu.reset()
+            self.apu.play()
+            self._play_thread.start()
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -609,6 +623,16 @@ class MusicEditor:
         self.app.setLabel("PE_Progress_Label", "Loading...")
         self.app.setMeter("PE_Progress_Meter", 0)
         self.app.topLevel.update()
+
+        # Load note period tables
+        # Interestingly, there seem to be 78 entries for high byte but only 60 for low byte... we'll let it overflow
+        # like it would in the game for an "invalid" note index
+        if bank == 8:
+            self._note_period_hi = self.rom.read_bytes(bank, 0x85AF, 78)
+            self._note_period_lo = self.rom.read_bytes(bank, 0x85FD, 78)
+        else:
+            self._note_period_hi = self.rom.read_bytes(bank, 0x85B2, 78)
+            self._note_period_lo = self.rom.read_bytes(bank, 0x8600, 78)
 
         try:
             self.app.getFrameWidget("SE_Frame_Buttons")
@@ -1059,6 +1083,16 @@ class MusicEditor:
             self.instrument_info()
             self.app.showSubWindow("Instrument_Editor")
             return
+
+        # Load note period tables
+        # Interestingly, there seem to be 78 entries for high byte but only 60 for low byte... we'll let it overflow
+        # like it would in the game for an "invalid" note index
+        if bank == 8:
+            self._note_period_hi = self.rom.read_bytes(bank, 0x85AF, 78)
+            self._note_period_lo = self.rom.read_bytes(bank, 0x85FD, 78)
+        else:
+            self._note_period_hi = self.rom.read_bytes(bank, 0x85B2, 78)
+            self._note_period_lo = self.rom.read_bytes(bank, 0x8600, 78)
 
         self.read_instrument_data()
 
@@ -2727,7 +2761,6 @@ class MusicEditor:
         elif widget == "SE_Play_Stop":  # ------------------------------------------------------------------------------
             if self._play_thread.is_alive():
                 self.stop_playback()
-                self.app.enableScale("SE_Triangle_Volume")
                 self.app.setButtonImage(widget, "res/stop_play.gif")
 
                 self.app.setListBoxMulti(f"SE_List_Channel_0", multi=True)
@@ -2750,7 +2783,6 @@ class MusicEditor:
                 self.app.setListBoxGroup(f"SE_List_Channel_2", group=True)
                 self.app.setListBoxGroup(f"SE_List_Channel_3", group=True)
 
-                self.app.disableScale("SE_Triangle_Volume")
                 self.start_playback(True)
                 self.app.setButtonImage(widget, "res/stop.gif")
 
@@ -2765,7 +2797,6 @@ class MusicEditor:
                 self.app.setListBoxGroup(f"SE_List_Channel_1", group=True)
                 self.app.setListBoxGroup(f"SE_List_Channel_2", group=True)
                 self.app.setListBoxGroup(f"SE_List_Channel_3", group=True)
-                self.app.disableScale("SE_Triangle_Volume")
                 self.start_playback(True, seek=True)
                 self.app.setButtonImage("SE_Play_Stop", "res/stop.gif")
 
@@ -3357,14 +3388,20 @@ class MusicEditor:
                 # "Mute" other channels
                 tracks[1] = []
                 tracks[1].append(TrackDataEntry.new_volume(0))
+                tracks[1].append(TrackDataEntry.new_vibrato(False, 0, 0))
+                tracks[1].append(TrackDataEntry.new_instrument(0))
                 tracks[1].append(TrackDataEntry.new_rest(note_length))
                 tracks[1].append(TrackDataEntry.new_rewind(0))
                 tracks[2] = []
                 tracks[2].append(TrackDataEntry.new_volume(0))
+                tracks[2].append(TrackDataEntry.new_vibrato(False, 0, 0))
+                tracks[2].append(TrackDataEntry.new_instrument(0))
                 tracks[2].append(TrackDataEntry.new_rest(note_length))
                 tracks[2].append(TrackDataEntry.new_rewind(0))
                 tracks[3] = []
                 tracks[3].append(TrackDataEntry.new_volume(0))
+                tracks[3].append(TrackDataEntry.new_vibrato(False, 0, 0))
+                tracks[3].append(TrackDataEntry.new_instrument(0))
                 tracks[3].append(TrackDataEntry.new_rest(note_length))
                 tracks[3].append(TrackDataEntry.new_rewind(0))
 
@@ -3390,6 +3427,7 @@ class MusicEditor:
         Callback for left mouse button release on triangle channel volume widget.
         """
         self._triangle_volume = self.app.getScale("SE_Triangle_Volume") / 100
+        self.apu.set_triangle_volume(self._triangle_volume)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -4276,7 +4314,706 @@ class MusicEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _play_loop(self, seek: Tuple[int, int] = (0, 0), tracks=None) -> None:
+    def _play_loop(self, seek: Tuple[int, int] = (0, 0), tracks: Optional[List[List[TrackDataEntry]]] = None) -> None:
+        """
+                The playback loop, which should run in its own thread.
+                Parameters
+                ----------
+                seek: Tuple[int, int]
+                    A tuple (channel, index) used to start playing from a specific point in this track
+                """
+        if tracks is None:
+            tracks = self._track_data
+
+        # --- Init code ---
+        if self.sound_server.getIsBooted() < 1:
+            self.sound_server.boot()
+            # Give the sound server some time to boot
+            time.sleep(0.5)
+            if not self.sound_server.getIsBooted():
+                time.sleep(1.5)
+
+        if not self.sound_server.getIsStarted():
+            self.sound_server.start()
+            time.sleep(.2)
+
+        self.apu.set_triangle_volume(self._triangle_volume)
+
+        # Approximate NTSC timing
+        frame_interval = 0.0166  # 1 / 60
+
+        channel_volume = bytearray([0, 0, 0, 0])
+        note_volume = bytearray([0, 0, 0, 0])
+        channel_instrument: List[Instrument] = [Instrument(), Instrument(), Instrument(), Instrument()]
+        # Each channel has a set of 3 triggers that control when to switch to the next envelope
+        envelope_triggers = [bytearray([0, 0, 0]),
+                             bytearray([0, 0, 0]),
+                             bytearray([0, 0, 0]),
+                             bytearray([0, 0, 0])]
+
+        # This controls the difference between the "base" note period and each entry in the vibrato table
+        vibrato_factor = bytearray([0, 0, 0, 0])
+        # How much to increment the counter, affects how soon we will switch to the next period entry in the table
+        # These are 16-bit values
+        vibrato_increment = [0, 0, 0, 0]
+        vibrato_counter = [0, 0, 0, 0]
+        # Low byte of note period will be taken from this table at each frame
+        vibrato_table = [bytearray([0, 0, 0, 0, 0, 0, 0, 0]),
+                         bytearray([0, 0, 0, 0, 0, 0, 0, 0]),
+                         bytearray([0, 0, 0, 0, 0, 0, 0, 0]),
+                         bytearray([0, 0, 0, 0, 0, 0, 0, 0])]
+
+        # Read the register masks from ROM
+        reg_mask: List[bytearray] = [bytearray(), bytearray(), bytearray(), bytearray()]
+        if self._bank == 8:
+            reg_mask[0] = self.rom.read_bytes(0x8, 0x859F, 4)
+            reg_mask[1] = self.rom.read_bytes(0x8, 0x85A3, 4)
+            reg_mask[2] = self.rom.read_bytes(0x8, 0x85A7, 4)
+            reg_mask[3] = self.rom.read_bytes(0x8, 0x85AB, 4)
+        elif self._bank == 9:
+            reg_mask[0] = self.rom.read_bytes(0x8, 0x85A2, 4)
+            reg_mask[1] = self.rom.read_bytes(0x8, 0x85A6, 4)
+            reg_mask[2] = self.rom.read_bytes(0x8, 0x85AA, 4)
+            reg_mask[3] = self.rom.read_bytes(0x8, 0x85AE, 4)
+        else:
+            self.app.errorBox("Music Editor", f"Unsupported ROM bank {self._bank}.", "Music_Editor")
+            return
+
+        # At the end of each play loop, these values will be written to the corresponding APU registers of their
+        # respective channels
+        reg_0 = bytearray([reg_mask[0][0], reg_mask[0][1], reg_mask[0][2], reg_mask[0][3]])
+        reg_1 = bytearray([reg_mask[1][0], reg_mask[1][1], reg_mask[1][2], reg_mask[1][3]])
+        reg_2 = bytearray([reg_mask[2][0], reg_mask[2][1], reg_mask[2][2], reg_mask[2][3]])
+        reg_3 = bytearray([reg_mask[3][0], reg_mask[3][1], reg_mask[3][2], reg_mask[3][3]])
+
+        # Initialise APU registers
+        self.apu.pulse_0.write_reg0(reg_mask[0][0])
+        self.apu.pulse_0.write_reg1(reg_mask[0][1])
+        self.apu.pulse_0.write_reg2(reg_mask[0][2])
+        self.apu.pulse_0.write_reg3(reg_mask[0][3])
+
+        self.apu.pulse_1.write_reg0(reg_mask[1][0])
+        self.apu.pulse_1.write_reg1(reg_mask[1][1])
+        self.apu.pulse_1.write_reg2(reg_mask[1][2])
+        self.apu.pulse_1.write_reg3(reg_mask[1][3])
+
+        self.apu.triangle.write_reg0(reg_mask[2][0])
+        self.apu.triangle.write_reg2(reg_mask[2][2])
+        self.apu.triangle.write_reg3(reg_mask[2][3])
+
+        self.apu.noise.write_reg0(reg_mask[3][0])
+        self.apu.noise.write_reg2(reg_mask[3][2])
+        self.apu.noise.write_reg3(reg_mask[3][3])
+
+        # Pre-allocate some variables so we don't need a lot of malloc during the loop
+        # Envelope size, three envelopes per instrument, one instrument per channel
+        size_0: bytearray = bytearray([0, 0, 0, 0])
+        size_1: bytearray = bytearray([0, 0, 0, 0])
+        size_2: bytearray = bytearray([0, 0, 0, 0])
+        tmp_int: int
+        tmp_vol: int        # Volume before attenuation
+
+        triangle_octave: bool = False
+
+        self._track_counter = [0, 0, 0, 0]
+        self._track_position = [0, 0, 0, 0]
+
+        # --- Seek code ---
+
+        if seek[1] != 0:
+            # Process the seek channel's elements keeping count of how many frames they take, until we reach the
+            #   seek point. We also change the initial values of counters, volumes, instruments and vibrato.
+            c = seek[0]
+            self._track_position[c] = seek[1]
+            element_index = 0
+            target_frames = 0
+
+            for e in tracks[c]:
+                if element_index == seek[1]:
+                    break
+
+                if e.control == TrackDataEntry.CHANNEL_VOLUME:
+                    channel_volume[c] = e.raw[1]
+
+                elif e.control == TrackDataEntry.SELECT_INSTRUMENT:
+                    channel_instrument[c] = self._instruments[e.raw[1]]
+
+                elif e.control == TrackDataEntry.SET_VIBRATO and c < 3:
+                    vibrato_factor[c] = e.raw[2]
+                    # Use vibrato_speed to set the counters
+                    if e.raw[3] < 2:
+                        # Disable vibrato
+                        vibrato_counter[c] = 0
+                        vibrato_increment[c] = 0
+                    else:
+                        # Enable vibrato
+                        vibrato_increment[c] = 0x800 // e.raw[2]
+                        vibrato_counter[c] = 0x200
+
+                    if c == 2:
+                        triangle_octave = e.raw[1] < 0xFF
+
+                elif e.control == TrackDataEntry.REST:
+                    target_frames += e.raw[1]
+
+                elif e.control == TrackDataEntry.REWIND:
+                    # This means we are trying to seek from the end of the track.
+                    #   Nice try, but we'll start from 0 instead.
+                    target_frames = 0
+                    self._track_counter[c] = 1
+                    self._track_position[c] = 0
+                    break
+
+                elif e.raw[0] < 0xF0:
+                    target_frames += e.note.duration
+
+                element_index += 1
+
+            # Now we go through all the other channels to find what element is playing after the desired amount of
+            #   frames has passed.
+            for c in range(4):
+                if c == seek[0]:
+                    continue  # Skip the seek channel, we have already processed that
+
+                frames = 0
+                element_index = 0
+                for e in tracks[c]:
+                    if frames == target_frames:
+                        # Start this channel exactly from here
+                        self._track_position[c] = element_index
+                        self._track_counter[c] = 1
+                        break
+
+                    if frames > target_frames:
+                        # Start in the middle of this element, e.g. during a rest of while a note is playing.
+                        self._track_position[c] = element_index
+                        # We need to calculate how many frames into the rest/note we need to be to stay in sync.
+                        self._track_counter[c] = 1 + (frames - target_frames)
+                        break
+
+                    if e.control == TrackDataEntry.CHANNEL_VOLUME:
+                        channel_volume[c] = e.raw[1]
+
+                    elif e.control == TrackDataEntry.SELECT_INSTRUMENT:
+                        channel_instrument[c] = self._instruments[e.raw[1]]
+
+                        # Store each envelope's size, it will be used to calculate trigger points when a note is played
+                        size_0[c] = channel_instrument[c].size(0)
+                        size_1[c] = channel_instrument[c].size(1)
+                        size_2[c] = channel_instrument[c].size(2)
+
+                    elif e.control == TrackDataEntry.SET_VIBRATO and c < 3:
+                        vibrato_factor[c] = e.raw[3]
+                        # Use vibrato_speed to set the counters
+                        if e.raw[1] < 2:
+                            # Disable vibrato
+                            vibrato_counter[c] = 0
+                            vibrato_increment[c] = 0
+                        else:
+                            # Enable vibrato
+                            vibrato_increment[c] = 0x800 // e.raw[1]
+                            vibrato_counter[c] = 0x200
+
+                        if c == 2:
+                            if e.raw[1] == 0xFF:
+                                triangle_octave = True
+                            else:
+                                triangle_octave = False
+
+                    elif e.control == TrackDataEntry.REST:
+                        frames += e.raw[1]
+
+                    elif e.control == TrackDataEntry.REWIND:
+                        # TODO Detect and prevent endless loops if there are no notes or rests
+                        element_index = e.loop_position
+
+                    elif e.raw[0] < 0xF0:
+                        frames += e.note.duration
+
+                    element_index += 1
+
+        # --- End of seek code ---
+
+        c = 0  # Currently playing channel
+
+        # A partially unrolled loop is necessary for a fast enough playback
+        while self._playing:
+            start_time = time.time()
+
+            # ---------------------------------------- PULSE 0 ---------------------------------------------------------
+
+            # Note that the initial value should be 1, so on the first iteration we immediately read
+            # the first segment
+            self._track_counter[c] -= 1
+
+            # Keep reading data segments until we find a rest or a note
+            while self._track_counter[c] < 1:
+                track_data = tracks[c][self._track_position[c]]
+
+                # Interpret this data
+
+                # Go from the most to least common
+                if track_data.raw[0] < 0xF0:        # PULSE 0 NOTE
+                    period_lo = self._note_period_lo[track_data.raw[0]]
+                    period_hi = self._note_period_hi[track_data.raw[0]]
+
+                    # Do the same vibrato calculations done by the game's music engine
+                    # Basically, it creates a table of 8 values for the low byte of the note period, and cycles
+                    # through them at a rate that depends on the vibrato speed ("increment" value)
+                    vibrato_value = (period_lo >> 3) | ((period_hi & 0x03) << 5)
+                    
+                    tmp_int = vibrato_value // vibrato_factor[c] if vibrato_factor[c] > 0 else 0
+
+                    # Timer High register value is written as-is
+                    reg_3[c] = period_hi
+
+                    # Put the low byte in the vibrato table, positions 0 and 4
+                    vibrato_table[c][0] = vibrato_table[c][4] = period_lo
+                    # Entries 1 and 3 add the offset
+                    vibrato_table[c][1] = vibrato_table[c][3] = period_lo + tmp_int
+                    # Entry 2 adds the offset again
+                    vibrato_table[c][2] = (vibrato_table[c][3] + tmp_int) % 256
+                    # Entries 5 and 7 subtract the offset instead
+                    vibrato_table[c][5] = vibrato_table[c][7] = period_lo - tmp_int
+                    # Finally entry 6 subtracts it again
+                    vibrato_table[c][6] = (vibrato_table[c][5] - tmp_int) % 256
+
+                    # Setting the counter will end the "event reading" loop
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Now we set "trigger points" for the instrument's envelope
+
+                    # Trigger 0 is the note duration
+                    envelope_triggers[c][0] = track_data.raw[1]
+
+                    # Trigger 1 is trigger 0 - the size of envelope 0
+                    # This means just enough time to play all the values in env.0 before we switch to env.1
+                    envelope_triggers[c][1] = track_data.raw[1] - size_0[c] if track_data.raw[1] > size_0[c] else 0
+
+                    # Trigger 2
+                    tmp_int = envelope_triggers[c][1] - size_2[c] if envelope_triggers[c][1] > size_2[c] else 0
+
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+
+                    envelope_triggers[c][2] = envelope_triggers[c][1] - tmp_int
+
+                    note_volume[c] = channel_volume[c]
+
+                elif track_data.control == 0xFE:    # PULSE 0 REST
+                    # The "data read" loop should end after setting this
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Skip all the envelope trigger stuff, it has no effect anyway...
+
+                    # This should effectively mute the channel
+                    reg_0[c] = reg_mask[c][0]
+                    reg_1[c] = reg_mask[c][1]
+                    reg_2[c] = reg_mask[c][2]
+                    reg_3[c] = reg_mask[c][3]
+
+                    envelope_triggers[c][0] = track_data.raw[1]
+                    envelope_triggers[c][1] = 0
+                    envelope_triggers[c][2] = 0
+
+                    note_volume[c] = 0
+
+                elif track_data.control == 0xFC:    # PULSE 0 INSTRUMENT
+                    channel_instrument[c] = self._instruments[track_data.raw[1]]
+
+                    # Store each envelope's size, it will be used to calculate trigger points when a note is played
+                    size_0[c] = channel_instrument[c].size(0)
+                    size_1[c] = channel_instrument[c].size(1)
+                    size_2[c] = channel_instrument[c].size(2)
+
+                elif track_data.control == 0xFB:    # PULSE 0 VOLUME
+                    channel_volume[c] = note_volume[c] = track_data.raw[1]
+
+                elif track_data.control == 0xFD:    # PULSE 0 VIBRATO
+                    vibrato_factor[c] = track_data.raw[3]
+
+                    if track_data.raw[2] < 2:
+                        # Disable vibrato if speed is less than 2
+                        vibrato_increment[c] = 0
+                        vibrato_counter[c] = 0
+                    else:
+                        vibrato_increment[c] = 0x0800 // track_data.raw[2]
+                        vibrato_counter[c] = 0x0200
+
+                elif track_data.control == 0xFF:    # PULSE 0 REWIND/END
+                    self._track_position[c] = track_data.loop_position - 1
+
+                self._track_position[c] += 1
+
+            # Note/Rest found or still playing one: generate / manipulate sound
+            if self._track_counter[c] > 1:
+                # Keep playing the current note
+
+                # Use vibrato table and counters to set the Timer Low register
+                vibrato_counter[c] += vibrato_increment[c]
+                tmp_int = (vibrato_counter[c] >> 8) & 0x07
+                reg_2[c] = vibrato_table[c][tmp_int]
+
+                # The value for timer high was written when the note event was encountered, and is not modified here
+
+                # Use instrument envelopes and channel volume to control register 0
+
+                if self._track_counter[c] >= envelope_triggers[c][1]:       # Envelope 0
+                    # Index within the envelope is: trigger - remaining note duration
+                    tmp_int = (envelope_triggers[c][0] - self._track_counter[c]) + 1
+                    if tmp_int > size_0[c]:
+                        tmp_int = size_0[c]
+                    tmp_vol = channel_instrument[c].envelope[0][tmp_int]
+
+                elif self._track_counter[c] >= envelope_triggers[c][2]:     # Envelope 1
+                    tmp_int = (envelope_triggers[c][1] - self._track_counter[c]) + 1
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+                    tmp_vol = channel_instrument[c].envelope[1][tmp_int]
+
+                else:                                                       # Envelope 2
+                    tmp_int = (envelope_triggers[c][2] - self._track_counter[c]) + 1
+                    if tmp_int > size_2[c]:
+                        tmp_int = size_2[c]
+                    tmp_vol = channel_instrument[c].envelope[2][tmp_int]
+
+                # Now we must calculate the output based on the envelope and channel volume, but instead of doing
+                # the actual calculation, we use lookup tables
+                # tmp_vol bits 7-6 = duty, tmp_vol bits 5-1 = volume table to use, bit 0 ignored
+                reg_0[c] = (tmp_vol & 0xC0) | _ENV_TABLE[(tmp_vol & 0x1F) >> 1][note_volume[c]]
+
+                # Finally write registers
+                self.apu.pulse_0.write_reg0(reg_0[c] | reg_mask[c][0])
+                # self.apu.pulse_0.write_reg1(reg_1[c] | reg_mask[c][1]) We can skip this, it's not used
+                self.apu.pulse_0.write_reg2(reg_2[c])
+                self.apu.pulse_0.write_reg3(reg_3[c])
+
+            # ---------------------------------------- PULSE 1 ---------------------------------------------------------
+
+            c = 1
+
+            # Note that the initial value should be 1, so on the first iteration we immediately read
+            # the first segment
+            self._track_counter[c] -= 1
+
+            # Keep reading data segments until we find a rest or a note
+            while self._track_counter[c] < 1:
+                track_data = tracks[c][self._track_position[c]]
+
+                # Interpret this data
+
+                # Go from the most to least common
+                if track_data.raw[0] < 0xF0:  # PULSE 1 NOTE
+                    period_lo = self._note_period_lo[track_data.raw[0]]
+                    period_hi = self._note_period_hi[track_data.raw[0]]
+
+                    # Do the same vibrato calculations done by the game's music engine
+                    # Basically, it creates a table of 8 values for the low byte of the note period, and cycles
+                    # through them at a rate that depends on the vibrato speed ("increment" value)
+                    vibrato_value = (period_lo >> 3) | ((period_hi & 0x03) << 5)
+
+                    tmp_int = vibrato_value // vibrato_factor[c] if vibrato_factor[c] > 0 else 0
+
+                    # Timer High register value is written as-is
+                    reg_3[c] = period_hi
+
+                    # Put the low byte in the vibrato table, positions 0 and 4
+                    vibrato_table[c][0] = vibrato_table[c][4] = period_lo
+                    # Entries 1 and 3 add the offset
+                    vibrato_table[c][1] = vibrato_table[c][3] = period_lo + tmp_int
+                    # Entry 2 adds the offset again
+                    vibrato_table[c][2] = (vibrato_table[c][3] + tmp_int) % 256
+                    # Entries 5 and 7 subtract the offset instead
+                    vibrato_table[c][5] = vibrato_table[c][7] = period_lo - tmp_int
+                    # Finally entry 6 subtracts it again
+                    vibrato_table[c][6] = (vibrato_table[c][5] - tmp_int) % 256
+
+                    # Setting the counter will end the "event reading" loop
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Now we set "trigger points" for the instrument's envelope
+
+                    # Trigger 0 is the note duration
+                    envelope_triggers[c][0] = track_data.raw[1]
+
+                    # Trigger 1 is trigger 0 - the size of envelope 0
+                    # This means just enough time to play all the values in env.0 before we switch to env.1
+                    envelope_triggers[c][1] = track_data.raw[1] - size_0[c] if track_data.raw[1] > size_0[c] else 0
+
+                    # Trigger 2
+                    tmp_int = envelope_triggers[c][1] - size_2[c] if envelope_triggers[c][1] > size_2[c] else 0
+
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+
+                    envelope_triggers[c][2] = envelope_triggers[c][1] - tmp_int
+
+                    note_volume[c] = channel_volume[c]
+
+                elif track_data.control == 0xFE:  # PULSE 1 REST
+                    # The "data read" loop should end after setting this
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Skip all the envelope trigger stuff, it has no effect anyway...
+
+                    # This should effectively mute the channel
+                    reg_0[c] = reg_mask[c][0]
+                    reg_1[c] = reg_mask[c][1]
+                    reg_2[c] = reg_mask[c][2]
+                    reg_3[c] = reg_mask[c][3]
+
+                    envelope_triggers[c][0] = track_data.raw[1]
+                    envelope_triggers[c][1] = 0
+                    envelope_triggers[c][2] = 0
+
+                    note_volume[c] = 0
+
+                elif track_data.control == 0xFC:  # PULSE 1 INSTRUMENT
+                    channel_instrument[c] = self._instruments[track_data.raw[1]]
+
+                    # Store each envelope's size, it will be used to calculate trigger points when a note is played
+                    size_0[c] = channel_instrument[c].size(0)
+                    size_1[c] = channel_instrument[c].size(1)
+                    size_2[c] = channel_instrument[c].size(2)
+
+                elif track_data.control == 0xFB:  # PULSE 1 VOLUME
+                    channel_volume[c] = note_volume[c] = track_data.raw[1]
+
+                elif track_data.control == 0xFD:  # PULSE 1 VIBRATO
+                    vibrato_factor[c] = track_data.raw[3]
+
+                    if track_data.raw[2] < 2:
+                        # Disable vibrato if speed is less than 2
+                        vibrato_increment[c] = 0
+                        vibrato_counter[c] = 0
+                    else:
+                        vibrato_increment[c] = 0x0800 // track_data.raw[2]
+                        vibrato_counter[c] = 0x0200
+
+                elif track_data.control == 0xFF:  # PULSE 1 REWIND/END
+                    self._track_position[c] = track_data.loop_position - 1
+
+                self._track_position[c] += 1
+
+            # Note/Rest found or still playing one: generate / manipulate sound
+            if self._track_counter[c] > 1:
+                # Keep playing the current note
+
+                # Use vibrato table and counters to set the Timer Low register
+                vibrato_counter[c] += vibrato_increment[c]
+                tmp_int = (vibrato_counter[c] >> 8) & 0x07
+                reg_2[c] = vibrato_table[c][tmp_int]
+
+                # The value for timer high was written when the note event was encountered, and is not modified here
+
+                # Use instrument envelopes and channel volume to control register 0
+
+                if self._track_counter[c] >= envelope_triggers[c][1]:  # Envelope 0
+                    # Index within the envelope is: trigger - remaining note duration
+                    tmp_int = (envelope_triggers[c][0] - self._track_counter[c]) + 1
+                    if tmp_int > size_0[c]:
+                        tmp_int = size_0[c]
+                    tmp_vol = channel_instrument[c].envelope[0][tmp_int]
+
+                elif self._track_counter[c] >= envelope_triggers[c][2]:  # Envelope 1
+                    tmp_int = (envelope_triggers[c][1] - self._track_counter[c]) + 1
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+                    tmp_vol = channel_instrument[c].envelope[1][tmp_int]
+
+                else:  # Envelope 2
+                    tmp_int = (envelope_triggers[c][2] - self._track_counter[c]) + 1
+                    if tmp_int > size_2[c]:
+                        tmp_int = size_2[c]
+                    tmp_vol = channel_instrument[c].envelope[2][tmp_int]
+
+                # Now we must calculate the output based on the envelope and channel volume, but instead of doing
+                # the actual calculation, we use lookup tables
+                # tmp_vol bits 7-6 = duty, tmp_vol bits 5-1 = volume table to use, bit 0 ignored
+                reg_0[c] = (tmp_vol & 0xC0) | _ENV_TABLE[(tmp_vol & 0x1F) >> 1][note_volume[c]]
+
+                # Finally write registers
+                self.apu.pulse_1.write_reg0(reg_0[c] | reg_mask[c][0])
+                # self.apu.pulse_1.write_reg1(reg_1[c] | reg_mask[c][1]) We can skip this, it's not used
+                self.apu.pulse_1.write_reg2(reg_2[c])
+                self.apu.pulse_1.write_reg3(reg_3[c])
+
+            # ---------------------------------------- TRIANGLE --------------------------------------------------------
+
+            c = 2
+
+            self._track_counter[c] -= 1
+
+            # Keep reading data segments until we find a rest or a note
+            while self._track_counter[c] < 1:
+                track_data = tracks[c][self._track_position[c]]
+
+                # Interpret this data
+
+                # Go from the most to least common
+                if track_data.raw[0] < 0xF0:  # TRIANGLE NOTE
+                    note_index = track_data.raw[0] + (12 if triangle_octave else 0)
+                    period_lo = self._note_period_lo[note_index]
+                    period_hi = self._note_period_hi[note_index]
+
+                    # Do the same vibrato calculations done by the game's music engine
+                    # Basically, it creates a table of 8 values for the low byte of the note period, and cycles
+                    # through them at a rate that depends on the vibrato speed ("increment" value)
+                    vibrato_value = (period_lo >> 3) | ((period_hi & 0x03) << 5)
+
+                    tmp_int = vibrato_value // vibrato_factor[c] if vibrato_factor[c] > 0 else 0
+
+                    # Timer High register value is written as-is
+                    reg_3[c] = period_hi
+
+                    # Put the low byte in the vibrato table, positions 0 and 4
+                    vibrato_table[c][0] = vibrato_table[c][4] = period_lo
+                    # Entries 1 and 3 add the offset
+                    vibrato_table[c][1] = vibrato_table[c][3] = period_lo + tmp_int
+                    # Entry 2 adds the offset again
+                    vibrato_table[c][2] = (vibrato_table[c][3] + tmp_int) % 256
+                    # Entries 5 and 7 subtract the offset instead
+                    vibrato_table[c][5] = vibrato_table[c][7] = period_lo - tmp_int
+                    # Finally entry 6 subtracts it again
+                    vibrato_table[c][6] = (vibrato_table[c][5] - tmp_int) % 256
+
+                    # Setting the counter will end the "event reading" loop
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Now we set "trigger points" for the instrument's envelope
+
+                    # Trigger 0 is the note duration
+                    envelope_triggers[c][0] = track_data.raw[1]
+
+                    # Trigger 1 is trigger 0 - the size of envelope 0
+                    # This means just enough time to play all the values in env.0 before we switch to env.1
+                    envelope_triggers[c][1] = track_data.raw[1] - size_0[c] if track_data.raw[1] > size_0[c] else 0
+
+                    # Trigger 2
+                    tmp_int = envelope_triggers[c][1] - size_2[c] if envelope_triggers[c][1] > size_2[c] else 0
+
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+
+                    envelope_triggers[c][2] = envelope_triggers[c][1] - tmp_int
+
+                    note_volume[c] = channel_volume[c]
+
+                elif track_data.control == 0xFE:  # TRIANGLE REST
+                    # The "data read" loop should end after setting this
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Skip all the envelope trigger stuff, it has no effect anyway...
+
+                    # This should effectively mute the channel
+                    reg_0[c] = reg_mask[c][0]
+                    reg_1[c] = reg_mask[c][1]
+                    reg_2[c] = reg_mask[c][2]
+                    reg_3[c] = reg_mask[c][3]
+
+                    envelope_triggers[c][0] = track_data.raw[1]
+                    envelope_triggers[c][1] = 0
+                    envelope_triggers[c][2] = 0
+
+                    note_volume[c] = 0
+
+                elif track_data.control == 0xFC:  # TRIANGLE INSTRUMENT
+                    channel_instrument[c] = self._instruments[track_data.raw[1]]
+
+                    # Store each envelope's size, it will be used to calculate trigger points when a note is played
+                    size_0[c] = channel_instrument[c].size(0)
+                    size_1[c] = channel_instrument[c].size(1)
+                    size_2[c] = channel_instrument[c].size(2)
+
+                elif track_data.control == 0xFB:  # TRIANGLE VOLUME
+                    channel_volume[c] = note_volume[c] = track_data.raw[1]
+
+                elif track_data.control == 0xFD:  # TRIANGLE VIBRATO
+                    # +12 semitones if value is not FF
+                    triangle_octave = (track_data.raw[1] < 0xFF)
+
+                    vibrato_factor[c] = track_data.raw[3]
+
+                    if track_data.raw[2] < 2:
+                        # Disable vibrato if speed is less than 2
+                        vibrato_increment[c] = 0
+                        vibrato_counter[c] = 0
+                    else:
+                        vibrato_increment[c] = 0x0800 // track_data.raw[2]
+                        vibrato_counter[c] = 0x0200
+
+                elif track_data.control == 0xFF:  # TRIANGLE REWIND/END
+                    self._track_position[c] = track_data.loop_position - 1
+
+                self._track_position[c] += 1
+
+            # Note/Rest found or still playing one: generate / manipulate sound
+            if self._track_counter[c] > 1:
+                # Keep playing the current note
+
+                # Use vibrato table and counters to set the Timer Low register
+                vibrato_counter[c] += vibrato_increment[c]
+                tmp_int = (vibrato_counter[c] >> 8) & 0x07
+                reg_2[c] = vibrato_table[c][tmp_int]
+
+                # The value for timer high was written when the note event was encountered, and is not modified here
+
+                # Use instrument envelopes and channel volume to control register 0
+
+                if self._track_counter[c] >= envelope_triggers[c][1]:  # Envelope 0
+                    # Index within the envelope is: trigger - remaining note duration
+                    tmp_int = (envelope_triggers[c][0] - self._track_counter[c]) + 1
+                    if tmp_int > size_0[c]:
+                        tmp_int = size_0[c]
+                    tmp_vol = channel_instrument[c].envelope[0][tmp_int]
+
+                elif self._track_counter[c] >= envelope_triggers[c][2]:  # Envelope 1
+                    tmp_int = (envelope_triggers[c][1] - self._track_counter[c]) + 1
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+                    tmp_vol = channel_instrument[c].envelope[1][tmp_int]
+
+                else:  # Envelope 2
+                    tmp_int = (envelope_triggers[c][2] - self._track_counter[c]) + 1
+                    if tmp_int > size_2[c]:
+                        tmp_int = size_2[c]
+                    tmp_vol = channel_instrument[c].envelope[2][tmp_int]
+
+                # The Triangle channel has no volume: it will be turned off unless "volume" is 15
+                reg_0[c] = tmp_vol if note_volume[c] == 0xF else 0x80
+
+                # Finally write registers
+                self.apu.triangle.write_reg0((reg_0[c] & 0x8C) | reg_mask[c][0])
+                self.apu.triangle.write_reg2(reg_2[c])
+                self.apu.triangle.write_reg3(reg_3[c])
+
+            # The triangle channel is muted on the last frame of any note
+            else:
+                reg_0[c] = 0x80
+
+                # Finally write registers
+                self.apu.triangle.write_reg0((reg_0[c] & 0x8C) | reg_mask[c][0])
+                self.apu.triangle.write_reg2(reg_2[c])
+                self.apu.triangle.write_reg3(reg_3[c])
+
+            # ----------------------------------------- NOISE ----------------------------------------------------------
+
+            # ------------------------------------------ END -----------------------------------------------------------
+            # Restart from channel 0
+            c = 0
+
+            interval = frame_interval - (time.time() - start_time)
+            if interval > 0:
+                time.sleep(interval)
+            else:
+                self._slow_event.set()
+
+        # End
+        self.sound_server.stop()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _old_play_loop(self, seek: Tuple[int, int] = (0, 0), tracks=None) -> None:
         """
         The playback loop, which should run in its own thread.
         Parameters
