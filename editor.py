@@ -474,8 +474,6 @@ def open_rom(file_name: str) -> None:
         app.setStatusbar(val)
         app.errorBox("ERROR", val)
     else:
-        app.setStatusbar(f"ROM file opened: '{file_name}'", field=0)
-
         app.showSubWindow("PE_Progress")
         app.setLabel("PE_Progress_Label", "Loading...")
         app.setMeter("PE_Progress_Meter", 0)
@@ -689,6 +687,7 @@ def open_rom(file_name: str) -> None:
         app.setTitle(f"UE Editor - {os.path.basename(file_name)}")
 
         app.hideSubWindow("PE_Progress")
+        app.setStatusbar(f"ROM file opened: '{file_name}'", field=0)
 
 
 # ----------------------------------------------------------------------------------------------------------------------

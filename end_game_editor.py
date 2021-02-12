@@ -41,8 +41,8 @@ class EndGameEditor:
 
         self._opening_credit_lines: List[CreditLine] = []
 
-        # Tuple: bank, address, count
-        self._end_credit_charset = (0xD, 0xBF00, 26)
+        # CHR set used for ending credits: ROM bank, address, first character, count
+        self._end_credit_charset = [0xD, 0xBF00, 0x8A, 32]
         self._end_credit_lines: List[CreditLine] = []
         self._canvas_end = None
         # Cached PIL Image instances
@@ -111,21 +111,21 @@ class EndGameEditor:
         font_mono = font.Font(font="TkFixedFont", size=10)
 
         # Bank and address of CHR set
-        chr_bank = self.rom.read_byte(0xF, 0xE3FD)
+        self._end_credit_charset[0] = self.rom.read_byte(0xF, 0xE3FD)
         hi = self.rom.read_byte(0xF, 0xE402)
         lo = self.rom.read_byte(0xF, 0xE406)
-        chr_addr = (hi << 8) | lo
+        self._end_credit_charset[1] = (hi << 8) | lo
 
         # Destination in the PPU, we use this to calculate the index of the first character
         hi = self.rom.read_byte(0xF, 0xE40A)
         lo = self.rom.read_byte(0xF, 0xE40E)
         address = (hi << 8) | lo
-        chr_first = (address - 0x1000) >> 4
+        self._end_credit_charset[2] = (address - 0x1000) >> 4
 
         # Number of characters to load
         hi = self.rom.read_byte(0xF, 0xE412)
         lo = self.rom.read_byte(0xF, 0xE416)
-        chr_count = ((hi << 8) | lo) >> 4
+        self._end_credit_charset[3] = ((hi << 8) | lo) >> 4
 
         # 32 canvas items used to preview a line of text
         self._end_items = [0] * 32
@@ -169,19 +169,21 @@ class EndGameEditor:
                     with app.frame("EC_Frame_CHR", padding=[2, 2], row=0, column=0):
 
                         app.label("EC_Label_0", "CHR Set Bank:", sticky="E", row=0, column=0, font=10)
-                        app.entry("EC_CHR_Bank", f"0x{chr_bank:02X}", submit=self._credits_input, sticky="W", width=6,
-                                  row=0, column=1, bg=colour.MEDIUM_NAVY, fg=colour.WHITE, font=9)
+                        app.entry("EC_CHR_Bank", f"0x{self._end_credit_charset[0]:02X}", submit=self._credits_input,
+                                  sticky="W", width=6, row=0, column=1, bg=colour.MEDIUM_NAVY, fg=colour.WHITE, font=9)
 
                         app.label("EC_Label_1", "Address:", sticky="E", row=0, column=2, font=10)
-                        app.entry("EC_CHR_Address", f"0x{chr_addr:04X}", submit=self._credits_input, sticky="W",
-                                  row=0, column=3, width=8, bg=colour.MEDIUM_NAVY, fg=colour.WHITE, font=9)
+                        app.entry("EC_CHR_Address", f"0x{self._end_credit_charset[1]:04X}", submit=self._credits_input,
+                                  row=0, column=3, sticky="W", width=8, bg=colour.MEDIUM_NAVY, fg=colour.WHITE, font=9)
 
                         app.label("EC_Label_2", "Characters:", sticky="E", row=0, column=4, font=10)
-                        app.entry("EC_CHR_Count", chr_count, kind="numeric", limit=4, submit=self._credits_input,
+                        app.entry("EC_CHR_Count", self._end_credit_charset[3], kind="numeric", limit=4,
+                                  submit=self._credits_input,
                                   row=0, column=5, sticky="W", width=4, bg=colour.MEDIUM_NAVY, fg=colour.WHITE, font=9)
 
                         app.label("EC_Label_3", "First Character:", sticky="E", row=0, column=6, font=10)
-                        app.entry("EC_CHR_First", f"0x{chr_first:02X}", limit=4, submit=self._credits_input, sticky="W",
+                        app.entry("EC_CHR_First", f"0x{self._end_credit_charset[2]:02X}", limit=4,
+                                  submit=self._credits_input, sticky="W",
                                   row=0, column=7, width=4, bg=colour.MEDIUM_NAVY, fg=colour.WHITE, font=9)
 
                         app.button("EC_Update_CHR", self._credits_input, image="res/reload-small.gif", sticky="W",
@@ -244,7 +246,13 @@ class EndGameEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _credits_input(self, widget: str) -> None:
-        if widget == "EC_Close":    # ----------------------------------------------------------------------------------
+        if widget == "EC_Apply":    # ----------------------------------------------------------------------------------
+            if self._save_end_credits():
+                self._unsaved_credits = False
+                if self.settings.get("close sub-window after saving"):
+                    self.close_credits_window()
+
+        elif widget == "EC_Close":  # ----------------------------------------------------------------------------------
             if self._unsaved_credits:
                 if not self.app.yesNoBox("Credits Editor", "Are you sure you want to close this window?\n" +
                                          "Any unsaved changes will be lost.", "Credits_Editor"):
@@ -311,21 +319,21 @@ class EndGameEditor:
             self._unsaved_credits = False
 
             # Bank and address of CHR set
-            chr_bank = self.rom.read_byte(0xF, 0xE3FD)
+            self._end_credit_charset[0] = self.rom.read_byte(0xF, 0xE3FD)
             hi = self.rom.read_byte(0xF, 0xE402)
             lo = self.rom.read_byte(0xF, 0xE406)
-            chr_addr = (hi << 8) | lo
+            self._end_credit_charset[1] = (hi << 8) | lo
 
             # Destination in the PPU, we use this to calculate the index of the first character
             hi = self.rom.read_byte(0xF, 0xE40A)
             lo = self.rom.read_byte(0xF, 0xE40E)
             address = (hi << 8) | lo
-            chr_first = (address - 0x1000) >> 4
+            self._end_credit_charset[2] = (address - 0x1000) >> 4
 
             # Number of characters to load
             hi = self.rom.read_byte(0xF, 0xE412)
             lo = self.rom.read_byte(0xF, 0xE416)
-            chr_count = ((hi << 8) | lo) >> 4
+            self._end_credit_charset[3] = ((hi << 8) | lo) >> 4
 
             # Re-read all credit lines
             count = self._read_end_credits()
@@ -341,10 +349,10 @@ class EndGameEditor:
             self.app.clearEntry("EC_CHR_Count", callFunction=False, setFocus=False)
             self.app.clearEntry("EC_CHR_First", callFunction=False, setFocus=False)
 
-            self.app.setEntry("EC_CHR_Bank", f"0x{chr_bank:02X}", callFunction=False)
-            self.app.setEntry("EC_CHR_Address", f"0x{chr_addr:04X}", callFunction=False)
-            self.app.setEntry("EC_CHR_Count", chr_count, callFunction=False)
-            self.app.setEntry("EC_CHR_First", f"0x{chr_first:02X}", callFunction=False)
+            self.app.setEntry("EC_CHR_Bank", f"0x{self._end_credit_charset[0]:02X}", callFunction=False)
+            self.app.setEntry("EC_CHR_Address", f"0x{self._end_credit_charset[1]:04X}", callFunction=False)
+            self.app.setEntry("EC_CHR_Count", self._end_credit_charset[3], callFunction=False)
+            self.app.setEntry("EC_CHR_First", f"0x{self._end_credit_charset[2]:02X}", callFunction=False)
 
             self._load_end_patterns()
 
@@ -354,6 +362,62 @@ class EndGameEditor:
 
         else:   # ------------------------------------------------------------------------------------------------------
             self.warning(f"Unimplemented input from Credits Editor widget '{widget}'.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _save_end_credits(self) -> bool:
+
+        # Create a buffer with all the encoded text, then make sure it fits the allocated area
+        buffer = bytearray()
+
+        # We will give a warning if there is no credits termination character 0xFD in any string
+        terminator_found: bool = False
+
+        for line in self._end_credit_lines:
+            buffer.append(line.x)
+            text = text_editor.ascii_to_exodus(line.text)
+
+            buffer = buffer + text
+
+            if not terminator_found and text.rfind(0xFD) != -1:
+                terminator_found = True
+
+            # Make sure each string has the mandatory string termination character
+            if text[-1] != 0xFF:
+                buffer.append(0xFF)
+
+        if len(buffer) > 1253:
+            self.app.errorBox("Credits Editor", "Buffer overflow: the text will not fit in ROM.\n" +
+                              f"There are {len(buffer) - 1253} extra characters.", "Credits_Editor")
+            return False
+
+        if not terminator_found:
+            if not self.app.yesNoBox("Credits Editor", "None of the credit strings contain a 'newline' " +
+                                     "character.\nThis means the credits will read parts of the ROM beyond the text." +
+                                     "\nAre you sure you want to continue?", "Credits_Editor"):
+                return False
+
+        # Merge this buffer into the ROM buffer
+        self.rom.write_bytes(0x6, 0x9A1B, buffer)
+
+        # Save patterns bank, address, destination and size
+        self.rom.write_byte(0xF, 0xE3FD, self._end_credit_charset[0])
+        hi = self._end_credit_charset[1] >> 8
+        lo = self._end_credit_charset[1] & 0x00FF
+        self.rom.write_byte(0xF, 0xE402, hi)
+        self.rom.write_byte(0xF, 0xE406, lo)
+
+        # Destination in the PPU, we use this to calculate the index of the first character
+        address = 0x1000 | (self._end_credit_charset[2] << 4)
+        self.rom.write_byte(0xF, 0xE40A, address >> 8)
+        self.rom.write_byte(0xF, 0xE40E, address & 0x00FF)
+
+        # Number of bytes in the charset
+        count = self._end_credit_charset[3] << 4
+        self.rom.write_byte(0xF, 0xE412, count >> 8)
+        self.rom.write_byte(0xF, 0xE416, count & 0x00FF)
+
+        return True
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -435,10 +499,14 @@ class EndGameEditor:
             self.app.getEntryWidget("EC_CHR_Bank").selection_range(0, "end")
             bank = 0xD
 
+        self._end_credit_charset[0] = bank
+
         try:
             address = int(self.app.getEntry("EC_CHR_Address"), 16)
         except ValueError:
             address = 0xBE00
+
+        self._end_credit_charset[1] = address
 
         try:
             count = int(self.app.getEntry("EC_CHR_Count"))
@@ -455,6 +523,9 @@ class EndGameEditor:
             first_chr = 0x8A
             self.app.errorBox("End Credits", "Character set overflow: please check count and first character index.",
                               "Credits_Editor")
+
+        self._end_credit_charset[2] = first_chr
+        self._end_credit_charset[3] = count
 
         for i in range(first_chr, first_chr + count):
             pixels = bytes(self.rom.read_pattern(bank, address))
