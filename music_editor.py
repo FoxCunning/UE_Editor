@@ -4315,12 +4315,13 @@ class MusicEditor:
 
     def _play_loop(self, seek: Tuple[int, int] = (0, 0), tracks: Optional[List[List[TrackDataEntry]]] = None) -> None:
         """
-                The playback loop, which should run in its own thread.
-                Parameters
-                ----------
-                seek: Tuple[int, int]
-                    A tuple (channel, index) used to start playing from a specific point in this track
-                """
+        The playback loop, which should run in its own thread.
+        Parameters
+        ----------
+        seek: Tuple[int, int]
+            A tuple (channel, index) used to start playing from a specific point in this track
+        """
+        # TODO Fix the sudden pitch jumps that happen on or after a rest in the Triangle channel
         if tracks is None:
             tracks = self._track_data
 
