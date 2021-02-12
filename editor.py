@@ -31,6 +31,7 @@ from battlefield_editor import BattlefieldEditor
 from editor_settings import EditorSettings
 from cutscene_editor import CutsceneEditor
 from debug import log
+from end_game_editor import EndGameEditor
 from enemy_editor import EnemyEditor
 from map_editor import MapEditor
 from palette_editor import PaletteEditor
@@ -60,6 +61,7 @@ text_editor: TextEditor
 palette_editor: PaletteEditor
 enemy_editor: EnemyEditor
 party_editor: PartyEditor
+end_game_editor: EndGameEditor
 cutscene_editor: CutsceneEditor
 music_editor: MusicEditor
 battlefield_editor: BattlefieldEditor
@@ -464,6 +466,7 @@ def open_rom(file_name: str) -> None:
     global music_editor
     global battlefield_editor
     global sfx_editor
+    global end_game_editor
 
     app.setStatusbar(f"Opening ROM file '{file_name}'", field=0)
     val = rom.open(file_name)
@@ -646,6 +649,9 @@ def open_rom(file_name: str) -> None:
 
         # Party editor
         party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
+
+        # End game editor
+        end_game_editor = EndGameEditor(app, settings, rom, palette_editor)
 
         app.setMeter("PE_Progress_Meter", 90)
         app.topLevel.update()
@@ -1571,7 +1577,7 @@ def cutscene_input(widget: str) -> None:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-def party_editor_input(button: str) -> bool:
+def misc_editor_input(button: str) -> bool:
     if button == "PT_Button_Races":
         party_editor.show_window("Races")
 
@@ -1595,6 +1601,12 @@ def party_editor_input(button: str) -> bool:
 
     elif button == "PT_Button_Commands":
         party_editor.show_window("Commands")
+
+    elif button == "PT_Button_Credits":
+        end_game_editor.show_credits_window()
+
+    elif button == "PT_Button_Ending":
+        end_game_editor.show_end_game_window()
 
     else:
         log(3, "PARTY_EDITOR", f"Unimplemented button '{button}'.")
@@ -2063,25 +2075,30 @@ if __name__ == "__main__":
         # MISC Tab ----------------------------------------------------------------------------------------------------
         with app.tab("Misc"):
             # Row 0
-            app.button("PT_Button_Races", name="Races", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_BLUE, row=0, column=0)
-            app.button("PT_Button_Professions", name="Professions", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_BROWN, row=0, column=1)
+            app.button("PT_Button_Races", name="Races", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_BLUE, row=0, column=0, font=10)
+            app.button("PT_Button_Professions", name="Professions", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_BROWN, row=0, column=1, font=10)
             # Row 1
-            app.button("PT_Button_Pre-Made", name="Pre-Made\nCharacters", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_OLIVE, row=1, column=0)
-            app.button("PT_Button_Items", name="Items", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_TEAL, row=1, column=1)
+            app.button("PT_Button_Pre-Made", name="Pre-Made Characters", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_OLIVE, row=1, column=0, font=9)
+            app.button("PT_Button_Items", name="Items", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_TEAL, row=1, column=1, font=10)
             # Row 2
-            app.button("PT_Button_Magic", name="Magic", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_ORANGE, row=2, column=0)
-            app.button("PT_Button_Special", name="Special\nAbilities", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_VIOLET, row=2, column=1)
+            app.button("PT_Button_Magic", name="Magic", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_ORANGE, row=2, column=0, font=10)
+            app.button("PT_Button_Special", name="Special Abilities", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_VIOLET, row=2, column=1, font=10)
             # Row 3
-            app.button("PT_Button_Weapons", name="Weapons/Armour", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_MAGENTA, row=3, column=0)
-            app.button("PT_Button_Commands", name="Commands", value=party_editor_input, sticky='NEWS',
-                       bg=colour.PALE_LIME, row=3, column=1)
+            app.button("PT_Button_Weapons", name="Weapons/Armour", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_MAGENTA, row=3, column=0, font=10)
+            app.button("PT_Button_Commands", name="Commands", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_LIME, row=3, column=1, font=10)
+            # Row 4
+            app.button("PT_Button_Credits", name="Game Credits Screen", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_NAVY, row=4, column=0, font=10)
+            app.button("PT_Button_Ending", name="Game Ending", value=misc_editor_input, sticky='NEWS',
+                       bg=colour.PALE_PINK, row=4, column=1, font=10)
 
         # ENEMIES Tab --------------------------------------------------------------------------------------------------
         with app.tab("Enemies", padding=[0, 0]):
