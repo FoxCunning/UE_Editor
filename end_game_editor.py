@@ -249,6 +249,7 @@ class EndGameEditor:
         if widget == "EC_Apply":    # ----------------------------------------------------------------------------------
             if self._save_end_credits():
                 self._unsaved_credits = False
+                self.app.setStatusbar("Credits data saved")
                 if self.settings.get("close sub-window after saving"):
                     self.close_credits_window()
 

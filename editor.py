@@ -1,7 +1,7 @@
 """
 An extensive editor for the NES version of Ultima III: Exodus and its Remastered Hack by Fox Cunning
 """
-__version__ = "0.01"
+__version__ = "Pre-Alpha 0.1"
 
 __author__ = "Fox Cunning"
 __copyright__ = "Copyright ©2020-2021 Fox Cunning"
@@ -433,6 +433,14 @@ def save_rom(file_name: str) -> None:
     """
     # Write any unsaved changes to the buffer before saving the file
     palette_editor.save_palettes()
+
+    if file_name == rom.path and settings.get("make backups"):
+        index = file_name.rfind('.')
+        if index > -1:
+            backup_name = file_name[:index] + ".bak"
+        else:
+            backup_name = file_name + ".bak"
+        rom.save(backup_name)
 
     if rom.save(file_name) is True:
         file_name = os.path.basename(file_name)
@@ -1705,7 +1713,7 @@ def main_input(widget: str) -> bool:
     """
     global emulator_pid
 
-    if widget == "Open ROM":
+    if widget == "Open ROM":    # --------------------------------------------------------------------------------------
         # If a ROM is already open, close it first
         # TODO Ask to save changes if any
         if rom.path is None or len(rom.path) < 1:
@@ -1720,7 +1728,7 @@ def main_input(widget: str) -> bool:
             directory = os.path.dirname(file_name)
             settings.set("last rom path", directory)
 
-    elif widget == "Save ROM":
+    elif widget == "Save ROM":      # ----------------------------------------------------------------------------------
         # Check if a file is currently open
         if rom.path is None or len(rom.path) < 1:
             app.warningBox("Save ROM", "You need to open a ROM file first.")
@@ -1728,7 +1736,7 @@ def main_input(widget: str) -> bool:
 
         save_rom(rom.path)
 
-    elif widget == "Save ROM As...":
+    elif widget == "Save ROM As...":    # ------------------------------------------------------------------------------
         # Check if a file is currently open
         if rom.path is None or len(rom.path) < 1:
             app.warningBox("Save ROM As...", "You need to open a ROM file first.")
@@ -1748,18 +1756,21 @@ def main_input(widget: str) -> bool:
             # Add file name to the window's title
             app.setTitle(f"UE Editor - {os.path.basename(file_name)}")
 
-    elif widget == "Close ROM":
+    elif widget == "Close ROM":     # ----------------------------------------------------------------------------------
         close_rom()
 
-    elif widget == "About":
+    elif widget == "Settings":  # --------------------------------------------------------------------------------------
+        settings.show_settings_window(app)
+
+    elif widget == "About":     # --------------------------------------------------------------------------------------
         app.infoBox("About", f"Ultima: Exodus Editor\nVersion {__version__}.")
 
-    elif widget == "Exit":
+    elif widget == "Exit":      # --------------------------------------------------------------------------------------
         # TODO Ask to save changes if any
         close_rom()
         app.stop()
 
-    elif widget == "Start Emulator":
+    elif widget == "Start Emulator":    # ------------------------------------------------------------------------------
         # Check if we have a ROM file open
         if rom.path is None or len(rom.path) < 1:
             app.errorBox("Launch Emulator", "You need to open a ROM file first!")
@@ -1804,19 +1815,19 @@ def main_input(widget: str) -> bool:
             app.warningBox("Launch Emulator", f"Invalid emulator path '{path}'.\n"
                                               "Please go to Settings and choose the correct path.")
 
-    elif widget == "ME_Option_Map_Type":
+    elif widget == "ME_Option_Map_Type":    # --------------------------------------------------------------------------
         map_type = get_option_index(widget, app.getOptionBox(widget))
         app.selectFrame("Map_Types", map_type, callFunction=True)
 
-    elif widget == "Map_Apply":
+    elif widget == "Map_Apply":     # ----------------------------------------------------------------------------------
         map_editor.save_map_tables()
         app.soundWarning()
         app.setStatusbar("Map tables saved.")
 
-    elif widget == "Map_Edit":
+    elif widget == "Map_Edit":  # --------------------------------------------------------------------------------------
         edit_map()
 
-    elif widget == "MapInfo_Advanced_Option":
+    elif widget == "MapInfo_Advanced_Option":   # ----------------------------------------------------------------------
         value = app.getRadioButton(widget)
         if value == "Basic":
             app.showFrame("MapInfo_Frame_Basic")
@@ -1825,12 +1836,12 @@ def main_input(widget: str) -> bool:
             app.hideFrame("MapInfo_Frame_Basic")
             app.showFrame("MapInfo_Frame_Advanced")
 
-    elif widget == "MapInfo_Basic_Bank":
+    elif widget == "MapInfo_Basic_Bank":    # --------------------------------------------------------------------------
         # Update bank number in Advanced view
         value = int(app.getOptionBox(widget))
         app.setEntry("MapInfo_Bank", f"0x{value:02X}")
 
-    elif widget == "MapInfo_Basic_Type" or widget == "MapInfo_Basic_ID":
+    elif widget == "MapInfo_Basic_Type" or widget == "MapInfo_Basic_ID":    # ------------------------------------------
         # Update flags/ID in Advanced view
         try:
             flags = int(app.getOptionBox("MapInfo_Basic_Type")[0])
@@ -1840,29 +1851,29 @@ def main_input(widget: str) -> bool:
         except ValueError:
             pass
 
-    elif widget == "MapInfo_Tileset":
+    elif widget == "MapInfo_Tileset":   # ------------------------------------------------------------------------------
         set_index = get_option_index(widget, app.getOptionBox(widget))
         map_index = get_option_index("MapInfo_Select", app.getOptionBox("MapInfo_Select"))
         map_editor.tileset_table[map_index] = set_index
 
-    elif widget == "Battlefield_Apply":
+    elif widget == "Battlefield_Apply":     # --------------------------------------------------------------------------
         battlefield_editor.save_tab_data()
         app.soundWarning()
         app.setStatusbar("Battlefield data saved.")
 
-    elif widget == "Battlefield_Option_Map":
+    elif widget == "Battlefield_Option_Map":    # ----------------------------------------------------------------------
         # Show the address of the selected map
         map_index = get_option_index(widget, app.getOptionBox(widget))
         address = battlefield_editor.get_map_address(map_index)
         app.clearEntry("Battlefield_Map_Address", callFunction=False, setFocus=False)
         app.setEntry("Battlefield_Map_Address", f"0x{address:04X}", callFunction=False)
 
-    elif widget == "Battlefield_Edit":
+    elif widget == "Battlefield_Edit":      # --------------------------------------------------------------------------
         # TODO Ask to save changes first? If cancelled, re-read selected map address
         map_index = get_option_index("Battlefield_Option_Map", app.getOptionBox("Battlefield_Option_Map"))
         battlefield_editor.show_window(map_index)
 
-    elif widget == "Battlefield_Map_Address":
+    elif widget == "Battlefield_Map_Address":   # ----------------------------------------------------------------------
         try:
             value = int(app.getEntry(widget), 16)
             if 0x8000 <= value <= 0xBFFF:
@@ -1874,7 +1885,7 @@ def main_input(widget: str) -> bool:
         except ValueError:
             app.entry(widget, fg=colour.MEDIUM_RED)
 
-    else:
+    else:   # ----------------------------------------------------------------------------------------------------------
         log(3, "EDITOR", f"Unimplemented button: {widget}")
         return False
 
