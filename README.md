@@ -1,6 +1,5 @@
-#UE_Editor
-
-A comprehensive editor for the NES version of *Ultima III: Exodus.*
+#Ultima: Exodus Editor
+####A comprehensive editor for the NES version of *Ultima III: Exodus.*
 
 ###Included modules:
 - Map Editor
@@ -19,6 +18,7 @@ A comprehensive editor for the NES version of *Ultima III: Exodus.*
 - Music / Sound Effect editor
   - Instrument editor
   - Track editor
+- SFX editor
   
 - Palette Editor
 - Enemy Encounter Editor
@@ -35,16 +35,18 @@ A comprehensive editor for the NES version of *Ultima III: Exodus.*
     - Item editor
     - Pre-made party editor (Remastered ROM only)
     - Special ability editor (Remastered ROM only)
-
+    - Special dialogue editor (e.g. vendors, Lord British, etc.)
+    - Game credits editor (only end credits for now)
+  
 ###To do:
+- Instrument editor:
+  - Add a preview for the triangle and noise channels
 - Music tracker:
   - Implement noise channel
   - Import/export music from/to FamiTracker
-- SFX editor
-- Special dialogue editor (e.g. vendors, Lord British, etc.)
-- Editor settings UI
-- Improve the map editor (drag-drawing, optional grid)
-- Undo features for map editor  
+- End game editor
+- Ability to assign music to specific maps
+- Add an options for an alternative weapon / armour system
 - Major refactoring in most modules
 - Some extra features that would be nice to have:
     - Integrated pattern editor, to make external tools entirely optional

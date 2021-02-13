@@ -1916,7 +1916,10 @@ if __name__ == "__main__":
         app.setIcon(image="res/app-icon.ico")
         # noinspection PyArgumentList
         app.setStopFunction(editor_stop)
-        app.setFont(family=settings.get("editor fonts"), underline=False, size=12)
+        f = settings.get("editor fonts")
+        if f == "":
+            f = "Consolas"
+        app.setFont(family=f, underline=False, size=12)
 
         #       ##### Toolbar #####
 
