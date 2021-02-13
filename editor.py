@@ -1,7 +1,7 @@
 """
 An extensive editor for the NES version of Ultima III: Exodus and its Remastered Hack by Fox Cunning
 """
-__version__ = "Pre-Alpha 0.1"
+__version__ = "Pre-Alpha 0.2"
 
 __author__ = "Fox Cunning"
 __copyright__ = "Copyright ©2020-2021 Fox Cunning"
@@ -11,7 +11,7 @@ __license__ = "Apache 2.0"
 
 __maintainer__ = "Fox Cunning"
 __email__ = "fox.cunning@mail.co.uk"
-__status__ = "Development"
+__status__ = "Pre-Release"
 
 import ast
 import os
@@ -555,7 +555,7 @@ def open_rom(file_name: str) -> None:
             map_colours.append(colour_value[2])  # Blue
 
         # This automatically loads text pointer tables and caches dialogue and special strings
-        text_editor = TextEditor(rom, map_colours, app, settings)
+        text_editor = TextEditor(rom, map_colours, palette_editor.sub_palette(0, 1), app, settings)
 
         app.setMeter("PE_Progress_Meter", 30)
         app.topLevel.update()
@@ -1154,7 +1154,7 @@ def text_editor_input(widget: str) -> None:
     widget: str
         Name of the Button widget being pressed
     """
-    if widget == "Text_Apply":
+    if widget == "Text_Apply":  # --------------------------------------------------------------------------------------
         # Used to re-select the active text
         selected_index = text_editor.index
 
@@ -1196,14 +1196,14 @@ def text_editor_input(widget: str) -> None:
         if selected_index >= 0:
             app.selectListItemAtPos("Text_Id", selected_index, callFunction=True)
 
-    elif widget == "TE_Button_Close":
+    elif widget == "TE_Button_Close":   # ------------------------------------------------------------------------------
         text_editor.hide_window(False)
 
         # Reload currently selected string if the text tab is active
         if app.getTabbedFrameSelectedTab("TabbedFrame") == "Text":
             app.selectListItemAtPos("Text_Id", text_editor.index, callFunction=True)
 
-    elif widget == "TE_Button_Reload_Text":
+    elif widget == "TE_Button_Reload_Text":     # ----------------------------------------------------------------------
         # Get address from input widget
         address_string = ""
         try:
@@ -1221,6 +1221,7 @@ def text_editor_input(widget: str) -> None:
             app.clearTextArea("TE_Text")
             app.setTextArea("TE_Text", new_string)
             TextEditor.highlight_keywords(app.getTextAreaWidget("TE_Text"))
+            text_editor.draw_text_preview(False)
 
             # Set the new text and address variables in the Text Editor
             text_editor.text = new_string
@@ -1231,7 +1232,7 @@ def text_editor_input(widget: str) -> None:
                                   "Please only enter numbers, in hexadecimal format.",
                          "Text_Editor")
 
-    elif widget == "TE_Button_Accept":
+    elif widget == "TE_Button_Accept":  # ------------------------------------------------------------------------------
         text_id = text_editor.index
 
         # Get new text and address
@@ -1274,11 +1275,21 @@ def text_editor_input(widget: str) -> None:
 
         # Save changes to ROM
         text_editor_input("Text_Apply")
-        # Refresh current string if the text tab is active
-        # if app.getTabbedFrameSelectedTab("TabbedFrame") == "Text":
-        #    app.selectListItemAtPos("Text_Id", text_editor.index, callFunction=True)
 
-    else:
+    elif widget == "TE_Option_Name":    # ------------------------------------------------------------------------------
+        text_editor.draw_text_preview(True)
+
+    elif widget == "TE_Preview_Mode":   # ------------------------------------------------------------------------------
+        text_editor.draw_text_preview(True)
+
+    elif widget == "TE_Conversation_Advance":   # ----------------------------------------------------------------------
+        text_editor.text_line += 6
+        lines = app.getTextArea("TE_Text").splitlines()
+        if len(lines) < text_editor.text_line:
+            text_editor.text_line = 0
+        text_editor.draw_text_preview(False)
+
+    else:   # ----------------------------------------------------------------------------------------------------------
         print(f"Unimplemented Text Editor button: {widget}")
 
 
@@ -2622,7 +2633,7 @@ if __name__ == "__main__":
             app.label("BE_Label_temp", "...")
 
         # Text Editor Sub-Window ---------------------------------------------------------------------------------------
-        with app.subWindow("Text_Editor", "Text Editor", size=[420, 380], modal=False, resizable=False,
+        with app.subWindow("Text_Editor", "Ultima: Exodus - Text Editor", size=[428, 412], modal=False, resizable=False,
                            stopFunction=text_editor_stop, bg=colour.MEDIUM_GREY):
             # Buttons
             with app.frame("TE_Frame_Top", row=0, colspan=2, sticky="NEW", stretch="ROW", padding=[8, 2]):
@@ -2635,8 +2646,20 @@ if __name__ == "__main__":
             with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.DARK_GREY, sticky="NEW", stretch='COLUMN',
                            rowspan=2, padding=[2, 2]):
                 app.label("TE_Label_Text", "Unpacked string:", row=0, column=0, fg=colour.WHITE)
-                app.textArea("TE_Text", "", width=22, stretch='BOTH', sticky='NEWS', scroll=True, bg=colour.WHITE,
-                             row=1, column=0).setFont(family="Consolas", size=12)
+                app.textArea("TE_Text", "", width=22, height=6, sticky="NEWS", scroll=True, bg=colour.WHITE,
+                             row=1, column=0).setFont(family="monospace", size=9, weight="bold")
+
+                app.canvas("TE_Preview", sticky="N", width=160, height=72, row=2, column=0, bg=colour.BLACK)
+
+                with app.frame("TE_Preview_Controls", padding=[1, 1], row=3, column=0):
+                    app.radioButton("TE_Preview_Mode", "Default", change=text_editor_input, font=9, sticky="NEW",
+                                    row=0, column=0)
+                    app.radioButton("TE_Preview_Mode", "Conversation", change=text_editor_input, font=9, sticky="NEW",
+                                    row=0, column=1)
+                    app.radioButton("TE_Preview_Mode", "Intro", change=text_editor_input, font=9, sticky="NEW",
+                                    row=0, column=2)
+                    app.button("TE_Conversation_Advance", text_editor_input, font=9, sticky="WE",
+                               text="Advance Conversation \u2B06 / \u2B07", row=1, column=0, colspan=3)
 
             # Guide
             with app.frame("TE_Frame_TopRight", row=1, column=1, fg=colour.BLACK, padding=[2, 2]):
@@ -2660,7 +2683,8 @@ if __name__ == "__main__":
                     with app.frame("TE_Frame_Dialogue_Left", row=0, column=0, sticky="NEW",
                                    stretch='COLUMN'):
                         app.label("TE_Label_Name", "NPC Name: ", row=0, column=0)
-                        app.optionBox("TE_Option_Name", ["(0xFF) No Name"], row=0, column=1, width=20)
+                        app.optionBox("TE_Option_Name", ["(0xFF) No Name"], change=text_editor_input,
+                                      row=0, column=1, width=20)
                         app.label("TE_Label_Portrait", "Portrait: ", row=1, column=0)
                         portrait_options = ["No Portrait"]
                         for p in range(0x22):

@@ -3,7 +3,7 @@ __author__ = "Fox Cunning"
 import configparser
 import os
 import tkinter
-from typing import List
+from typing import List, Union
 
 from PIL import Image, ImageTk
 
@@ -299,7 +299,7 @@ def _empty_image(width: int, height: int) -> Image:
 
 class TextEditor:
 
-    def __init__(self, rom: ROM, colours: list, app: gui, settings: EditorSettings):
+    def __init__(self, rom: ROM, colours: list, text_colours: bytearray, app: gui, settings: EditorSettings):
 
         self.text: str = ""  # Text being edited (uncompressed)
         self.type: str = ""  # String type (determines where the pointer is)
@@ -332,9 +332,6 @@ class TextEditor:
 
         # Colours used to draw portrait previews
         self.colours: List[int] = colours
-        # print("DEBUG: Text/portrait colours:")
-        # for c in self.colours:
-        #     print(f"0x{c:02X}")
 
         # Compressed text pointer tables
         self.dialogue_text_pointers: List[int] = []  # Dialogue text, 0xE6 pointers at 05:9D90
@@ -345,6 +342,18 @@ class TextEditor:
         self.special_text: List[str] = []
 
         self.app: gui = app
+
+        # Cached images for preview
+        self._chr_tiles: List[ImageTk.PhotoImage] = []
+
+        self._text_colours: bytearray = text_colours
+
+        # Start from this line when drawing the text preview
+        self.text_line: int = 0
+
+        # Canvas item IDs
+        self._chr_items: List[int] = [0] * (20 * 9)
+        self._preview_canvas: Union[any, tkinter.Canvas] = None
 
         # Read portrait descriptive names from file
         try:
@@ -586,28 +595,35 @@ class TextEditor:
         if string_type == "Dialogue":
             self.address = self.dialogue_text_pointers[string_id]
             self.text = self.dialogue_text[string_id]
+            self.app.setRadioButton("TE_Preview_Mode", "Conversation", False)
         elif string_type == "Special":
             self.address = self.special_text_pointers[string_id]
             self.text = self.special_text[string_id]
+            self.app.setRadioButton("TE_Preview_Mode", "Default", False)
         elif string_type == "NPC Names":
             self.address = self.npc_name_pointers[string_id]
             self.text = self.npc_names[string_id]
+            self.app.setRadioButton("TE_Preview_Mode", "Default", False)
         elif string_type == "Enemy Names":
             self.address = self.enemy_name_pointers[string_id]
             self.text = self.enemy_names[string_id]
+            self.app.setRadioButton("TE_Preview_Mode", "Default", False)
         elif string_type == "Menus / Intro":
             self.address = self.menu_text_pointers[string_id]
             self.text = self.menu_text[string_id]
+            self.app.setRadioButton("TE_Preview_Mode", "Default", False)
         else:
             log(3, "TEXT EDITOR", f"Invalid string type '{string_type}'.")
             return
 
         text_widget = self.app.getTextAreaWidget("TE_Text")
         text_widget.bind("<KeyRelease>", lambda _e: TextEditor.highlight_keywords(text_widget))
+        text_widget.bind("<KeyRelease>", lambda _e: self.draw_text_preview(False), add='+')
 
         self.app.clearTextArea("TE_Text", callFunction=False)
         self.app.setTextArea("TE_Text", self.text)
         TextEditor.highlight_keywords(text_widget)
+        self.app.getTextAreaWidget("TE_Text").see("1.0")
 
         self.app.setLabel("TE_Label_Type", f"{string_type} Text")
         self.app.setEntry("TE_Entry_Address", f"0x{self.address:02X}")
@@ -619,10 +635,10 @@ class TextEditor:
                 names.append(f"(0x{self.npc_name_pointers[i]:02X}) {self.npc_names[i]}")
             # for name in self.npc_names:
             #    names.append(name)
-            self.app.clearOptionBox("TE_Option_Name")
-            self.app.changeOptionBox("TE_Option_Name", names)
+            self.app.clearOptionBox("TE_Option_Name", callFunction=False)
+            self.app.changeOptionBox("TE_Option_Name", names, callFunction=False)
             # Select "No Name" by default
-            self.app.setOptionBox("TE_Option_Name", 0)
+            self.app.setOptionBox("TE_Option_Name", 0, callFunction=False)
 
             self.app.showFrame("TE_Frame_Bottom")
         else:
@@ -657,16 +673,14 @@ class TextEditor:
                 print(f"NPC Dialogue Name Pointer: 0x{pointer:02X} at 0B:{address:04X}")
 
                 if pointer == 0xFF:  # No name
-                    self.app.setOptionBox("TE_Option_Name", 0)
+                    self.app.setOptionBox("TE_Option_Name", 0, callFunction=False)
                 else:  # Find pointer in names OptionBox
                     for i in range(len(self.npc_name_pointers)):
                         if pointer == self.npc_name_pointers[i]:
-                            self.app.setOptionBox("TE_Option_Name", i + 1)
+                            self.app.setOptionBox("TE_Option_Name", i + 1, callFunction=False)
                             break
             else:
-                self.app.setOptionBox("TE_Option_Name", 0)
-        # else:
-        #     app.setOptionBox("TE_Option_Name", 0)
+                self.app.setOptionBox("TE_Option_Name", 0, callFunction=False)
 
         # Default: no portrait
         portrait_index = 0xFF
@@ -699,6 +713,10 @@ class TextEditor:
             self.app.setOptionBox("TE_Option_Portrait", 0)
 
         self.load_portrait(portrait_index)
+        self._load_text_patterns()
+
+        self._preview_canvas = self.app.getCanvasWidget("TE_Preview")
+        self.draw_text_preview(True)
 
         self.app.showSubWindow("Text_Editor")
 
@@ -821,14 +839,176 @@ class TextEditor:
                 return False
 
         self.app.hideSubWindow("Text_Editor", useStopFunction=False)
-        # self.text = ""
-        # self.type = ""
-        # self.index = 0
-        # self.address = 0
-        # self.app = None
-        # self.changed = False
+
+        # Purge image cache
+        self._chr_tiles = []
 
         return True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def draw_text_preview(self, redraw_frame: bool = False) -> None:
+        mode = self.app.getRadioButton("TE_Preview_Mode")
+
+        if mode == "Conversation":
+            left = 4
+            top = 2
+            skip_rows = False
+            frame = True
+            last_row = 6
+            last_col = 16
+        elif mode == "Intro":
+            left = 2
+            top = 2
+            skip_rows = True
+            frame = True
+            last_row = 7
+            last_col = 18
+        else:
+            left = 0
+            top = 0
+            skip_rows = False
+            frame = False
+            last_row = 8
+            last_col = 19
+
+        # Get text as a list of lines
+        lines = self.app.getTextArea("TE_Text").splitlines()
+
+        # Clear items / draw frame first
+        if redraw_frame:
+            frame_col = left - 2
+            frame_right = last_col + 1
+
+            for y in range(9):
+                for x in range(20):
+                    item = x + (y * 20)
+                    if frame:
+                        if y == 0:
+                            if frame_col < x < frame_right:
+                                tile = 0x7F
+                            elif x == frame_col:
+                                tile = 0x7E
+                            elif x == frame_right:
+                                tile = 0x80
+                            else:
+                                tile = 0
+                        elif y == last_row + 1:
+                            if frame_col < x < frame_right:
+                                tile = 0x84
+                            elif x == frame_col:
+                                tile = 0x83
+                            elif x == frame_right:
+                                tile = 0x85
+                            else:
+                                tile = 0
+                        elif 0 < y < last_row + 1:
+                            if x == frame_col:
+                                tile = 0x81
+                            elif x == frame_right:
+                                tile = 0x82
+                            else:
+                                tile = 0
+                        else:
+                            tile = 0
+                    else:
+                        tile = 0
+
+                    if self._chr_items[item] > 0:
+                        self._preview_canvas.itemconfig(self._chr_items[item], image=self._chr_tiles[tile])
+                    else:
+                        self._preview_canvas.create_image(x * 8, y * 8, anchor="nw", image=self._chr_tiles[tile])
+
+        # In "Conversation" mode, show the selected NPC name
+        if redraw_frame and mode == "Conversation":
+            name_id = self._get_selection_index("TE_Option_Name")
+            if name_id > 0:
+                name = ascii_to_exodus(self.npc_names[name_id - 1])
+
+                x = left
+                for c in name:
+                    if self._chr_items[x] > 0:
+                        self._preview_canvas.itemconfig(self._chr_items[x], image=self._chr_tiles[c])
+                    else:
+                        self._preview_canvas.create_image(x * 8, 0, anchor="nw", image=self._chr_tiles[c])
+                    x += 1
+
+        col = left
+        row = top
+        for text in lines[self.text_line:]:
+            if row > last_row:
+                break
+
+            e = ascii_to_exodus(text)
+            for c in e:
+                if row > last_row:
+                    break
+
+                if col > last_col:
+                    break
+
+                if c == 0xFD:       # End of Line
+                    row += 1
+                    col = left
+                    continue
+                elif c == 0xFF:     # End of String
+                    break
+
+                item = col + (row * 20)
+                if self._chr_items[item] > 0:
+                    self._preview_canvas.itemconfig(self._chr_items[item], image=self._chr_tiles[c])
+                else:
+                    self._preview_canvas.create_image(col * 8, row * 8, anchor="nw", image=self._chr_tiles[c])
+
+                col += 1
+
+            # Clear the rest of the line
+            while col < last_col:
+                item = col + (row * 20)
+                if self._chr_items[item] > 0:
+                    self._preview_canvas.itemconfig(self._chr_items[item], image=self._chr_tiles[0])
+                else:
+                    self._preview_canvas.create_image(col * 8, row * 8, anchor="nw", image=self._chr_tiles[0])
+                col += 1
+
+            row += 2 if skip_rows else 1
+            col = left
+
+        # Clear the remaining lines under the text, if needed
+        while row < last_row + 1:
+            col = left
+            while col < last_col:
+                item = col + (row * 20)
+                if self._chr_items[item] > 0:
+                    self._preview_canvas.itemconfig(self._chr_items[item], image=self._chr_tiles[0])
+                else:
+                    self._preview_canvas.create_image(col * 8, row * 8, anchor="nw", image=self._chr_tiles[0])
+                col += 1
+            row += 1
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _load_text_patterns(self) -> None:
+        """
+        Reads pattern data used for the end credits and stores it in image instances that can be used on a canvas.
+        """
+        # The ending credits use the "map" palette 1
+        colours = self._text_colours
+
+        self._chr_tiles = []
+
+        # First, load the default map patterns
+        address = 0x8000
+        for i in range(256):
+            pixels = bytes(self.rom.read_pattern(0xA, address))
+            address += 16  # Each pattern is 16 bytes long
+
+            image_1x = Image.frombytes('P', (8, 8), pixels)
+
+            image_1x.putpalette(colours)
+
+            # Cache this image
+            self._chr_tiles.append(ImageTk.PhotoImage(image_1x))
 
     # ------------------------------------------------------------------------------------------------------------------
 
