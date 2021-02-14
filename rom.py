@@ -22,6 +22,8 @@ feature_names = ["custom map colours",
                  "map tilesets"]
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+
 class ROM:
     """
     ROM handler class
@@ -57,7 +59,7 @@ class ROM:
                           "map tilesets": False         # True if the ROM implements the tileset table (1 entry/map)
                           }
 
-    # --- ROM.open() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def open(self, file_name: str) -> any:
         """
@@ -150,7 +152,7 @@ class ROM:
 
         return "OK"
 
-    # --- ROM.close() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def close(self) -> None:
         """
@@ -164,7 +166,7 @@ class ROM:
         self.trainer_size = 0
         self.path = ""
 
-    # --- ROM.readHeader() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def header(self) -> list:
         """
@@ -180,7 +182,7 @@ class ROM:
             return header
         return list(self._buf[0:16])
 
-    # --- ROM.write_word() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def write_word(self, bank: int, address: int, word: int) -> None:
         """
@@ -200,7 +202,7 @@ class ROM:
         self._buf[offset] = int(value[0])
         self._buf[offset + 1] = int(value[1])
 
-    # --- ROM.write_byte() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def write_byte(self, bank: int, address: int, byte: int) -> None:
         """
@@ -218,7 +220,7 @@ class ROM:
         offset = self._get_offset(bank, address)
         self._buf[offset] = (byte & 0xFF)
 
-    # --- ROM.write_bytes() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def write_bytes(self, bank: int, address: int, data: Union[bytes, bytearray]) -> None:
         """
@@ -237,7 +239,7 @@ class ROM:
         for i in range(0, len(data)):
             self._buf[offset + i] = data[i]
 
-    # --- ROM.read_byte() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_byte(self, bank: int, address: int) -> int:
         """
@@ -289,7 +291,7 @@ class ROM:
             count = count - 1
         return output
 
-    # --- read_signed_word() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_signed_word(self, bank: int, address: int) -> int:
         """
@@ -315,7 +317,7 @@ class ROM:
         else:
             raise Exception("Address/ bank out of range")
 
-    # --- read_word() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_word(self, bank: int, address: int) -> int:
         """
@@ -341,7 +343,35 @@ class ROM:
         else:
             raise Exception("Address/ bank out of range")
 
-    # --- ROM._get_offset() ---
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def write_pattern(self, bank: int, address: int, pixels: Union[list, bytearray]) -> None:
+        # We need two offsets: one for each bit-plane
+        ofs_0 = self._get_offset(bank, address)
+        ofs_1 = ofs_0 + 8
+        if ofs_1 > self.size:
+            raise Exception("Address/ bank out of range")
+
+        plane_0 = plane_1 = count = 0
+        for c in pixels:
+            # Each entry is two bits, we put each bit into a separate 8-bit 'plane'
+            bit_0 = c & 0x1
+            bit_1 = (c >> 1) & 0x1
+
+            plane_0 = (plane_0 << 1) | bit_0
+            plane_1 = (plane_1 << 1) | bit_1
+
+            count += 1
+            if count == 8:
+                # We filled two 8-bit planes that make up a line of pixels
+                self._buf[ofs_0] = plane_0
+                ofs_0 += 1
+                self._buf[ofs_1] = plane_1
+                ofs_1 += 1
+
+                plane_0 = plane_1 = count = 0
+
+    # ------------------------------------------------------------------------------------------------------------------
 
     def _get_offset(self, bank: int, address: int) -> int:
         """
@@ -367,7 +397,7 @@ class ROM:
             ofs = (bank * 0x4000) + 0x10 + self.trainer_size + address
             return ofs - 0x8000
 
-    # --- ROM.read_pattern() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_pattern(self, bank: int, address: int) -> list:
         """Read pixel data from an 8x8 pattern stored in ROM
@@ -405,7 +435,7 @@ class ROM:
                 pixels.append((bit_1 << 1) | bit_0)
         return pixels
 
-    # --- ROM.save() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def save(self, file_name: str = '') -> bool:
         """
@@ -439,7 +469,7 @@ class ROM:
 
         return True
 
-    # --- ROM.has_feature() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def has_feature(self, feature: str) -> bool:
         """
@@ -459,7 +489,7 @@ class ROM:
         """
         return self._features.get(feature, False)
 
-    # --- ROM.read_sprite() ---
+    # ------------------------------------------------------------------------------------------------------------------
 
     def read_sprite(self, bank: int, address: int, colours: List[int]) -> Image.Image:
         """
