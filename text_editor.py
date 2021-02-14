@@ -312,6 +312,7 @@ def _empty_image(width: int, height: int) -> Image:
 class TextEditor:
 
     def __init__(self, rom: ROM, colours: list, text_colours: bytearray, app: gui, settings: EditorSettings):
+        global _ascii_dict, _exodus_dict
 
         self.text: str = ""  # Text being edited (uncompressed)
         self.type: str = ""  # String type (determines where the pointer is)
@@ -436,6 +437,14 @@ class TextEditor:
                     break
                 else:
                     temp_name.append(value)
+
+        # Read custom character mappings. These are used for example to map accented letters to custom tiles.
+        self.custom_ascii, self.custom_exodus = self._load_custom_mappings()
+        # Turn them into dictionaries and build our new dictionaries by adding them to the default mappings
+        d = dict(self.custom_ascii)
+        _ascii_dict = {**_ASCII_DICT, **d}
+        d = dict(self.custom_exodus)
+        _exodus_dict = {**_EXODUS_DICT, ** d}
 
         # Read Menu/Intro pointers from ROM
         self.read_menu_text()
@@ -2203,7 +2212,42 @@ class TextEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _customise_input(self, widget: str) -> None:
-        if widget == "TC_Close":    # ----------------------------------------------------------------------------------
+        global _ascii_dict, _exodus_dict
+
+        if widget == "TC_Apply":    # ----------------------------------------------------------------------------------
+            # First, check for duplicated items from the default mappings and remove them
+            for i in range(len(self.custom_ascii)):     # The two lists must have the same size
+                if _ASCII_DICT.get(self.custom_ascii[i]) is not None:
+                    self.custom_ascii.pop(i)
+                if _EXODUS_DICT.get(self.custom_exodus[i]) is not None:
+                    self.custom_exodus.pop(i)
+
+            # Note: no need to worry about duplicates withing the lists themselves as they will be automatically
+            # ignored by dict()
+
+            # Turn the lists into dictionaries and create the final dictionaries that we will use
+            if len(self.custom_ascii) > 0 and len(self.custom_exodus) > 0:
+                d = dict(self.custom_ascii)
+                _ascii_dict = {**_ASCII_DICT, **d}
+                d = dict(self.custom_exodus)
+                _exodus_dict = {**_EXODUS_DICT, **d}
+
+            # Save these in settings file too...
+
+            # Re-create the whole section
+            if self.settings.config.has_section("MAPPINGS"):
+                self.settings.config.remove_section("MAPPINGS")
+            self.settings.config.add_section("MAPPINGS")
+
+            # Add items
+            for c, v in self.custom_ascii:
+                self.settings.config.set("MAPPINGS", f"{ord(c)}", f"0x{v:02X}")
+
+            # All done
+            if self.settings.get("close sub-window after saving"):
+                self.close_customise_window()
+
+        elif widget == "TC_Close":  # ----------------------------------------------------------------------------------
             self.close_customise_window()
 
         elif widget == "TC_Reload":     # ------------------------------------------------------------------------------
@@ -2294,7 +2338,18 @@ class TextEditor:
 
             # New keys/values
             character = self.app.getEntry("TC_Mapping_Chr")
-            tile_id = self.app.getEntry("TC_Mapping_Tile")
+            try:
+                tile_id = int(self.app.getEntry("TC_Mapping_Tile"), 16)
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget("TC_Mapping_Tile").selection_range(0, "end")
+                return
+
+            # Make sure these are valid entries
+            if len(character) < 1:
+                self.app.soundError()
+                self.app.getEntryWidget("TC_Mapping_Chr").selection_range(0, "end")
+                return
 
             # Replace the key that was previously at this index
             self.custom_ascii[index] = (character, tile_id)
