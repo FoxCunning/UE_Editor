@@ -14,6 +14,7 @@
     - NPC name editor (only for Remastered ROM)
     - Enemy name editor
     - Menu / Intro text editor
+    - Character mapping editor
 
 - Music / Sound Effect editor
   - Instrument editor
@@ -33,6 +34,7 @@
     - Weapon / armour editor
     - Magic editor
     - Item editor
+    - CHR tile editor
     - Pre-made party editor (Remastered ROM only)
     - Special ability editor (Remastered ROM only)
     - Special dialogue editor (e.g. vendors, Lord British, etc.)
@@ -44,12 +46,12 @@
 - Music tracker:
   - Implement noise channel
   - Import/export music from/to FamiTracker
-- End game editor
 - Ability to assign music to specific maps
+- End game editor
 - Add an options for an alternative weapon / armour system
 - Major refactoring in most modules
 - Some extra features that would be nice to have:
-    - Integrated pattern editor, to make external tools entirely optional
+    - Full-featured integrated tile editor, to make external tools entirely optional
     - An embedded assembler / code editor with basic syntax highlighting, for advanced hacking 
 
 ###Requirements:
