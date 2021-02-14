@@ -21,6 +21,7 @@ import sys
 
 import pyo
 
+import appJar
 import colour
 
 from typing import List
@@ -42,6 +43,7 @@ from sfx_editor import SFXEditor
 from text_editor import TextEditor, read_text
 
 # ----------------------------------------------------------------------------------------------------------------------
+from tile_editor import TileEditor
 
 settings = EditorSettings()
 
@@ -66,6 +68,7 @@ cutscene_editor: CutsceneEditor
 music_editor: MusicEditor
 battlefield_editor: BattlefieldEditor
 sfx_editor: SFXEditor
+tile_editor: TileEditor
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -475,6 +478,7 @@ def open_rom(file_name: str) -> None:
     global battlefield_editor
     global sfx_editor
     global end_game_editor
+    global tile_editor
 
     app.setStatusbar(f"Opening ROM file '{file_name}'", field=0)
     val = rom.open(file_name)
@@ -554,8 +558,10 @@ def open_rom(file_name: str) -> None:
             map_colours.append(colour_value[1])  # Green
             map_colours.append(colour_value[2])  # Blue
 
+        tile_editor = TileEditor(app, settings, rom, palette_editor)
+
         # This automatically loads text pointer tables and caches dialogue and special strings
-        text_editor = TextEditor(rom, map_colours, palette_editor.sub_palette(0, 1), app, settings)
+        text_editor = TextEditor(rom, map_colours, palette_editor.sub_palette(0, 1), app, settings, tile_editor)
 
         app.setMeter("PE_Progress_Meter", 30)
         app.topLevel.update()
@@ -1205,8 +1211,13 @@ def text_editor_input(widget: str) -> None:
 
     elif widget == "TE_Button_Customise":   # --------------------------------------------------------------------------
         text_editor.show_customise_window()
+
         app.getTextAreaWidget("TE_Text").focus_set()
-        text_editor.draw_text_preview(True)
+        try:
+            app.getCanvasWidget("TC_Canvas_Charset")
+            text_editor.draw_text_preview(True)
+        except appJar.appjar.ItemLookupError:
+            return
 
     elif widget == "TE_Button_Reload_Text":     # ----------------------------------------------------------------------
         # Get address from input widget
@@ -2233,6 +2244,8 @@ if __name__ == "__main__":
                                row=0, column=0)
                     app.button("Text_More", image="res/edit-dlg.gif", value=edit_text, sticky="NEW", height=32,
                                row=0, column=1)
+                    app.button("TE_Button_Customise", text_editor_input, image="res/alphabet.gif",
+                               tooltip="Customise Character Mapping", row=0, column=2, sticky="E")
 
             with app.frame("TextEditor_Right", row=0, column=1, sticky="NEW", padding=[4, 2], bg=colour.PALE_BROWN):
                 app.optionBox("Text_Type", ["- Choose Type -", "Dialogue", "Special", "NPC Names", "Enemy Names",
@@ -2647,8 +2660,6 @@ if __name__ == "__main__":
                            tooltip="Apply Changes and Close", row=0, column=0, sticky="W")
                 app.button("TE_Button_Close", text_editor_input, image="res/close.gif",
                            tooltip="Discard Changes and Close", row=0, column=1, sticky="W")
-                app.button("TE_Button_Customise", text_editor_input, image="res/alphabet.gif",
-                           tooltip="Customise Character Mapping", row=0, column=2, sticky="E")
 
             # Text
             with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.DARK_GREY, sticky="NEW", stretch='COLUMN',

@@ -18,6 +18,7 @@ from routines import Routine, Parameter
 
 
 # ----------------------------------------------------------------------------------------------------------------------
+from tile_editor import TileEditor
 
 
 def _convert_unpacked(byte: int) -> str:
@@ -311,7 +312,8 @@ def _empty_image(width: int, height: int) -> Image:
 
 class TextEditor:
 
-    def __init__(self, rom: ROM, colours: list, text_colours: bytearray, app: gui, settings: EditorSettings):
+    def __init__(self, rom: ROM, colours: list, text_colours: bytearray, app: gui, settings: EditorSettings,
+                 tile_editor: TileEditor):
         global _ascii_dict, _exodus_dict
 
         self.text: str = ""  # Text being edited (uncompressed)
@@ -342,6 +344,8 @@ class TextEditor:
 
         # Reference to the global ROM instance
         self.rom: ROM = rom
+
+        self.tile_editor: TileEditor = tile_editor
 
         # Colours used to draw portrait previews
         self.colours: List[int] = colours
@@ -994,7 +998,7 @@ class TextEditor:
                 col += 1
 
             # Clear the rest of the line
-            while col < last_col:
+            while col < last_col + 1:
                 item = col + (row * 20)
                 if self._chr_items[item] > 0:
                     self._preview_canvas.itemconfig(self._chr_items[item], image=self._chr_tiles[0])
@@ -1008,7 +1012,7 @@ class TextEditor:
         # Clear the remaining lines under the text, if needed
         while row < last_row + 1:
             col = left
-            while col < last_col:
+            while col < last_col + 1:
                 item = col + (row * 20)
                 if self._chr_items[item] > 0:
                     self._preview_canvas.itemconfig(self._chr_items[item], image=self._chr_tiles[0])
@@ -2175,8 +2179,10 @@ class TextEditor:
                 app.entry("TC_Mapping_Tile", "0x00", bg=colour.PALE_VIOLET, fg=colour.BLACK,
                           row=2, column=1, width=5, limit=4, font=10, sticky="W")
 
+                app.button("TC_Edit_Tile", self._customise_input, image="res/pencil-small.gif", height=16,
+                           row=4, column=0, sticky="WE", bg=colour.DARK_VIOLET)
                 app.button("TC_Update_Entry", self._customise_input, image="res/check_green-small.gif", height=16,
-                           row=4, column=0, colspan=2, sticky="WE", bg=colour.DARK_VIOLET)
+                           row=4, column=1, sticky="WE", bg=colour.DARK_VIOLET)
 
             self._charset_canvas = app.canvas("TC_Canvas_Charset", width=128, height=128, bg=colour.BLACK,
                                               row=1, column=2)
@@ -2186,6 +2192,9 @@ class TextEditor:
         self._charset_canvas.bind("<ButtonRelease-1>", self._select_custom_tile, add='')
 
         # Show the whole charset
+        if len(self._chr_tiles) == 0:
+            self._load_text_patterns()
+
         for y in range(16):
             for x in range(16):
                 c = x + (y << 4)
@@ -2326,6 +2335,25 @@ class TextEditor:
             # If there is at least one entry left, set a selection
             if len(self.custom_ascii) > 0:
                 self.app.selectListItemAtPos("TC_List_Dictionary", 0, callFunction=True)
+
+        elif widget == "TC_Edit_Tile":  # ------------------------------------------------------------------------------
+            try:
+                tile_id = int(self.app.getEntry("TC_Mapping_Tile"), 16)
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget("TC_Mapping_Tile").selection_range(0, "end")
+                return
+
+            self.tile_editor.show(0xA, 0x8000 + (tile_id << 4), 0)
+
+            # Refresh the tiles
+            self._load_text_patterns()
+            for y in range(16):
+                for x in range(16):
+                    c = x + (y << 4)
+                    self._charset_canvas.itemconfigure(self._charset_items[c], image=self._chr_tiles[c])
+
+            self.app.getEntryWidget("TC_Mapping_Chr").focus_set()
 
         elif widget == "TC_Update_Entry":   # --------------------------------------------------------------------------
             selection = self.app.getListBoxPos("TC_List_Dictionary")
