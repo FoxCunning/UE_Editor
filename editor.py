@@ -386,7 +386,7 @@ def edit_text() -> None:
     # Get string type
     string_type = app.getOptionBox("Text_Type")
 
-    text_editor.show_window(string_index, string_type)
+    text_editor.show_advanced_window(string_index, string_type)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1131,7 +1131,7 @@ def text_editor_stop() -> bool:
     bool
         True if the window has been closed, False if the action has been cancelled
     """
-    if text_editor.hide_window() is False:
+    if text_editor.close_advanced_window() is False:
         # Re-focus Text Editor sub-window
         app.showSubWindow("Text_Editor")
         return False
@@ -1197,11 +1197,16 @@ def text_editor_input(widget: str) -> None:
             app.selectListItemAtPos("Text_Id", selected_index, callFunction=True)
 
     elif widget == "TE_Button_Close":   # ------------------------------------------------------------------------------
-        text_editor.hide_window(False)
+        text_editor.close_advanced_window(False)
 
         # Reload currently selected string if the text tab is active
         if app.getTabbedFrameSelectedTab("TabbedFrame") == "Text":
             app.selectListItemAtPos("Text_Id", text_editor.index, callFunction=True)
+
+    elif widget == "TE_Button_Customise":   # --------------------------------------------------------------------------
+        text_editor.show_customise_window()
+        app.getTextAreaWidget("TE_Text").focus_set()
+        text_editor.draw_text_preview(True)
 
     elif widget == "TE_Button_Reload_Text":     # ----------------------------------------------------------------------
         # Get address from input widget
@@ -2217,23 +2222,25 @@ if __name__ == "__main__":
 
         # TEXT Tab -----------------------------------------------------------------------------------------------------
         with app.tab("Text", padding=[0, 0]):
-            with app.frame("TextEditor_Left", row=0, column=0, padding=[2, 2], inPadding=[0, 0],
+            with app.frame("TextEditor_Left", row=0, column=0, padding=[4, 2], inPadding=[0, 0],
                            sticky='NW', bg=colour.PALE_OLIVE):
                 app.label("TextEditor_Type", "Text Preview:", row=0, column=0, sticky="NW", stretch="NONE", font=10)
-                app.textArea("Text_Preview", row=1, column=0, colspan=2, sticky="NEW", stretch="ROW", scroll=True,
+                app.textArea("Text_Preview", row=1, column=0, sticky="NEW", stretch="BOTH", scroll=True,
                              end=False, height=10, rowspan=2).setFont(family="Consolas", size=11)
-                app.button("Text_Apply", name="Apply Changes", value=text_editor_input, row=3, column=0,
-                           sticky='NW', stretch='NONE')
-                app.button("Text_More", name="More Actions", value=edit_text, row=3, column=1, sticky="NW",
-                           stretch='NONE')
 
-            with app.frame("TextEditor_Right", row=0, column=1, sticky="NE", padding=[2, 2], bg=colour.PALE_BROWN):
+                with app.frame("TextEditor_Buttons", padding=[4, 2], row=3, column=0):
+                    app.button("Text_Apply", image="res/floppy.gif", value=text_editor_input, sticky="NEW", height=32,
+                               row=0, column=0)
+                    app.button("Text_More", image="res/edit-dlg.gif", value=edit_text, sticky="NEW", height=32,
+                               row=0, column=1)
+
+            with app.frame("TextEditor_Right", row=0, column=1, sticky="NEW", padding=[4, 2], bg=colour.PALE_BROWN):
                 app.optionBox("Text_Type", ["- Choose Type -", "Dialogue", "Special", "NPC Names", "Enemy Names",
                                             "Menus / Intro"],
-                              change=select_text_type, row=0, column=4, sticky="NW", colspan=2, stretch="NONE",
+                              change=select_text_type, row=0, column=4, sticky="NEW", colspan=2, stretch="BOTH",
                               bg=colour.PALE_ORANGE)
-                app.listBox("Text_Id", value=[], change=select_text_id, row=1, column=4, sticky="NE",
-                            group=True, multi=False, stretch='NONE', bg=colour.WHITE)
+                app.listBox("Text_Id", value=[], change=select_text_id, row=1, column=4, sticky="NEW",
+                            group=True, multi=False, bg=colour.WHITE)
 
         # PALETTES Tab -------------------------------------------------------------------------------------------------
         with app.tab("Palettes", padding=[4, 2]):
@@ -2617,9 +2624,8 @@ if __name__ == "__main__":
         with app.subWindow("PE_Progress", title="Loading", modal=True, size=[300, 100], padding=[4, 4],
                            bg=colour.DARK_TEAL, fg=colour.WHITE, stopFunction=no_stop):
 
-            app.label("PE_Progress_Label", "Please wait...", row=0, column=0, stretch="ROW", sticky='WE',
-                      font=16)
-            app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
+            app.label("PE_Progress_Label", "Please wait...", row=0, column=0, font=16)
+            app.meter("PE_Progress_Meter", value=0, row=1, column=0, stretch="BOTH", sticky="WE",
                       fill=colour.MEDIUM_BLUE)
 
         # Map Editor Sub-Window ----------------------------------------------------------------------------------------
@@ -2637,10 +2643,12 @@ if __name__ == "__main__":
                            stopFunction=text_editor_stop, bg=colour.MEDIUM_GREY):
             # Buttons
             with app.frame("TE_Frame_Top", row=0, colspan=2, sticky="NEW", stretch="ROW", padding=[8, 2]):
-                app.button("TE_Button_Accept", text_editor_input, name="Accept and Close", image="res/floppy.gif",
-                           tooltip="Apply Changes and Close", row=0, column=0, sticky='W')
-                app.button("TE_Button_Close", text_editor_input, name=" Cancel ", image="res/close.gif",
-                           tooltip="Discard Changes and Close", row=0, column=2, sticky='E')
+                app.button("TE_Button_Accept", text_editor_input, image="res/floppy.gif",
+                           tooltip="Apply Changes and Close", row=0, column=0, sticky="W")
+                app.button("TE_Button_Close", text_editor_input, image="res/close.gif",
+                           tooltip="Discard Changes and Close", row=0, column=1, sticky="W")
+                app.button("TE_Button_Customise", text_editor_input, image="res/alphabet.gif",
+                           tooltip="Customise Character Mapping", row=0, column=2, sticky="E")
 
             # Text
             with app.frame("TE_Frame_Left", row=1, column=0, bg=colour.DARK_GREY, sticky="NEW", stretch='COLUMN',

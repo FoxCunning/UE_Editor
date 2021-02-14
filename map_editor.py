@@ -2046,7 +2046,7 @@ class MapEditor:
             try:
                 value = int(string_id, 16)
                 if 0 <= value <= 0xE5:
-                    self.text_editor.show_window(value, "Dialogue")
+                    self.text_editor.show_advanced_window(value, "Dialogue")
                 elif 0xF0 <= value <= 0xFF:
                     self.text_editor.show_special_window(value, self.location_names)
                 else:
@@ -2165,10 +2165,9 @@ class MapEditor:
                 # noinspection PyArgumentList
                 self.app.setStopFunction(no_stop)
 
-                self.app.label("Progress_Label", "Please wait...", row=0, column=0, stretch='ROW', sticky='WE',
-                               font=16)
-                self.app.meter("ME_Progress_Meter", value=0, row=1, column=0, stretch='BOTH', sticky='WE',
-                               fill=colour.MEDIUM_BLUE)
+                self.app.label("Progress_Label", "Please wait...", row=0, column=0, font=16)
+                self.app.meter("ME_Progress_Meter", value=0, stretch="BOTH", sticky="WE",
+                               row=1, column=0, fill=colour.MEDIUM_BLUE)
 
             # Entrance / Moongate Editor Sub-Sub-Window ----------------------------------------------------------------
             with self.app.subWindow("Entrance_Editor", "Entrances / Moongates", size=[256, 440], modal=False,
@@ -2177,7 +2176,7 @@ class MapEditor:
                 self.app.setStopFunction(self.close_windows)
 
                 # Entrances frame
-                with self.app.labelFrame("EE_Frame_Entrances", name="Entrances", row=0, column=0, stretch='ROW',
+                with self.app.labelFrame("EE_Frame_Entrances", name="Entrances", row=0, column=0, stretch="ROW",
                                          sticky='NEW'):
                     # Column 0
                     self.app.listBox("EE_List_Entrances", list(range(22)), change=self.entrance_input, row=0,

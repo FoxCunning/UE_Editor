@@ -1911,7 +1911,7 @@ class PartyEditor:
                 if int(widget[-1:], 10) == 2:
                     string_id = string_id + 1
                 # Open this string in the Eext Editor
-                self.text_editor.show_window(string_id, "Special")
+                self.text_editor.show_advanced_window(string_id, "Special")
             except ValueError as e:
                 self.warning(f"Error processing input from widget: '{widget}': {e}.")
 
@@ -2047,7 +2047,7 @@ class PartyEditor:
                 string_id = self.routines[routine_id].parameters[parameter_id].value
                 # int(self.app.getEntry(f"PE_String_Id_Parameter_{parameter_id:02}"), 16)
                 if 0 <= string_id <= 255:
-                    self.text_editor.show_window(string_id, "Special")
+                    self.text_editor.show_advanced_window(string_id, "Special")
             except ValueError:
                 pass
 
@@ -2188,7 +2188,7 @@ class PartyEditor:
             # Update the displayed string ID, in case the box contained an invalid value
             self._update_menu_string_entry()
             # Now we can show the "advanced" text editor
-            self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
+            self.text_editor.show_advanced_window(self.menu_string_id, "Menus / Intro")
 
         else:
             self.warning(f"Unimplemented widget callback from '{widget}'.")
@@ -2382,7 +2382,7 @@ class PartyEditor:
             # Update the displayed string ID, in case the box contained an invalid value
             self._update_menu_string_entry()
             # Now we can show the "advanced" text editor
-            self.text_editor.show_window(self.menu_string_id, "Menus / Intro")
+            self.text_editor.show_advanced_window(self.menu_string_id, "Menus / Intro")
 
         elif widget == "PE_Check_Caster_0":
             if self.selected_index >= 0:
@@ -2645,7 +2645,7 @@ class PartyEditor:
             try:
                 value = int(self.app.getEntry("PE_Special_Dialogue"), 16)
                 if value <= 0xFF:
-                    self.text_editor.show_window(value, "Special")
+                    self.text_editor.show_advanced_window(value, "Special")
             except ValueError:
                 self.app.warningBox("Special", f"Invalid string ID: '{self.app.getEntry('PE_Special_Dialogue')}'.")
 

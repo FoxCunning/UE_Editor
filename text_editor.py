@@ -115,6 +115,55 @@ def _convert_packed(character: str) -> int:
 
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Base dictionaries used for conversions
+
+# Dictionary used to convert from Exodus to ASCII
+_EXODUS_DICT = {
+    0x00: ' ',
+    0x01: '+',
+    0x02: '-',
+    0x03: ':',
+    0x04: '\'',
+    0x05: '"',
+    0x09: '*',
+    0x42: ',',
+    0x43: '.',
+    0x7C: '!',
+    0x7D: '?',
+    0x88: '©',
+    0x89: '…',
+    0xFD: '\n',
+    0xFF: '~'
+}
+
+# Dictionary used to convert from ASCII to Exodus
+_ASCII_DICT = {
+    ' ': 0x00,
+    '+': 0x01,
+    '-': 0x02,
+    ':': 0x03,
+    '\'': 0x04,
+    '"': 0x05,
+    '*': 0x09,
+    ',': 0x42,
+    '.': 0x43,
+    '!': 0x7C,
+    '?': 0x7D,
+    '©': 0x88,
+    '…': 0x89,
+    '\n': 0xFD,
+    '\r': 0xFD,
+    '\a': 0xFD,
+    '~': 0xFF
+}
+
+# Customisable versions
+_exodus_dict = _EXODUS_DICT.copy()
+_ascii_dict = _ASCII_DICT.copy()
+
+
+# ----------------------------------------------------------------------------------------------------------------------
+
 def ascii_to_exodus(ascii_string: str) -> bytearray:
     """
     Converts an ASCII string to a string of bytes representing nametable value that can be displayed as text
@@ -133,26 +182,6 @@ def ascii_to_exodus(ascii_string: str) -> bytearray:
     """
     exodus_string = bytearray()
     ascii_string = ascii_string.upper()
-
-    switcher = {
-        ' ': 0x00,
-        '+': 0x01,
-        '-': 0x02,
-        ':': 0x03,
-        '\'': 0x04,
-        '"': 0x05,
-        '*': 0x09,
-        ',': 0x42,
-        '.': 0x43,
-        '!': 0x7C,
-        '?': 0x7D,
-        '©': 0x88,
-        '…': 0x89,
-        '\n': 0xFD,
-        '\r': 0xFD,
-        '\a': 0xFD,
-        '~': 0xFF
-    }
 
     c = 0
     while c < len(ascii_string):
@@ -186,7 +215,7 @@ def ascii_to_exodus(ascii_string: str) -> bytearray:
                 continue
 
         else:
-            exodus_string.append(switcher.get(ascii_string[c], 0x00))
+            exodus_string.append(_ascii_dict.get(ascii_string[c], 0x00))
 
         c = c + 1
 
@@ -203,7 +232,8 @@ def exodus_to_ascii(exodus_string: bytearray) -> str:
 
     Parameters
     ----------
-    exodus_string
+    exodus_string: bytearray
+        The string of bytes to convert
 
     Returns
     -------
@@ -212,31 +242,13 @@ def exodus_to_ascii(exodus_string: bytearray) -> str:
     """
     ascii_string = ""
 
-    switcher = {
-        0x00: ' ',
-        0x01: '+',
-        0x02: '-',
-        0x03: ':',
-        0x04: '\'',
-        0x05: '"',
-        0x09: '*',
-        0x42: ',',
-        0x43: '.',
-        0x7C: '!',
-        0x7D: '?',
-        0x88: '©',
-        0x89: '…',
-        0xFD: '\n',
-        0xFF: '~'
-    }
-
     for char in exodus_string:
         if 0x8A <= char <= 0xA3:
             ascii_string = ascii_string + chr(char - 0x49)
         elif 0x38 <= char <= 0x41:
             ascii_string = ascii_string + chr(char - 0x08)
         else:
-            value = switcher.get(char, '#')
+            value = _exodus_dict.get(char, '#')
             if value == '#':
                 value = f"\\x{char:02X}"
             ascii_string = ascii_string + value
@@ -354,6 +366,16 @@ class TextEditor:
         # Canvas item IDs
         self._chr_items: List[int] = [0] * (20 * 9)
         self._preview_canvas: Union[any, tkinter.Canvas] = None
+        self._charset_items: List[int] = [8] * 256
+        self._charset_canvas: Union[any, tkinter.Canvas] = None
+        self._charset_selection: int = 0
+
+        # Selected character for custom mapping
+        self._selected_char: int = 0
+
+        # These will be used to read and customise character mappings before adding them to our dictionary
+        self.custom_ascii = []
+        self.custom_exodus = []
 
         # Read portrait descriptive names from file
         try:
@@ -576,7 +598,7 @@ class TextEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def show_window(self, string_id: int, string_type: str) -> None:
+    def show_advanced_window(self, string_id: int, string_type: str) -> None:
         """
         Shows a window with advanced options to change the desired text and associated portrait/NPC name (if any)
 
@@ -627,6 +649,10 @@ class TextEditor:
 
         self.app.setLabel("TE_Label_Type", f"{string_type} Text")
         self.app.setEntry("TE_Entry_Address", f"0x{self.address:02X}")
+
+        self._load_text_patterns()
+        self._preview_canvas = self.app.getCanvasWidget("TE_Preview")
+        self.draw_text_preview(True)
 
         if string_type == "Dialogue" or string_type == "Special":
             # Populate NPC names OptionBox
@@ -713,10 +739,6 @@ class TextEditor:
             self.app.setOptionBox("TE_Option_Portrait", 0)
 
         self.load_portrait(portrait_index)
-        self._load_text_patterns()
-
-        self._preview_canvas = self.app.getCanvasWidget("TE_Preview")
-        self.draw_text_preview(True)
 
         self.app.showSubWindow("Text_Editor")
 
@@ -818,7 +840,7 @@ class TextEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def hide_window(self, confirm_quit: bool = True) -> bool:
+    def close_advanced_window(self, confirm_quit: bool = True) -> bool:
         """
         Close the advanced text editing window
 
@@ -858,12 +880,12 @@ class TextEditor:
             last_row = 6
             last_col = 16
         elif mode == "Intro":
-            left = 2
-            top = 2
+            left = 0
+            top = 3
             skip_rows = True
-            frame = True
+            frame = False
             last_row = 7
-            last_col = 18
+            last_col = 19
         else:
             left = 0
             top = 0
@@ -2029,7 +2051,7 @@ class TextEditor:
 
             try:
                 value = int(self.app.getEntry(f"SD_Value_{p:02}"), 16)
-                self.show_window(value, "Special")
+                self.show_advanced_window(value, "Special")
             except ValueError:
                 self.app.soundError()
                 self.app.getEntryWidget(f"SD_Value_{p:02}").selection_range(0, "end")
@@ -2039,7 +2061,7 @@ class TextEditor:
 
             try:
                 value = int(self.app.getEntry(f"SD_Table_Value_{p:02}"), 16)
-                self.show_window(value, "Special")
+                self.show_advanced_window(value, "Special")
             except ValueError:
                 self.app.soundError()
                 self.app.getEntryWidget(f"SD_Table_Value_{p:02}").selection_range(0, "end")
@@ -2087,3 +2109,261 @@ class TextEditor:
 
         else:   # ------------------------------------------------------------------------------------------------------
             self.info(f"Unimplemented input from widget: '{widget}'.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def close_customise_window(self) -> None:
+        self.app.hideSubWindow("Dictionary_Editor")
+        self.app.emptySubWindow("Dictionary_Editor")
+        self._charset_canvas = None
+        self._charset_items = [0] * 256
+        self._charset_selection = 0
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def show_customise_window(self) -> None:
+        # Check if window already exists
+        try:
+            self.app.getFrameWidget("TC_Frame_Buttons")
+            self.app.showSubWindow("Dictionary_Editor")
+            return
+
+        except appJar.appjar.ItemLookupError:
+            generator = self.app.subWindow("Dictionary_Editor", size=[380, 220], padding=[2, 2],
+                                           title="Customise Character Mappings",
+                                           resizable=False, modal=True, blocking=True,
+                                           bg=colour.DARK_VIOLET, fg=colour.WHITE,
+                                           stopFunction=self.close_customise_window)
+        app = self.app
+
+        with generator:
+
+            with app.frame("TC_Frame_Buttons", padding=[4, 2], sticky="NEW", row=0, column=0, colspan=3):
+
+                app.button("TC_Apply", self._customise_input, image="res/floppy.gif", bg=colour.LIGHT_VIOLET,
+                           row=0, column=1, sticky="W", tooltip="Save all changes")
+                app.button("TC_Reload", self._customise_input, image="res/reload.gif", bg=colour.LIGHT_VIOLET,
+                           row=0, column=2, sticky="W", tooltip="Reload from saved settings")
+                app.button("TC_Close", self._customise_input, image="res/close.gif", bg=colour.LIGHT_VIOLET,
+                           row=0, column=3, sticky="W", tooltip="Discard changes and close")
+
+            with app.frame("TC_Frame_Parameters", padding=[4, 2], sticky="NEW", row=1, column=0):
+                app.label("TC_Label_0", "Mappings:", sticky="WE", row=0, column=0, colspan=2)
+                app.listBox("TC_List_Dictionary", [], multi=False, group=True, sticky="W", width=12, height=5,
+                            row=1, column=0, colspan=2, font=10, change=self._customise_input)
+                app.button("TC_Add_Entry", self._customise_input, image="res/mapping-new.gif", sticky="WE",
+                           row=2, column=0, height=32, tooltip="New Mapping", bg=colour.PALE_VIOLET)
+                app.button("TC_Del_Entry", self._customise_input, image="res/eraser.gif", sticky="WE",
+                           row=2, column=1, height=32, tooltip="Remove Mapping", bg=colour.PALE_VIOLET)
+
+            with app.frame("TC_Frame_Mapping", padding=[2, 2], sticky="NEW", row=1, column=1):
+                app.label("TC_Label_1", "Edit Mapping", row=0, column=0, colspan=2, sticky="WE", font=11)
+
+                app.label("TC_Label_2", "CHR:", row=1, column=0, font=11, sticky="E")
+                app.entry("TC_Mapping_Chr", "", bg=colour.PALE_VIOLET, fg=colour.BLACK,
+                          row=1, column=1, width=3, limit=1, font=10, sticky="W")
+                app.label("TC_Label_3", "TID:", row=2, column=0, font=11, sticky="E")
+                app.entry("TC_Mapping_Tile", "0x00", bg=colour.PALE_VIOLET, fg=colour.BLACK,
+                          row=2, column=1, width=5, limit=4, font=10, sticky="W")
+
+                app.button("TC_Update_Entry", self._customise_input, image="res/check_green-small.gif", height=16,
+                           row=4, column=0, colspan=2, sticky="WE", bg=colour.DARK_VIOLET)
+
+            self._charset_canvas = app.canvas("TC_Canvas_Charset", width=128, height=128, bg=colour.BLACK,
+                                              row=1, column=2)
+
+        app.setCanvasCursor("TC_Canvas_Charset", "hand1")
+
+        self._charset_canvas.bind("<ButtonRelease-1>", self._select_custom_tile, add='')
+
+        # Show the whole charset
+        for y in range(16):
+            for x in range(16):
+                c = x + (y << 4)
+                self._charset_items[c] = self._charset_canvas.create_image(x * 8, y * 8,
+                                                                           anchor="nw", image=self._chr_tiles[c])
+
+        self._selected_char = 0
+        self._charset_selection = self._charset_canvas.create_rectangle(0, 0, 8, 8, width=1, outline=colour.MEDIUM_RED)
+
+        # We do everything with lists, then create dictionaries from them when saving
+
+        self.custom_ascii, self.custom_exodus = self._load_custom_mappings()
+
+        list_items = []
+        for character, value in self.custom_ascii:
+            list_items.append(f"'{character}' -> 0x{value:02X}")
+        app.addListItems("TC_List_Dictionary", list_items, False)
+
+        if len(list_items) > 0:
+            app.selectListItemAtPos("TC_List_Dictionary", 0, True)
+
+        app.showSubWindow("Dictionary_Editor")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _customise_input(self, widget: str) -> None:
+        if widget == "TC_Close":    # ----------------------------------------------------------------------------------
+            self.close_customise_window()
+
+        elif widget == "TC_Reload":     # ------------------------------------------------------------------------------
+            self.custom_ascii, self.custom_exodus = self._load_custom_mappings()
+
+            self.app.clearListBox("TC_List_Dictionary", False)
+
+            list_items = []
+            for character, value in self.custom_ascii:
+                list_items.append(f"'{character}' -> 0x{value:02X}")
+            self.app.addListItems("TC_List_Dictionary", list_items, False)
+
+            if len(list_items) > 0:
+                self.app.selectListItemAtPos("TC_List_Dictionary", 0, True)
+
+        elif widget == "TC_List_Dictionary":    # ----------------------------------------------------------------------
+            selection = self.app.getListBoxPos(widget)
+
+            if len(selection) < 1:
+                return
+
+            char, value = self.custom_ascii[selection[0]]
+
+            # Show and select ASCII/Unicode character
+            self.app.clearEntry("TC_Mapping_Chr", callFunction=False, setFocus=True)
+            self.app.setEntry("TC_Mapping_Chr", char, callFunction=False)
+            self.app.getEntryWidget("TC_Mapping_Chr").selection_range(0, "end")
+
+            # Show value of tile mapped to it
+            self.app.clearEntry("TC_Mapping_Tile", callFunction=False, setFocus=False)
+            self.app.setEntry("TC_Mapping_Tile", f"0x{value:02X}", callFunction=False)
+
+            # Move the selection rectangle there
+            x = (value % 16) << 3
+            y = (value >> 4) << 3
+            self._charset_canvas.coords(self._charset_selection, x, y, x + 8, y + 8)
+
+        elif widget == "TC_Add_Entry":  # ------------------------------------------------------------------------------
+            if len(self.custom_ascii) > 9:
+                self.app.errorBox("Customise Mappings", "Cannot define more than 10 custom mappings.",
+                                  "Dictionary_Editor")
+                return
+
+            # Use the first unused tile ID
+            ascii_char = 'ÿ'
+            tile_id = 0xFF
+
+            # TODO Find an unused character/tile?
+
+            self.custom_ascii.append((ascii_char, tile_id))
+            self.custom_exodus.append((tile_id, ascii_char))
+
+            self.app.addListItems("TC_List_Dictionary", [f"'{ascii_char}' -> 0x{tile_id:02X}"], select=True)
+
+            self.app.clearEntry("TC_Mapping_Chr", callFunction=False, setFocus=True)
+            self.app.setEntry("TC_Mapping_Chr", ascii_char, callFunction=False)
+            self.app.getEntryWidget("TC_Mapping_Chr").selection_range(0, "end")
+
+            self.app.clearEntry("TC_Mapping_Tile", callFunction=False, setFocus=False)
+            self.app.setEntry("TC_Mapping_Tile", f"0x{tile_id:02X}", callFunction=False)
+
+            x = (tile_id % 16) << 3
+            y = (tile_id >> 4) << 3
+            self._charset_canvas.coords(self._charset_selection, x, y, x + 8, y + 8)
+
+        elif widget == "TC_Del_Entry":  # ------------------------------------------------------------------------------
+            selection = self.app.getListBoxPos("TC_List_Dictionary")
+
+            if len(selection) < 1:
+                return
+
+            del self.custom_ascii[selection[0]]
+            del self.custom_exodus[selection[0]]
+            self.app.removeListItemAtPos("TC_List_Dictionary", selection[0])
+
+            # If there is at least one entry left, set a selection
+            if len(self.custom_ascii) > 0:
+                self.app.selectListItemAtPos("TC_List_Dictionary", 0, callFunction=True)
+
+        elif widget == "TC_Update_Entry":   # --------------------------------------------------------------------------
+            selection = self.app.getListBoxPos("TC_List_Dictionary")
+
+            if len(selection) < 1:
+                self.app.soundError()
+                return
+
+            index = selection[0]
+
+            # New keys/values
+            character = self.app.getEntry("TC_Mapping_Chr")
+            tile_id = self.app.getEntry("TC_Mapping_Tile")
+
+            # Replace the key that was previously at this index
+            self.custom_ascii[index] = (character, tile_id)
+            self.custom_exodus[index] = (tile_id, character)
+
+            self.app.setListItemAtPos("TC_List_Dictionary", index, f"'{character}' -> 0x{tile_id:02X}")
+
+        else:   # ------------------------------------------------------------------------------------------------------
+            self.warning(f"Unimplemented input from Customisation widget '{widget}'.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _load_custom_mappings(self) -> (List, List):
+        mappings_ascii = []
+        mappings_exodus = []
+
+        config = self.settings.config
+
+        if config.has_section("MAPPINGS"):
+            section = config["MAPPINGS"]
+
+            # Keep count: we can only hold 10 custom mappings
+            m = 0
+            for character, value in section.items():
+                # Values are in the form: ASCII/Unicode (int) = Tile ID (hex)
+                # e.g.: 1064=0x8A
+                try:
+                    character = chr(int(character)).upper()
+                except ValueError:
+                    self.warning(f"Found invalid mapping for '{character}' in config file.")
+                    continue
+
+                try:
+                    tile_id = int(value, 16)
+                except ValueError:
+                    self.warning(f"Found invalid mapping for tile ID '{value}' config file.")
+                    continue
+
+                # Make sure we have a valid ID
+                if tile_id > 0xFF:
+                    self.warning(f"Found invalid mapping with tile ID '{value}' in config file.")
+                    continue
+
+                # Also make sure it's not trying to replace a default one
+                if _ASCII_DICT.get(character, -1) != -1:
+                    self.warning(f"Cannot replace default value for character '{character}'.")
+                    continue
+                if _EXODUS_DICT.get(tile_id, -1) != -1:
+                    self.warning(f"Cannot replace default value for tile ID '{value}'.")
+                    continue
+
+                mappings_ascii.append((character, tile_id))
+                mappings_exodus.append((tile_id, character))
+
+                m += 1
+                if m > 9:
+                    break
+
+        return mappings_ascii, mappings_exodus
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _select_custom_tile(self, event: any) -> None:
+        x = (event.x >> 3) << 3
+        y = (event.y >> 3) << 3
+
+        tile_id = (x >> 3) + (y << 1)
+
+        self.app.clearEntry("TC_Mapping_Tile", callFunction=False, setFocus=False)
+        self.app.setEntry("TC_Mapping_Tile", f"0x{tile_id:02X}", callFunction=False)
+
+        self._charset_canvas.coords(self._charset_selection, x, y, x + 8, y + 8)
