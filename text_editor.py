@@ -1114,7 +1114,7 @@ class TextEditor:
             self.normal_first: int = 0x9F4C
             self.normal_end: int = 0xBBCF
 
-        # --- TextEditor.StringMemoryInfo.allocate_memory() ---
+        # ------------------------------------------------------------------------------------------------------------------
 
         def allocate_memory(self, size: int, preference: str = "special") -> int:
             """
@@ -1143,7 +1143,7 @@ class TextEditor:
 
             return address
 
-        # --- TextEditor.StringMemoryInfo._allocate_special() ---
+        # ------------------------------------------------------------------------------------------------------------------
 
         def _allocate_special(self, size: int) -> int:
             """
@@ -1171,7 +1171,7 @@ class TextEditor:
 
             return address
 
-        # --- TextEditor.StringMemoryInfo._allocate_normal() ---
+        # ------------------------------------------------------------------------------------------------------------------
 
         def _allocate_normal(self, size: int) -> int:
             """

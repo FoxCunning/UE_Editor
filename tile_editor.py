@@ -125,10 +125,10 @@ class TileEditor:
 
                 app.canvas("TL_Separator", width=16, height=1, row=0, column=4)
 
-                app.button("TL_Undo", self._input, image="res/undo.gif", width=32, height=32,
+                app.button("TL_Undo", self._undo, image="res/undo.gif", width=32, height=32,
                            tooltip="Nothing to Undo",
                            sticky="E", row=0, column=5)
-                app.button("TL_Redo", self._input, image="res/redo.gif", width=32, height=32,
+                app.button("TL_Redo", self._redo, image="res/redo.gif", width=32, height=32,
                            tooltip="Nothing to Redo",
                            sticky="E", row=0, column=6)
 
@@ -193,12 +193,6 @@ class TileEditor:
 
         elif widget == "TL_Tool_Fill":  # ------------------------------------------------------------------------------
             self._select_tool(TileEditor._FILL)
-
-        elif widget == "TL_Undo":   # ----------------------------------------------------------------------------------
-            self._undo()
-
-        elif widget == "TL_Redo":   # ----------------------------------------------------------------------------------
-            self._redo()
 
         else:   # ------------------------------------------------------------------------------------------------------
             self.warning(f"Unimplemented input from Pattern Editor widget '{widget}'.")
@@ -282,7 +276,11 @@ class TileEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def _drawing_left_up(self, _event) -> None:
+    def _drawing_left_up(self, event) -> None:
+        if self._tool == TileEditor._FILL:
+            self._flood_fill(event.x, event.y, self._selected_colour)
+            return
+
         self._undo_actions.append(self._modified_pixels)
         self._redo_actions = []
         self._modified_pixels = 0
@@ -305,10 +303,9 @@ class TileEditor:
 
         old_colour = self._pixels[pixel_index]
 
-        self._modified_pixels += 1
-
         self._undo_redo(self._change_pixel, (event.x, event.y, self._selected_colour),
                         (event.x, event.y, old_colour), text="Draw")
+        self._modified_pixels += 1
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -374,9 +371,9 @@ class TileEditor:
         Parameters
         ----------
         x: int
-            x
+            x coordinate on 128x128 canvas
         y: int
-            y
+            y coordinate on 128x128 canvas
         c: int
             Colour value (0-3)
         """
@@ -387,6 +384,86 @@ class TileEditor:
         # Update the canvas
         if self._rectangles[pixel_index] > 0:
             self._drawing.itemconfigure(self._rectangles[pixel_index], fill=self._colours[c])
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _flood_fill(self, x: int, y: int, c: int) -> None:
+        """
+        Fills an area with the specified colour.
+        Parameters
+        ----------
+        x: int
+            x coordinate of the starting pixel in the drawing canvas
+        y: int
+            y coordinate of the starting pixel in the drawing canvas
+        c: int
+            Colour index within the current palette
+        """
+        # Translate the coordinates from 128x128 canvas to 8x8 tile
+        x = x >> 4
+        y = y >> 4
+        # List of coordinates that we'll need to visit
+        queue = [(x, y)]
+
+        index = x + (y << 3)
+        old_clr = self._pixels[index]
+
+        self._undo_redo(self._change_pixel, (x << 4, y << 4, c), (x << 4, y << 4, old_clr), text="Fill Area")
+        self._modified_pixels += 1
+
+        # Four-direction non-recursive flood-fill algorithm in a single non-nested loop
+
+        while len(queue) > 0:
+            x, y = queue.pop()
+
+            # 1 Pixel to the left
+            node_x = x - 1
+            node_y = y
+
+            index = node_x + (node_y << 3)
+            if node_x >= 0 and self._pixels[index] == old_clr:
+                self._undo_redo(self._change_pixel, (node_x << 4, node_y << 4, c),
+                                (node_x << 4, node_y << 4, old_clr), text="Fill Area")
+                self._modified_pixels += 1
+                queue.append((node_x, node_y))
+
+            # 1 Pixel to the right
+            node_x = x + 1
+            node_y = y
+
+            index = node_x + (node_y << 3)
+            if node_x < 8 and self._pixels[index] == old_clr:
+                self._undo_redo(self._change_pixel, (node_x << 4, node_y << 4, c),
+                                (node_x << 4, node_y << 4, old_clr), text="Fill Area")
+                self._modified_pixels += 1
+                queue.append((node_x, node_y))
+
+            # 1 Pixel down
+            node_x = x
+            node_y = y + 1
+
+            index = node_x + (node_y << 3)
+            if node_y < 8 and self._pixels[index] == old_clr:
+                self._undo_redo(self._change_pixel, (node_x << 4, node_y << 4, c),
+                                (node_x << 4, node_y << 4, old_clr), text="Fill Area")
+                self._modified_pixels += 1
+                queue.append((node_x, node_y))
+
+            # 1 Pixel up
+            node_x = x
+            node_y = y - 1
+
+            index = node_x + (node_y << 3)
+            if node_y >= 0 and self._pixels[index] == old_clr:
+                self._undo_redo(self._change_pixel, (node_x << 4, node_y << 4, c),
+                                (node_x << 4, node_y << 4, old_clr), text="Fill Area")
+                self._modified_pixels += 1
+                queue.append((node_x, node_y))
+
+        self._undo_actions.append(self._modified_pixels)
+        self._redo_actions = []
+        self._modified_pixels = 0
+        self._update_undo_buttons()
 
     # ------------------------------------------------------------------------------------------------------------------
 
