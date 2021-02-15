@@ -1321,9 +1321,6 @@ def select_text_type(sel: str) -> None:
     sel: str
         Name of the Option Box widget
     """
-    # Save changes to previously selected string, if any
-    save_text(text_editor.index, app.getTextArea("Text_Preview"), text_editor.type)
-
     app.clearTextArea("Text_Preview")
 
     t = app.getOptionBox(sel)
