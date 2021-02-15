@@ -1231,7 +1231,7 @@ def text_editor_input(widget: str) -> None:
                 new_string = text_editor.unpack_text(rom, new_address)
 
             else:
-                new_string = ""
+                return
 
             # Update the output widget with the new text
             app.clearTextArea("TE_Text")
@@ -1321,7 +1321,7 @@ def select_text_type(sel: str) -> None:
     sel: str
         Name of the Option Box widget
     """
-    app.clearTextArea("Text_Preview")
+    app.clearTextArea("Text_Preview", callFunction=False)
 
     t = app.getOptionBox(sel)
     # print(f"Selected text type: {t}")
@@ -2682,7 +2682,7 @@ if __name__ == "__main__":
                 app.message("TE_Message_Guide", "@ = Active character's name\n" +
                             "% = Enemy name (in battle)\n# = 16-bit numeric value\n" +
                             "& = Next string becomes new dialogue\n^ = Ask YES/NO after dialogue\n" +
-                            "$ = Unlocks the 'PRAY' command\n* = Unlocks the 'BRIBE' command\n" +
+                            "$ = Unlocks the 'PRAY' command\n£ = Unlocks the 'BRIBE' command\n" +
                             "~ = String terminator", width=164, sticky="NEWS", font=9)
 
             # Address

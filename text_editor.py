@@ -21,101 +21,6 @@ from routines import Routine, Parameter
 from tile_editor import TileEditor
 
 
-def _convert_unpacked(byte: int) -> str:
-    """Converts an unpacked text byte to the corresponding displayable ASCII character
-
-    Parameters
-    ----------
-    byte
-        A single byte containing the value to convert
-
-    Returns
-    -------
-    str
-        A single ASCII character representing the unpacked byte
-    """
-    if byte <= 25:
-        return str(chr(byte + 65))
-
-    if 32 <= byte <= 41:
-        return str(chr(byte + 16))
-
-    switcher = {
-        0x1A: '!',
-        0x1B: '?',
-        0x1C: '.',
-        0x1D: ',',
-        0x1E: '-',
-        0x1F: '"',
-        0x2B: '-',
-        0x2C: '`',
-        0x2D: ' ',
-        0x2E: ':',
-        0x30: '@',  # Special: character name (address in $99, $9A)
-        0x31: '%',  # Special: enemy name
-        0x32: '#',  # Special: numeric value from $A0, $A1
-        0x34: '&',  # Special: next string is new dialogue
-        0x35: '^',  # Special: YES/NO question
-        0x38: '$',  # Special: give the 'PRAY' command
-        0x39: '*',  # Special: give the 'BRIBE' command
-        0x3E: '\n',
-        0x3F: '~'  # String terminator
-    }
-
-    return switcher.get(byte, '[?]')
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
-def _convert_packed(character: str) -> int:
-    """Converts a string (representing a single ASCII character) to a 6-bit integer for bit-packing
-
-    Parameters
-    ----------
-    character
-        The ASCII character to convert
-
-    Returns
-    -------
-    int
-        The converted value as an integer
-    """
-    switcher = {
-        '!': 0x1A,
-        '?': 0x1B,
-        '.': 0x1C,
-        ',': 0x1D,
-        '-': 0x1E,
-        '"': 0x1F,
-        '\'': 0x2C,
-        '`': 0x2C,
-        ' ': 0x2D,
-        ':': 0x2E,
-        '@': 0x30,  # Special: character name (address in $99, $9A)
-        '%': 0x31,  # Special: enemy name
-        '#': 0x32,  # Special: numeric value from $A0, $A1 (unsigned short)
-        '&': 0x34,  # Special: next string is new dialogue
-        '^': 0x35,  # Special: YES/NO question
-        '$': 0x38,  # Special: give the 'PRAY' command
-        '*': 0x39,  # Special: give the 'BRIBE' command
-        '\n': 0x3E,
-        '\r': 0x3E,
-        '\a': 0x3E,
-        '~': 0x3F  # String terminator
-    }
-
-    value = ord(character[0])
-    if 65 <= value <= 90:  # A-Z
-        return value - 65
-
-    if 48 <= value <= 57:  # 0-9
-        return value - 16
-
-    return switcher.get(character[0], 0x1B)
-
-
-# ----------------------------------------------------------------------------------------------------------------------
-
 # Base dictionaries used for conversions
 
 # Dictionary used to convert from Exodus to ASCII
@@ -133,6 +38,13 @@ _EXODUS_DICT = {
     0x7D: '?',
     0x88: '©',
     0x89: '…',
+    0xF0: '$',
+    0xF1: '£',
+    0xF3: '@',
+    0xF4: '%',
+    0xF5: '#',
+    0xF6: '&',
+    0xF7: '^',
     0xFD: '\n',
     0xFF: '~'
 }
@@ -152,6 +64,13 @@ _ASCII_DICT = {
     '?': 0x7D,
     '©': 0x88,
     '…': 0x89,
+    '$': 0xF0,
+    '£': 0xF1,
+    '@': 0xF3,
+    '%': 0xF4,
+    '#': 0xF5,
+    '&': 0xF6,
+    '^': 0xF7,
     '\n': 0xFD,
     '\r': 0xFD,
     '\a': 0xFD,
@@ -249,9 +168,11 @@ def exodus_to_ascii(exodus_string: bytearray) -> str:
         elif 0x38 <= char <= 0x41:
             ascii_string = ascii_string + chr(char - 0x08)
         else:
-            value = _exodus_dict.get(char, '#')
-            if value == '#':
+            value = _exodus_dict.get(char, '|')
+
+            if value == '|':
                 value = f"\\x{char:02X}"
+
             ascii_string = ascii_string + value
 
     return ascii_string
@@ -311,6 +232,9 @@ def _empty_image(width: int, height: int) -> Image:
 # ----------------------------------------------------------------------------------------------------------------------
 
 class TextEditor:
+
+    pack_dict = {}
+    unpack_dict = {}
 
     def __init__(self, rom: ROM, colours: list, text_colours: bytearray, app: gui, settings: EditorSettings,
                  tile_editor: TileEditor):
@@ -405,7 +329,7 @@ class TextEditor:
         except IOError:
             log(3, f"{self}", "Could not read portrait descriptions file.")
 
-        # Load names table from ROM
+        # Load NPC names table from ROM
         # Read strings from 0B:A700 byte by byte until 0xFF is encountered to get the base address of each string
         #   Repeat until 0xA7FF is reached
         end_of_string = False
@@ -450,11 +374,109 @@ class TextEditor:
         d = dict(self.custom_exodus)
         _exodus_dict = {**_EXODUS_DICT, ** d}
 
+        # Read the packing/unpacking mappings from ROM, then assign the custom ones from our config file
+        address = 0xB0B2
+        for i in range(0x40):
+            value = rom.read_byte(0xE, address)
+            TextEditor.unpack_dict[i] = value
+            address += 1
+
+        # These are the free indices we can assign extra character mappings to, for packed strings
+        indices = [0x2F, 0x33, 0x36, 0x37, 0x3A, 0x3B, 0x3C, 0x3D]
+        for i in range(len(self.custom_ascii)):
+            c, v = self.custom_ascii[i]
+            TextEditor.unpack_dict[indices[i]] = v
+
+        # The pack dictionary is just an inverted unpack dictionary
+        TextEditor.pack_dict = {v: k for k, v in TextEditor.unpack_dict.items()}
+
         # Read Menu/Intro pointers from ROM
         self.read_menu_text()
 
         # Read and uncompress dialogue / special strings
         self.uncompress_all_string()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def convert_unpacked(byte: int) -> str:
+        """
+        Converts an unpacked text byte to the corresponding displayable ASCII character
+
+        Parameters
+        ----------
+        byte
+            A single byte containing the value to convert
+
+        Returns
+        -------
+        str
+            A single ASCII character representing the unpacked byte
+        """
+        # Handle special characters
+        if byte == 0x30:
+            return '@'      # Character's name
+        elif byte == 0x31:
+            return '%'      # Enemy name
+        elif byte == 0x32:
+            return '#'      # 16-bit numeric value from $A0, $A1
+        elif byte == 0x34:
+            return '&'      # Next string will be new dialogue
+        elif byte == 0x35:
+            return '^'      # Ask Yes/No
+        elif byte == 0x38:
+            return '$'      # Unlock PRAY
+        elif byte == 0x39:
+            return '£'      # Unlock BRIBE
+        elif byte == 0x3E:
+            return '\n'     # Newline
+        elif byte == 0x3F:
+            return '~'      # End of text
+
+        c = TextEditor.unpack_dict.get(byte, 0x1A)  # Get tile index
+
+        return exodus_to_ascii(bytearray([c]))      # Turn it into a printable character
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def convert_packed(char: str) -> int:
+        """
+        Converts a string (representing a single ASCII character) to a 6-bit integer for bit-packing
+
+        Parameters
+        ----------
+        char: str
+            The ASCII character to convert
+
+        Returns
+        -------
+        int
+            The converted value as an integer
+        """
+        # Handle special characters
+        if char == '@':
+            return 0x30      # Character's name
+        elif char == '%':
+            return 0x31      # Enemy name
+        elif char == '#':
+            return 0x32      # 16-bit numeric value from $A0, $A1
+        elif char == '&':
+            return 0x34      # Next string will be new dialogue
+        elif char == '^':
+            return 0x35      # Ask Yes/No
+        elif char == '$':
+            return 0x38      # Unlock PRAY
+        elif char == '£':
+            return 0x39      # Unlock BRIBE
+        elif char == '\n' or char == '\a' or char == '\r':
+            return 0x3E     # Newline
+        elif char == '~':
+            return 0x3F      # End of text
+
+        c = ascii_to_exodus(char)
+
+        return TextEditor.pack_dict.get(c[0], 0)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -529,7 +551,7 @@ class TextEditor:
                         temp[3] = buffer[2] & 0x3F
 
             for i in range(0, 4):
-                char = _convert_unpacked(temp[i])
+                char = TextEditor.convert_unpacked(temp[i])
                 if char == '[?]':
                     log(3, "TEXT EDITOR", f"Unrecognised character: {temp[i]:02X}.\nAddress: 0x{address:04X}.\n"
                                           f"Partial output: '{output}'.")
@@ -571,7 +593,7 @@ class TextEditor:
             # (this is because we need exactly four bytes per iteration)
             for c in range(0, 4):
                 if i + c < length:
-                    input_bytes[c] = _convert_packed(text[i + c])
+                    input_bytes[c] = TextEditor.convert_packed(text[i + c])
                 else:
                     input_bytes[c] = 0x3F
 
@@ -631,22 +653,27 @@ class TextEditor:
             self.address = self.dialogue_text_pointers[string_id]
             self.text = self.dialogue_text[string_id]
             self.app.setRadioButton("TE_Preview_Mode", "Conversation", False)
+            self.app.enableButton("TE_Button_Reload_Text")
         elif string_type == "Special":
             self.address = self.special_text_pointers[string_id]
             self.text = self.special_text[string_id]
             self.app.setRadioButton("TE_Preview_Mode", "Default", False)
+            self.app.enableButton("TE_Button_Reload_Text")
         elif string_type == "NPC Names":
             self.address = self.npc_name_pointers[string_id]
             self.text = self.npc_names[string_id]
             self.app.setRadioButton("TE_Preview_Mode", "Default", False)
+            self.app.disableButton("TE_Button_Reload_Text")
         elif string_type == "Enemy Names":
             self.address = self.enemy_name_pointers[string_id]
             self.text = self.enemy_names[string_id]
             self.app.setRadioButton("TE_Preview_Mode", "Default", False)
+            self.app.disableButton("TE_Button_Reload_Text")
         elif string_type == "Menus / Intro":
             self.address = self.menu_text_pointers[string_id]
             self.text = self.menu_text[string_id]
             self.app.setRadioButton("TE_Preview_Mode", "Default", False)
+            self.app.disableButton("TE_Button_Reload_Text")
         else:
             log(3, "TEXT EDITOR", f"Invalid string type '{string_type}'.")
             return
@@ -763,7 +790,7 @@ class TextEditor:
                    '&': colour.DARK_ORANGE,
                    '$': colour.DARK_LIME,
                    '^': colour.DARK_TEAL,
-                   '*': colour.DARK_MAGENTA,
+                   '£': colour.DARK_MAGENTA,
                    '~': colour.DARK_RED}
 
     @staticmethod
@@ -988,6 +1015,8 @@ class TextEditor:
                     continue
                 elif c == 0xFF:     # End of String
                     break
+                elif c >= 0xF0:     # Ignore other special characters
+                    continue
 
                 item = col + (row * 20)
                 if self._chr_items[item] > 0:
@@ -1205,6 +1234,11 @@ class TextEditor:
         """
         Rebuilds the pointer tables for dialogues and special text
         """
+        # Save customised character mappings for compressed text
+        indices = [0x2F, 0x33, 0x36, 0x37, 0x3A, 0x3B, 0x3C, 0x3D]
+        for i in indices:
+            self.rom.write_byte(0xE, 0xB0B2 + i, TextEditor.unpack_dict[i])
+
         special_list = []
         dialogue_list = []
 
@@ -2251,6 +2285,15 @@ class TextEditor:
             # Add items
             for c, v in self.custom_ascii:
                 self.settings.config.set("MAPPINGS", f"{ord(c)}", f"0x{v:02X}")
+
+            # These are the free indices we can assign extra character mappings to, for packed strings
+            indices = [0x2F, 0x33, 0x36, 0x37, 0x3A, 0x3B, 0x3C, 0x3D]
+            for i in range(len(self.custom_ascii)):
+                c, v = self.custom_ascii[i]
+                TextEditor.unpack_dict[indices[i]] = v
+
+            # The pack dictionary is just an inverted unpack dictionary
+            TextEditor.pack_dict = {v: k for k, v in TextEditor.unpack_dict.items()}
 
             # All done
             if self.settings.get("close sub-window after saving"):

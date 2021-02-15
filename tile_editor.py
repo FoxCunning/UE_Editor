@@ -185,6 +185,9 @@ class TileEditor:
         if widget == "TL_Apply":    # ----------------------------------------------------------------------------------
             self.rom.write_pattern(self._bank, self._address, self._pixels)
 
+            if self.settings.get("close sub-window after saving"):
+                self.hide()
+
         elif widget == "TL_Close":  # ----------------------------------------------------------------------------------
             self.hide()
 
