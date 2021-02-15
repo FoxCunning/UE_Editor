@@ -2365,7 +2365,7 @@ class TextEditor:
             index = selection[0]
 
             # New keys/values
-            character = self.app.getEntry("TC_Mapping_Chr")
+            character = self.app.getEntry("TC_Mapping_Chr").upper()
             try:
                 tile_id = int(self.app.getEntry("TC_Mapping_Tile"), 16)
             except ValueError:
