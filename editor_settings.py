@@ -23,7 +23,7 @@ class EditorSettings:
             "make backups": True,
             "close sub-window after saving": False,
             "emulator": "",
-            "emulator parameters": "%%f",
+            "emulator parameters": "%f",
             "last map import path": "",
             "last map export path": "",
             "last music import path": "",
