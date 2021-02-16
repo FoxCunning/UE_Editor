@@ -197,6 +197,30 @@ class TileEditor:
         elif widget == "TL_Tool_Fill":  # ------------------------------------------------------------------------------
             self._select_tool(TileEditor._FILL)
 
+        elif widget == "TL_Move_Left":  # ------------------------------------------------------------------------------
+            self._undo_redo(self._move_pixels, (7, 0), (1, 0), text="Move Image Left")
+            self._undo_actions.append(1)
+            self._redo_actions = []
+            self._update_undo_buttons()
+
+        elif widget == "TL_Move_Right":     # --------------------------------------------------------------------------
+            self._undo_redo(self._move_pixels, (1, 0), (7, 0), text="Move Image Right")
+            self._undo_actions.append(1)
+            self._redo_actions = []
+            self._update_undo_buttons()
+
+        elif widget == "TL_Move_Up":    # ------------------------------------------------------------------------------
+            self._undo_redo(self._move_pixels, (0, 7), (0, 1), text="Move Image Up")
+            self._undo_actions.append(1)
+            self._redo_actions = []
+            self._update_undo_buttons()
+
+        elif widget == "TL_Move_Down":  # ------------------------------------------------------------------------------
+            self._undo_redo(self._move_pixels, (0, 1), (0, 7), text="Move Image Down")
+            self._undo_actions.append(1)
+            self._redo_actions = []
+            self._update_undo_buttons()
+
         else:   # ------------------------------------------------------------------------------------------------------
             self.warning(f"Unimplemented input from Pattern Editor widget '{widget}'.")
 
@@ -579,3 +603,28 @@ class TileEditor:
         else:
             self.app.enableButton("TL_Redo")
             self.app.setButtonTooltip("TL_Undo", "Undo " + self._undo_redo.get_redo_text())
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _move_pixels(self, dst_x: int, dst_y: int) -> None:
+        # Create an empty 8x8 array of pixels as our destination
+        moved = bytearray([0] * 64)
+
+        # Copy all pixels to the destination coordinates, wrapping around
+        for y in range(8):
+            if dst_y > 7:   # Wrap around vertically
+                dst_y = 0
+
+            for x in range(8):
+                if dst_x > 7:   # Wrap around horizontally
+                    dst_x = 0
+
+                c = self._pixels[x + (y << 3)]
+                moved[dst_x + (dst_y << 3)] = c
+
+                dst_x += 1
+
+            dst_y += 1
+
+        self._pixels = moved
+        self._recolour_image()

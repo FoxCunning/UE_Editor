@@ -2176,7 +2176,7 @@ class TextEditor:
             return
 
         except appJar.appjar.ItemLookupError:
-            generator = self.app.subWindow("Dictionary_Editor", size=[380, 220], padding=[2, 2],
+            generator = self.app.subWindow("Dictionary_Editor", size=[386, 220], padding=[2, 2],
                                            title="Customise Character Mappings",
                                            resizable=False, modal=True, blocking=True,
                                            bg=colour.DARK_VIOLET, fg=colour.WHITE,
@@ -2195,13 +2195,20 @@ class TextEditor:
                            row=0, column=3, sticky="W", tooltip="Discard changes and close")
 
             with app.frame("TC_Frame_Parameters", padding=[4, 2], sticky="NEW", row=1, column=0):
-                app.label("TC_Label_0", "Mappings:", sticky="WE", row=0, column=0, colspan=2)
+                app.label("TC_Label_0", "Mappings:", sticky="WE", row=0, column=0, colspan=3)
+
                 app.listBox("TC_List_Dictionary", [], multi=False, group=True, sticky="W", width=12, height=5,
-                            row=1, column=0, colspan=2, font=10, change=self._customise_input)
+                            row=1, column=0, colspan=2, rowspan=2, font=10, change=self._customise_input)
+
+                app.button("TC_Move_Up", self._customise_input, image="res/arrow_up-small.gif", sticky="NWS",
+                           width=16, row=1, column=2)
+                app.button("TC_Move_Down", self._customise_input, image="res/arrow_down-small.gif", sticky="NWS",
+                           width=16, row=2, column=2)
+
                 app.button("TC_Add_Entry", self._customise_input, image="res/mapping-new.gif", sticky="WE",
-                           row=2, column=0, height=32, tooltip="New Mapping", bg=colour.PALE_VIOLET)
+                           row=3, column=0, height=32, tooltip="New Mapping", bg=colour.PALE_VIOLET)
                 app.button("TC_Del_Entry", self._customise_input, image="res/eraser.gif", sticky="WE",
-                           row=2, column=1, height=32, tooltip="Remove Mapping", bg=colour.PALE_VIOLET)
+                           row=3, column=1, height=32, tooltip="Remove Mapping", bg=colour.PALE_VIOLET)
 
             with app.frame("TC_Frame_Mapping", padding=[2, 2], sticky="NEW", row=1, column=1):
                 app.label("TC_Label_1", "Edit Mapping", row=0, column=0, colspan=2, sticky="WE", font=11)
@@ -2338,14 +2345,14 @@ class TextEditor:
             self._charset_canvas.coords(self._charset_selection, x, y, x + 8, y + 8)
 
         elif widget == "TC_Add_Entry":  # ------------------------------------------------------------------------------
-            if len(self.custom_ascii) > 9:
-                self.app.errorBox("Customise Mappings", "Cannot define more than 10 custom mappings.",
+            if len(self.custom_ascii) > 7:
+                self.app.errorBox("Customise Mappings", "Cannot define more than 8 custom mappings.",
                                   "Dictionary_Editor")
                 return
 
             # Use the first unused tile ID
             ascii_char = 'ÿ'
-            tile_id = 0xFF
+            tile_id = 0x00
 
             # TODO Find an unused character/tile?
 
@@ -2378,6 +2385,58 @@ class TextEditor:
             # If there is at least one entry left, set a selection
             if len(self.custom_ascii) > 0:
                 self.app.selectListItemAtPos("TC_List_Dictionary", 0, callFunction=True)
+
+        elif widget == "TC_Move_Down":  # ------------------------------------------------------------------------------
+            if len(self.custom_ascii) < 2:  # Only one element: can't move anywhere
+                self.app.soundError()
+                return
+
+            selection = self.app.getListBoxPos("TC_List_Dictionary")
+
+            if len(selection) < 1:  # No selection
+                return
+
+            if selection[0] == len(self.custom_ascii) - 1:  # Already last element, can't move down
+                self.app.soundError()
+                return
+
+            e = self.custom_ascii.pop(selection[0])
+            self.custom_ascii.insert(selection[0] + 1, e)
+
+            e = self.custom_exodus.pop(selection[0])
+            self.custom_exodus.insert(selection[0] + 1, e)
+
+            # Update list
+            text = self.app.getListBoxWidget("TC_List_Dictionary").get(selection[0])
+            self.app.removeListItemAtPos("TC_List_Dictionary", selection[0])
+            self.app.addListItem("TC_List_Dictionary", text, selection[0] + 1, select=False)
+            self.app.selectListItemAtPos("TC_List_Dictionary", selection[0] + 1, callFunction=False)
+
+        elif widget == "TC_Move_Up":    # ------------------------------------------------------------------------------
+            if len(self.custom_ascii) < 2:
+                self.app.soundError()
+                return
+
+            selection = self.app.getListBoxPos("TC_List_Dictionary")
+
+            if len(selection) < 1:  # No selection
+                return
+
+            if selection[0] == 0:  # Already first element, can't move up
+                self.app.soundError()
+                return
+
+            e = self.custom_ascii.pop(selection[0])
+            self.custom_ascii.insert(selection[0] - 1, e)
+
+            e = self.custom_exodus.pop(selection[0])
+            self.custom_exodus.insert(selection[0] - 1, e)
+
+            # Update list
+            text = self.app.getListBoxWidget("TC_List_Dictionary").get(selection[0])
+            self.app.removeListItemAtPos("TC_List_Dictionary", selection[0])
+            self.app.addListItem("TC_List_Dictionary", text, selection[0] - 1, select=False)
+            self.app.selectListItemAtPos("TC_List_Dictionary", selection[0] - 1, callFunction=False)
 
         elif widget == "TC_Edit_Tile":  # ------------------------------------------------------------------------------
             try:
@@ -2420,6 +2479,19 @@ class TextEditor:
             if len(character) < 1:
                 self.app.soundError()
                 self.app.getEntryWidget("TC_Mapping_Chr").selection_range(0, "end")
+                return
+
+            elif "@#£$%^&~".count(character) > 0:
+                self.app.getEntryWidget("TC_Mapping_Chr").selection_range(0, "end")
+                self.app.errorBox("Customise Mappings",
+                                  f"'{character}' is a reserved character and cannot be re-assigned.",
+                                  "Dictionary_Editor")
+                return
+
+            if tile_id >= 0xF0:
+                self.app.getEntryWidget("TC_Mapping_Tile").selection_range(0, "end")
+                self.app.errorBox("Customise Mappings", "The last row of tiles is reserved and cannot be re-assigned.",
+                                  "Dictionary_Editor")
                 return
 
             # Replace the key that was previously at this index
@@ -2488,6 +2560,11 @@ class TextEditor:
         y = (event.y >> 3) << 3
 
         tile_id = (x >> 3) + (y << 1)
+
+        if tile_id >= 0xF0:
+            self.app.errorBox("Customise Mappings", "The last row of tiles is reserved and cannot be re-assigned.",
+                              "Dictionary_Editor")
+            return
 
         self.app.clearEntry("TC_Mapping_Tile", callFunction=False, setFocus=False)
         self.app.setEntry("TC_Mapping_Tile", f"0x{tile_id:02X}", callFunction=False)
