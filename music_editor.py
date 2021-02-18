@@ -3799,6 +3799,8 @@ class MusicEditor:
                 success = False
                 break
 
+            self.track_info(channel)
+
         if success:
             self._track_data = tracks
 
@@ -4536,6 +4538,25 @@ class MusicEditor:
 
                     elif e.raw[0] < 0xF0:
                         frames += e.note.duration
+
+                        # Now we set "trigger points" for the instrument's envelope
+
+                        # Trigger 0 is the note duration
+                        envelope_triggers[c][0] = e.raw[1]
+
+                        # Trigger 1 is trigger 0 - the size of envelope 0
+                        # This means just enough time to play all the values in env.0 before we switch to env.1
+                        envelope_triggers[c][1] = e.raw[1] - size_0[c] if e.raw[1] > size_0[c] else 0
+
+                        # Trigger 2
+                        tmp_int = envelope_triggers[c][1] - size_2[c] if envelope_triggers[c][1] > size_2[c] else 0
+
+                        if tmp_int > size_1[c]:
+                            tmp_int = size_1[c]
+
+                        envelope_triggers[c][2] = envelope_triggers[c][1] - tmp_int
+
+                        note_volume[c] = channel_volume[c]
 
                     element_index += 1
 

@@ -1792,6 +1792,7 @@ def main_input(widget: str) -> bool:
     elif widget == "Exit":      # --------------------------------------------------------------------------------------
         # TODO Ask to save changes if any
         close_rom()
+        settings.save()
         app.stop()
 
     elif widget == "Start Emulator":    # ------------------------------------------------------------------------------
