@@ -133,7 +133,7 @@ class PulseChannel:
         value: int
             Byte value to write to the register
         """
-        self.timer_high = (value & 0x03) << 8
+        self.timer_high = (value & 0x07) << 8
         self.length_ctr_load = value >> 3
 
         self.output.setFreq(1789773 / (((self.timer_high | self.timer_low) + 1) << 4))
@@ -269,7 +269,7 @@ class TriangleChannel:
         value: int
             Byte value to write to the register
         """
-        self.timer_high = (value & 0x03) << 8
+        self.timer_high = (value & 0x07) << 8
         self.length_ctr_load = _LENGTH_COUNTER_LOAD[value >> 3]
 
         self.output.setFreq(1789773 / (((self.timer_high | self.timer_low) + 1) << 5))
