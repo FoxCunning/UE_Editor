@@ -1,7 +1,7 @@
 """
 An extensive editor for the NES version of Ultima III: Exodus and its Remastered Hack by Fox Cunning
 """
-__version__ = "Pre-Alpha 0.2"
+__version__ = "Pre-Alpha 0.3"
 
 __author__ = "Fox Cunning"
 __copyright__ = "Copyright ©2020-2021 Fox Cunning"

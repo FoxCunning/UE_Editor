@@ -2039,7 +2039,7 @@ class MusicEditor:
 
     def _element_input(self, widget: str) -> None:
         # Undoable action: change note value / duration
-        if widget == "SE_Apply_Note" or widget == "SE_Note_Value" or widget == "SE_Note_Duration":
+        if widget == "SE_Apply_Note" or widget == "SE_Note_Value" or widget == "SE_Note_Duration":  # ------------------
             # Get selected element
             element, selection = self._get_selected_element()
 
@@ -2088,7 +2088,7 @@ class MusicEditor:
             self._unsaved_changes_track = True
 
         # Undoable action
-        elif widget == "SE_Apply_Volume" or widget == "SE_Entry_Volume":
+        elif widget == "SE_Apply_Volume" or widget == "SE_Entry_Volume":    # ------------------------------------------
             element, selection = self._get_selected_element()
 
             if self._selected_element < 0 or element.control != TrackDataEntry.CHANNEL_VOLUME:
@@ -2127,7 +2127,7 @@ class MusicEditor:
             self._unsaved_changes_track = True
 
         # Undoable action
-        elif widget == "SE_Select_Instrument":
+        elif widget == "SE_Select_Instrument":  # ----------------------------------------------------------------------
             element, selection = self._get_selected_element()
 
             if self._selected_element < 0 or element.control != TrackDataEntry.SELECT_INSTRUMENT:
@@ -2157,7 +2157,7 @@ class MusicEditor:
                 self._unsaved_changes_track = True
 
         # Undoable action
-        elif widget == "SE_Apply_Rest" or widget == "SE_Rest_Duration":
+        elif widget == "SE_Apply_Rest" or widget == "SE_Rest_Duration":     # ------------------------------------------
             element, selection = self._get_selected_element()
 
             if self._selected_element < 0 or element.control != TrackDataEntry.REST:
@@ -2196,7 +2196,7 @@ class MusicEditor:
             self._unsaved_changes_track = True
 
         # Undoable action
-        elif widget == "SE_Apply_Vibrato" or widget == "SE_Vibrato_Speed" or widget == "SE_Vibrato_Factor":
+        elif widget == "SE_Apply_Vibrato" or widget == "SE_Vibrato_Speed" or widget == "SE_Vibrato_Factor":     # ------
             element, selection = self._get_selected_element()
 
             if self._selected_element < 0 or element.control != TrackDataEntry.SET_VIBRATO:
@@ -2253,7 +2253,7 @@ class MusicEditor:
             self._unsaved_changes_track = True
 
         # Undoable action
-        elif widget == "SE_Triangle_Octave":
+        elif widget == "SE_Triangle_Octave":    # ----------------------------------------------------------------------
             element, selection = self._get_selected_element()
 
             if self._selected_element < 0 or element.control != TrackDataEntry.SET_VIBRATO:
@@ -2283,7 +2283,7 @@ class MusicEditor:
             self._unsaved_changes_track = True
 
         # Undoable action
-        elif widget == "SE_Apply_Rewind" or widget == "SE_Rewind_Value":
+        elif widget == "SE_Apply_Rewind" or widget == "SE_Rewind_Value":    # ------------------------------------------
             element, selection = self._get_selected_element()
 
             if self._selected_element < 0 or element.control != TrackDataEntry.REWIND:
@@ -2314,7 +2314,7 @@ class MusicEditor:
                 self.app.selectListItemAtPos(f"SE_List_Channel_{self._selected_channel}", selection, callFunction=False)
 
         # This just shows the element type selection buttons
-        elif widget == "SE_Change_Element":
+        elif widget == "SE_Change_Element":     # ----------------------------------------------------------------------
             if self._selected_channel > -1 and self._selected_element > -1:
                 self.app.selectFrame("SE_Stack_Editing", 7, callFunction=False)
 
@@ -2365,7 +2365,7 @@ class MusicEditor:
             self._update_undo_buttons(0)
 
         # Undoable action: increase the duration of a group of notes
-        elif widget == "SE_Duration_Up":
+        elif widget == "SE_Duration_Up":    # --------------------------------------------------------------------------
             channel = self._selected_channel
             selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
 
@@ -2403,7 +2403,7 @@ class MusicEditor:
                 # (Re-)select these items
 
         # Undoable action: decrease the duration of a group of notes
-        elif widget == "SE_Duration_Down":
+        elif widget == "SE_Duration_Down":  # --------------------------------------------------------------------------
             channel = self._selected_channel
             selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
 
@@ -2441,7 +2441,7 @@ class MusicEditor:
                 # (Re-)select these items
 
         # Undoable action: increase the pitch of a group of notes one semitone
-        elif widget == "SE_Semitone_Up":
+        elif widget == "SE_Semitone_Up":    # --------------------------------------------------------------------------
             channel = self._selected_channel
             selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
 
@@ -2453,7 +2453,7 @@ class MusicEditor:
                 sorted_selection.sort(reverse=True)
                 for index in sorted_selection:
                     element = self._track_data[channel][index]
-                    # Only add notes with duration more than 0 to our final selection
+                    # Only add notes with duration higher than 0 to our final selection
                     if element.raw[0] < len(_NOTE_NAMES):
                         final_selection.append(index)
 
@@ -2461,14 +2461,17 @@ class MusicEditor:
             for index in final_selection:
                 element = self._track_data[channel][index]
 
-                # Create undo action
+                # Make sure it's within the range of possible notes
                 old_values = element.raw.copy()
                 new_values = bytearray([old_values[0] + 1, old_values[1]])
-                self._track_undo(self._change_element_value, (channel, index, new_values),
-                                 (channel, index, old_values), text=f"Increase note pitch (Channel {channel})")
-                # Update this element's entry in the list box and (re-)select it
-                self._update_element_info(channel, index)
-                self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
+
+                if new_values[0] < len(_NOTE_NAMES):
+                    # Create undo action
+                    self._track_undo(self._change_element_value, (channel, index, new_values),
+                                     (channel, index, old_values), text=f"Increase note pitch (Channel {channel})")
+                    # Update this element's entry in the list box and (re-)select it
+                    self._update_element_info(channel, index)
+                    self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
 
             if len(final_selection) > 0:
                 self._track_undo_count.append(len(final_selection))
@@ -2478,7 +2481,7 @@ class MusicEditor:
                 # (Re-)select these items
 
         # Undoable action: decrease the pitch of a group of notes one semitone
-        elif widget == "SE_Semitone_Down":
+        elif widget == "SE_Semitone_Down":      # ----------------------------------------------------------------------
             channel = self._selected_channel
             selection = self.app.getListBoxPos(f"SE_List_Channel_{channel}")
 
@@ -2498,14 +2501,18 @@ class MusicEditor:
             for index in final_selection:
                 element = self._track_data[channel][index]
 
-                # Create undo action
                 old_values = element.raw.copy()
-                new_values = bytearray([old_values[0] - 1, old_values[1]])
-                self._track_undo(self._change_element_value, (channel, index, new_values),
-                                 (channel, index, old_values), text=f"Decrease note pitch (Channel {channel})")
-                # Update this element's entry in the list box and (re-)select it
-                self._update_element_info(channel, index)
-                self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
+
+                # Don't change notes that are already the lowest possible
+                if old_values[0] > 0:
+                    new_values = bytearray([old_values[0] - 1, old_values[1]])
+
+                    # Create undo action
+                    self._track_undo(self._change_element_value, (channel, index, new_values),
+                                     (channel, index, old_values), text=f"Decrease note pitch (Channel {channel})")
+                    # Update this element's entry in the list box and (re-)select it
+                    self._update_element_info(channel, index)
+                    self.app.selectListItemAtPos(f"SE_List_Channel_{channel}", index << 1, callFunction=False)
 
             if len(final_selection) > 0:
                 self._track_undo_count.append(len(final_selection))
