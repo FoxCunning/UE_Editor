@@ -641,7 +641,7 @@ class MusicEditor:
             window_exists = False
 
         # Get this track's address
-        address = (track << 3) + 0x8051 if bank == 8 else 0x8052
+        address = (track << 3) + (0x8051 if bank == 8 else 0x8052)
         for t in range(4):
             self._track_address[t] = self.rom.read_word(bank, address)
             address += 2
@@ -3799,10 +3799,13 @@ class MusicEditor:
                 success = False
                 break
 
-            self.track_info(channel)
-
         if success:
             self._track_data = tracks
+
+        self.track_info(0)
+        self.track_info(1)
+        self.track_info(2)
+        self.track_info(3)
 
         return success
 
@@ -4598,7 +4601,7 @@ class MusicEditor:
                     # Put the low byte in the vibrato table, positions 0 and 4
                     vibrato_table[c][0] = vibrato_table[c][4] = period_lo
                     # Entries 1 and 3 add the offset
-                    vibrato_table[c][1] = vibrato_table[c][3] = period_lo + tmp_int
+                    vibrato_table[c][1] = vibrato_table[c][3] = (period_lo + tmp_int) % 256
                     # Entry 2 adds the offset again
                     vibrato_table[c][2] = (vibrato_table[c][3] + tmp_int) % 256
                     # Entries 5 and 7 subtract the offset instead
@@ -4743,7 +4746,7 @@ class MusicEditor:
                     # Put the low byte in the vibrato table, positions 0 and 4
                     vibrato_table[c][0] = vibrato_table[c][4] = period_lo
                     # Entries 1 and 3 add the offset
-                    vibrato_table[c][1] = vibrato_table[c][3] = period_lo + tmp_int
+                    vibrato_table[c][1] = vibrato_table[c][3] = (period_lo + tmp_int) % 256
                     # Entry 2 adds the offset again
                     vibrato_table[c][2] = (vibrato_table[c][3] + tmp_int) % 256
                     # Entries 5 and 7 subtract the offset instead
