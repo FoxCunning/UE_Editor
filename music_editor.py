@@ -3924,7 +3924,7 @@ class MusicEditor:
 
             # If the first event doesn't start at time 0, then we must add a rest
             # Unfortunately that is not 100% compatible with FamiStudio, but can be fixed manually after importing
-            if self.events[0].time != 0:
+            if len(self.events) > 0 and self.events[0].time != 0:
                 try:
                     converted.append(TrackDataEntry.new_rest(self.events[1].time))
                 except IndexError:
