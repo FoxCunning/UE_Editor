@@ -4308,7 +4308,7 @@ class MusicEditor:
         while self._playing:
             start_time = time.time()
 
-            for c in range(3):
+            for c in range(4):
                 if self._track_position[c] == last_played[c]:
                     pass
                 else:
@@ -4349,7 +4349,7 @@ class MusicEditor:
         self.apu.set_triangle_volume(self._triangle_volume)
 
         # Approximate NTSC timing
-        frame_interval = 0.0166  # 1 / 60
+        frame_interval = 0.016  # 1 / 60
 
         channel_volume = bytearray([0, 0, 0, 0])
         note_volume = bytearray([0, 0, 0, 0])
@@ -4720,17 +4720,12 @@ class MusicEditor:
 
             c = 1
 
-            # Note that the initial value should be 1, so on the first iteration we immediately read
-            # the first segment
             self._track_counter[c] -= 1
 
             # Keep reading data segments until we find a rest or a note
             while self._track_counter[c] < 1:
                 track_data = tracks[c][self._track_position[c]]
 
-                # Interpret this data
-
-                # Go from the most to least common
                 if track_data.raw[0] < 0xF0:  # PULSE 1 NOTE
                     period_lo = self._note_period_lo[track_data.raw[0]]
                     period_hi = self._note_period_hi[track_data.raw[0]]
@@ -5025,6 +5020,117 @@ class MusicEditor:
                 self.apu.triangle.write_reg3(reg_3[c])
 
             # ----------------------------------------- NOISE ----------------------------------------------------------
+
+            c = 3
+
+            self._track_counter[c] -= 1
+
+            # Keep reading data segments until we find a rest or a note
+            while self._track_counter[c] < 1:
+                track_data = tracks[c][self._track_position[c]]
+
+                if track_data.raw[0] < 0xF0:  # NOISE "NOTE"
+                    reg_2[c] = track_data.raw[0] & 0x0F
+                    reg_0[c] = reg_mask[c][0]
+
+                    # Note: the noise channel has no vibrato
+
+                    # Setting the counter will end the "event reading" loop
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Now we set "trigger points" for the instrument's envelope
+
+                    # Trigger 0 is the note duration
+                    envelope_triggers[c][0] = track_data.raw[1]
+
+                    # Trigger 1 is trigger 0 - the size of envelope 0
+                    # This means just enough time to play all the values in env.0 before we switch to env.1
+                    envelope_triggers[c][1] = track_data.raw[1] - size_0[c] if track_data.raw[1] > size_0[c] else 0
+
+                    # Trigger 2
+                    tmp_int = envelope_triggers[c][1] - size_2[c] if envelope_triggers[c][1] > size_2[c] else 0
+
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+
+                    envelope_triggers[c][2] = envelope_triggers[c][1] - tmp_int
+
+                    note_volume[c] = channel_volume[c]
+
+                elif track_data.control == 0xFE:  # NOISE REST
+                    # The "data read" loop should end after setting this
+                    self._track_counter[c] = track_data.raw[1]
+
+                    # Skip all the envelope trigger stuff, it has no effect anyway...
+
+                    # This should effectively mute the channel
+                    reg_0[c] = reg_mask[c][0]
+                    reg_1[c] = reg_mask[c][1]
+                    reg_2[c] = reg_mask[c][2]
+                    reg_3[c] = reg_mask[c][3]
+
+                    envelope_triggers[c][0] = track_data.raw[1]
+                    envelope_triggers[c][1] = 0
+                    envelope_triggers[c][2] = 0
+
+                    note_volume[c] = 0
+
+                elif track_data.control == 0xFC:  # NOISE INSTRUMENT
+                    channel_instrument[c] = self._instruments[track_data.raw[1]]
+
+                    # Store each envelope's size, it will be used to calculate trigger points when a note is played
+                    size_0[c] = channel_instrument[c].size(0)
+                    size_1[c] = channel_instrument[c].size(1)
+                    size_2[c] = channel_instrument[c].size(2)
+
+                elif track_data.control == 0xFB:  # NOISE VOLUME
+                    channel_volume[c] = note_volume[c] = track_data.raw[1]
+
+                elif track_data.control == 0xFD:  # NOISE VIBRATO
+                    # There is no vibrato for the noise channel
+                    pass
+
+                elif track_data.control == 0xFF:  # NOISE REWIND/END
+                    self._track_position[c] = track_data.loop_position - 1
+
+                self._track_position[c] += 1
+
+            # Note/Rest found or still playing one: generate / manipulate sound
+            if self._track_counter[c] > 1:
+                # Keep playing the current note
+
+                # The value for timer high was written when the note event was encountered, and is not modified here
+
+                # Use instrument envelopes and channel volume to control register 0
+
+                if self._track_counter[c] >= envelope_triggers[c][1]:  # Envelope 0
+                    # Index within the envelope is: trigger - remaining note duration
+                    tmp_int = (envelope_triggers[c][0] - self._track_counter[c]) + 1
+                    if tmp_int > size_0[c]:
+                        tmp_int = size_0[c]
+                    tmp_vol = channel_instrument[c].envelope[0][tmp_int]
+
+                elif self._track_counter[c] >= envelope_triggers[c][2]:  # Envelope 1
+                    tmp_int = (envelope_triggers[c][1] - self._track_counter[c]) + 1
+                    if tmp_int > size_1[c]:
+                        tmp_int = size_1[c]
+                    tmp_vol = channel_instrument[c].envelope[1][tmp_int]
+
+                else:  # Envelope 2
+                    tmp_int = (envelope_triggers[c][2] - self._track_counter[c]) + 1
+                    if tmp_int > size_2[c]:
+                        tmp_int = size_2[c]
+                    tmp_vol = channel_instrument[c].envelope[2][tmp_int]
+
+                # Now we must calculate the output based on the envelope and channel volume, but instead of doing
+                # the actual calculation, we use lookup tables
+                # tmp_vol bits 7-6 = duty, tmp_vol bits 5-1 = volume table to use, bit 0 ignored
+                reg_0[c] = (tmp_vol & 0xC0) | _ENV_TABLE[(tmp_vol & 0x1F) >> 1][note_volume[c]]
+
+                # Finally write registers
+                self.apu.noise.write_reg0(reg_0[c] | reg_mask[c][0])
+                self.apu.noise.write_reg2(reg_2[c])
+                self.apu.noise.write_reg3(reg_3[c])
 
             # ------------------------------------------ END -----------------------------------------------------------
             # Restart from channel 0
