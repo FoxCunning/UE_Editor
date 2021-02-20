@@ -164,6 +164,8 @@ class EndGameEditor:
                     app.canvas("OC_Canvas_Preview", width=256, height=240, bg=colour.BLACK, sticky="N",
                                row=2, column=0)
 
+                    app.label("OC_Label_3", "NOT YET IMPLEMENTED", row=3, column=0, font=12)
+
                 with app.frame("EC_Frame_End_Credits", padding=[4, 2], bg=colour.DARK_NAVY, fg=colour.WHITE):
 
                     with app.frame("EC_Frame_CHR", padding=[2, 2], row=0, column=0):
@@ -193,22 +195,27 @@ class EndGameEditor:
 
                         app.listBox("EC_List_Credits", end_credits_list, change=self._credits_input,
                                     bg=colour.MEDIUM_NAVY, fg=colour.WHITE, multi=False, group=True,
-                                    row=0, column=0, rowspan=4, width=30, height=10, font=font_mono)
+                                    row=0, column=0, rowspan=4, colspan=2, width=30, height=10, font=font_mono)
 
-                        app.label("EC_Label_4", "X Offset:", sticky="E", row=0, column=1, font=11)
+                        app.label("EC_Label_4", "X Offset:", sticky="E", row=0, column=2, font=11)
                         app.entry("EC_Line_X", 0, kind="numeric", limit=4, sticky="W", width=4,
                                   change=self._credits_input,
-                                  row=0, column=2, font=10, bg=colour.MEDIUM_NAVY, fg=colour.WHITE)
+                                  row=0, column=3, font=10, bg=colour.MEDIUM_NAVY, fg=colour.WHITE)
                         app.button("EC_Centre_Line", self._credits_input, text="\u2906 Centre Text \u2907", sticky="W",
-                                   row=0, column=3, font=10, bg=colour.MEDIUM_NAVY, fg=colour.WHITE)
+                                   row=0, column=4, font=10, bg=colour.MEDIUM_NAVY, fg=colour.WHITE)
 
                         app.textArea("EC_Line_Text", "", sticky="NEWS", bg=colour.MEDIUM_NAVY, fg=colour.WHITE,
-                                     row=1, column=1, colspan=3, height=5, font=font_bold
+                                     row=1, column=2, colspan=3, height=5, font=font_bold
                                      ).bind("<KeyRelease>", lambda _e: self._credits_input("EC_Line_Text"), add='')
                         app.label("EC_Label_5", "'~' = End of line", sticky="NW",
-                                  row=2, column=1, colspan=3, font=9)
+                                  row=2, column=2, colspan=3, font=9)
                         app.label("EC_Label_6", "Newline = End of credits", sticky="NW",
-                                  row=3, column=1, colspan=3, font=9)
+                                  row=3, column=2, colspan=3, font=9)
+
+                        app.button("EC_Button_Up", self._credits_input, image="res/arrow_up-small.gif", height=16,
+                                   row=4, column=0, sticky="NEW")
+                        app.button("EC_Button_Down", self._credits_input, image="res/arrow_down-small.gif", height=16,
+                                   row=4, column=1, sticky="NEW")
 
                     app.label("EC_Label_7", "Preview:", sticky="WE", row=2, column=0, font=12)
                     app.canvas("EC_Canvas_Preview", map=None, width=512, height=16, bg=colour.BLACK,
@@ -287,9 +294,65 @@ class EndGameEditor:
             self._draw_end_preview(index)
 
         elif widget == "EC_Line_Text":  # ------------------------------------------------------------------------------
-            self._end_credit_lines[self._selected_line_end].text = self.app.getTextArea(widget)
+            self._end_credit_lines[self._selected_line_end].text = self.app.getTextArea(widget).upper()
+
+            # Update list item and also redraw the preview
+            text = self._end_credit_lines[self._selected_line_end].text
+            if len(text) > 22:
+                text = text[:22] + '\u2026'
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end,
+                                      f"#{self._selected_line_end:03} '{text}'")
+
             self._draw_end_preview(self._selected_line_end)
             self._unsaved_credits = True
+
+        elif widget == "EC_Button_Up":  # ------------------------------------------------------------------------------
+            if self._selected_line_end == 0:
+                # Already at the top
+                return
+
+            line_above = self._end_credit_lines[self._selected_line_end - 1]
+            selected_line = self._end_credit_lines[self._selected_line_end]
+
+            # Swap lines
+            self._end_credit_lines[self._selected_line_end - 1] = selected_line
+            self._end_credit_lines[self._selected_line_end] = line_above
+
+            # Update list
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end - 1,
+                                      f"#{(self._selected_line_end - 1):03} '{selected_line.text}'")
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end,
+                                      f"#{self._selected_line_end:03} '{line_above.text}'")
+
+            self._unsaved_credits = True
+
+            # Re-select moved line
+            self.app.selectListItemAtPos("EC_List_Credits", self._selected_line_end - 1, callFunction=True)
+            self.app.getListBoxWidget("EC_List_Credits").selection_set(self._selected_line_end)
+
+        elif widget == "EC_Button_Down":    # --------------------------------------------------------------------------
+            if self._selected_line_end >= len(self._end_credit_lines) - 1:
+                # Already at the bottom
+                return
+
+            line_below = self._end_credit_lines[self._selected_line_end + 1]
+            selected_line = self._end_credit_lines[self._selected_line_end]
+
+            # Swap lines
+            self._end_credit_lines[self._selected_line_end + 1] = selected_line
+            self._end_credit_lines[self._selected_line_end] = line_below
+
+            # Update list
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end + 1,
+                                      f"#{(self._selected_line_end + 1):03} '{selected_line.text}'")
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end,
+                                      f"#{self._selected_line_end:03} '{line_below.text}'")
+
+            self._unsaved_credits = True
+
+            # Re-select moved line
+            self.app.selectListItemAtPos("EC_List_Credits", self._selected_line_end + 1, callFunction=True)
+            self.app.getListBoxWidget("EC_List_Credits").selection_set(self._selected_line_end)
 
         elif widget == "EC_Line_X":     # ------------------------------------------------------------------------------
             value = self.app.getEntry(widget)
