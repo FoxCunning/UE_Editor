@@ -23,8 +23,12 @@ from rom import ROM
 
 @dataclass(init=True, repr=False)
 class CreditLine:
+    # Tile position on the screen
     x: int = 0
     y: int = 0
+    # Screen index where this line is shown (opening credits only)
+    # screen: int = 0
+    # ASCII version of the text
     text: str = ""
 
 
@@ -45,6 +49,7 @@ class EndGameEditor:
         self._opening_credits_lines: List[CreditLine] = []
         # Index for _opening_credits_screens
         self._selected_opening_screen: int = 0
+        self._selected_opening_line: int = 0
 
         # CHR set used for opening credits: address, first character, count (bank is always 0xE)
         self._opening_credits_charset = [0xB200, 0x0A, 30]  # Will be set to all zeroes if not supported by ROM
@@ -62,7 +67,7 @@ class EndGameEditor:
         self._end_tiles: List[ImageTk.PhotoImage] = []
         # Canvas item IDs
         self._end_items: List[int] = []
-        self._selected_line_end: int = 0
+        self._selected_end_line: int = 0
 
         self._unsaved_credits: bool = False
 
@@ -222,7 +227,7 @@ class EndGameEditor:
                                   submit=self._opening_credits_input,
                                   row=0, column=3, sticky="W", font=9, width=6, bg=colour.MEDIUM_GREEN, fg=colour.WHITE)
                         app.label("OC_Label_First", "First tile ID:", row=0, column=4, font=10)
-                        app.entry("OC_Tiles_First", f"0x{self._opening_credits_charset[1]}",
+                        app.entry("OC_Tiles_First", f"0x{self._opening_credits_charset[1]:02X}",
                                   submit=self._opening_credits_input, width=7, limit=6,
                                   row=0, column=5, sticky="W", font=9, bg=colour.MEDIUM_GREEN, fg=colour.WHITE)
                         app.button("OC_Reload_Tiles", self._opening_credits_input, image="res/reload-small.gif",
@@ -343,11 +348,12 @@ class EndGameEditor:
             app.disableEntry("OC_Tiles_Count")
             app.disableEntry("OC_Tiles_First")
 
+        app.showSubWindow("Credits_Editor")
+
         # Default selection
+        self._selected_opening_screen = -1
         app.setOptionBox("EC_Option_Credits", 0, callFunction=True)
         app.selectListItemAtPos("OC_List_Credits", 1, callFunction=True)
-
-        app.showSubWindow("Credits_Editor", follow=True)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -375,15 +381,22 @@ class EndGameEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _opening_credits_input(self, widget: str) -> None:
-        if widget == "OC_List_Credits":
+        if widget == "OC_List_Credits":     # --------------------------------------------------------------------------
             selection = self.app.getListBoxPos(widget)
 
             if len(selection) < 1:
                 return
 
-            line = self._opening_credits_lines[selection[0]]
+            self._selected_opening_line = selection[0]
+            line = self._opening_credits_lines[self._selected_opening_line]
 
-            # TODO Set selected screen for the current line
+            # Keep track of what the previously selected screen was: we will only update if we switch to another one
+            prev_screen = self._selected_opening_screen
+
+            # Set selected screen for the current line
+            for s in range(len(self._opening_credits_screens)):
+                if line in self._opening_credits_screens[s]:
+                    self._selected_opening_screen = s
 
             self.app.clearEntry("OC_Offset_X", callFunction=False, setFocus=False)
             self.app.clearEntry("OC_Offset_Y", callFunction=False, setFocus=False)
@@ -394,16 +407,60 @@ class EndGameEditor:
             self.app.setTextArea("OC_Line_Text", line.text, callFunction=False)
 
             # Update preview
+            if self._selected_opening_screen != prev_screen:
+                self._draw_opening_preview(self._selected_opening_screen)
+
+        elif widget == "OC_Line_Text":  # ------------------------------------------------------------------------------
+            self._opening_credits_lines[self._selected_opening_line].text = self.app.getTextArea(widget)
+
             self._draw_opening_preview(self._selected_opening_screen)
 
-        else:
+        elif widget == "OC_Offset_X":   # ------------------------------------------------------------------------------
+            try:
+                value = int(self.app.getEntry(widget))
+                if 0 <= value <= 31:
+                    self._opening_credits_lines[self._selected_opening_line].x = value
+                    self._draw_opening_preview(self._selected_opening_screen)
+                else:
+                    self.app.soundError()
+                    self.app.getEntryWidget(widget).selection_range(0, "end")
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget(widget).selection_range(0, "end")
+            except TypeError:
+                return
+
+        elif widget == "OC_Offset_Y":   # ------------------------------------------------------------------------------
+            try:
+                value = int(self.app.getEntry(widget))
+                if 0 <= value <= 31:
+                    self._opening_credits_lines[self._selected_opening_line].y = value
+                    self._draw_opening_preview(self._selected_opening_screen)
+                else:
+                    self.app.soundError()
+                    self.app.getEntryWidget(widget).selection_range(0, "end")
+            except ValueError:
+                self.app.soundError()
+                self.app.getEntryWidget(widget).selection_range(0, "end")
+            except TypeError:
+                return
+
+        elif widget == "OC_Centre_Line":    # --------------------------------------------------------------------------
+            line = self._opening_credits_lines[self._selected_opening_line]
+            value = len(line.text) - (1 if line.text[-1] == '~' else 0)
+            self.app.clearEntry("OC_Offset_X", callFunction=False, setFocus=False)
+            line.x = 16 - (value >> 1)
+            self.app.setEntry("OC_Offset_X", line.x)
+            self._draw_opening_preview(self._selected_opening_screen)
+
+        else:   # ------------------------------------------------------------------------------------------------------
             self.warning(f"Unimplemented input from Opening Credits widget '{widget}'.")
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def _end_credits_input(self, widget: str) -> None:
         if widget == "EC_Apply":    # ----------------------------------------------------------------------------------
-            if self._save_end_credits():
+            if self._save_end_credits() and self._save_opening_credits():
                 self._unsaved_credits = False
                 self.app.setStatusbar("Credits data saved")
                 if self.settings.get("close sub-window after saving"):
@@ -426,7 +483,7 @@ class EndGameEditor:
             if selection is None or len(selection) < 1:
                 return
 
-            self._selected_line_end = index = selection[0]
+            self._selected_end_line = index = selection[0]
 
             self.app.clearEntry("EC_Line_X", callFunction=False, setFocus=False)
             self.app.setEntry("EC_Line_X", self._end_credits_lines[index].x, callFunction=False)
@@ -435,92 +492,92 @@ class EndGameEditor:
             self.app.setTextArea("EC_Line_Text", self._end_credits_lines[index].text.upper(), callFunction=False)
 
             # Update list item and also redraw the preview
-            text = self._end_credits_lines[self._selected_line_end].text.upper()
+            text = self._end_credits_lines[self._selected_end_line].text.upper()
             if len(text) > 22:
                 text = text[:22] + '\u2026'
-            self.app.setListItemAtPos(widget, self._selected_line_end, f"#{self._selected_line_end:03} '{text}'")
+            self.app.setListItemAtPos(widget, self._selected_end_line, f"#{self._selected_end_line:03} '{text}'")
 
             self._draw_end_preview(index)
 
         elif widget == "EC_Line_Text":  # ------------------------------------------------------------------------------
-            self._end_credits_lines[self._selected_line_end].text = self.app.getTextArea(widget).upper()
+            self._end_credits_lines[self._selected_end_line].text = self.app.getTextArea(widget).upper()
 
             # Update list item and also redraw the preview
-            text = self._end_credits_lines[self._selected_line_end].text
+            text = self._end_credits_lines[self._selected_end_line].text
             if len(text) > 22:
                 text = text[:22] + '\u2026'
-            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end,
-                                      f"#{self._selected_line_end:03} '{text}'")
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_end_line,
+                                      f"#{self._selected_end_line:03} '{text}'")
 
-            self._draw_end_preview(self._selected_line_end)
+            self._draw_end_preview(self._selected_end_line)
             self._unsaved_credits = True
 
         elif widget == "EC_Button_Up":  # ------------------------------------------------------------------------------
-            if self._selected_line_end == 0:
+            if self._selected_end_line == 0:
                 # Already at the top
                 return
 
-            line_above = self._end_credits_lines[self._selected_line_end - 1]
-            selected_line = self._end_credits_lines[self._selected_line_end]
+            line_above = self._end_credits_lines[self._selected_end_line - 1]
+            selected_line = self._end_credits_lines[self._selected_end_line]
 
             # Swap lines
-            self._end_credits_lines[self._selected_line_end - 1] = selected_line
-            self._end_credits_lines[self._selected_line_end] = line_above
+            self._end_credits_lines[self._selected_end_line - 1] = selected_line
+            self._end_credits_lines[self._selected_end_line] = line_above
 
             # Update list
-            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end - 1,
-                                      f"#{(self._selected_line_end - 1):03} '{selected_line.text}'")
-            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end,
-                                      f"#{self._selected_line_end:03} '{line_above.text}'")
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_end_line - 1,
+                                      f"#{(self._selected_end_line - 1):03} '{selected_line.text}'")
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_end_line,
+                                      f"#{self._selected_end_line:03} '{line_above.text}'")
 
             self._unsaved_credits = True
 
             # Re-select moved line
-            self.app.selectListItemAtPos("EC_List_Credits", self._selected_line_end - 1, callFunction=True)
-            self.app.getListBoxWidget("EC_List_Credits").selection_set(self._selected_line_end)
+            self.app.selectListItemAtPos("EC_List_Credits", self._selected_end_line - 1, callFunction=True)
+            self.app.getListBoxWidget("EC_List_Credits").selection_set(self._selected_end_line)
 
         elif widget == "EC_Button_Down":    # --------------------------------------------------------------------------
-            if self._selected_line_end >= len(self._end_credits_lines) - 1:
+            if self._selected_end_line >= len(self._end_credits_lines) - 1:
                 # Already at the bottom
                 return
 
-            line_below = self._end_credits_lines[self._selected_line_end + 1]
-            selected_line = self._end_credits_lines[self._selected_line_end]
+            line_below = self._end_credits_lines[self._selected_end_line + 1]
+            selected_line = self._end_credits_lines[self._selected_end_line]
 
             # Swap lines
-            self._end_credits_lines[self._selected_line_end + 1] = selected_line
-            self._end_credits_lines[self._selected_line_end] = line_below
+            self._end_credits_lines[self._selected_end_line + 1] = selected_line
+            self._end_credits_lines[self._selected_end_line] = line_below
 
             # Update list
-            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end + 1,
-                                      f"#{(self._selected_line_end + 1):03} '{selected_line.text}'")
-            self.app.setListItemAtPos("EC_List_Credits", self._selected_line_end,
-                                      f"#{self._selected_line_end:03} '{line_below.text}'")
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_end_line + 1,
+                                      f"#{(self._selected_end_line + 1):03} '{selected_line.text}'")
+            self.app.setListItemAtPos("EC_List_Credits", self._selected_end_line,
+                                      f"#{self._selected_end_line:03} '{line_below.text}'")
 
             self._unsaved_credits = True
 
             # Re-select moved line
-            self.app.selectListItemAtPos("EC_List_Credits", self._selected_line_end + 1, callFunction=True)
-            self.app.getListBoxWidget("EC_List_Credits").selection_set(self._selected_line_end)
+            self.app.selectListItemAtPos("EC_List_Credits", self._selected_end_line + 1, callFunction=True)
+            self.app.getListBoxWidget("EC_List_Credits").selection_set(self._selected_end_line)
 
         elif widget == "EC_Line_X":     # ------------------------------------------------------------------------------
             value = self.app.getEntry(widget)
             if value is not None:
-                self._end_credits_lines[self._selected_line_end].x = int(value)
-                self._draw_end_preview(self._selected_line_end)
+                self._end_credits_lines[self._selected_end_line].x = int(value)
+                self._draw_end_preview(self._selected_end_line)
                 self._unsaved_credits = True
 
         elif widget == "EC_Centre_Line":    # --------------------------------------------------------------------------
-            text = text_editor.ascii_to_exodus(self._end_credits_lines[self._selected_line_end].text)
+            text = text_editor.ascii_to_exodus(self._end_credits_lines[self._selected_end_line].text)
             size = len(text[:32])
-            self._end_credits_lines[self._selected_line_end].x = 16 - (size >> 1)
-            self._draw_end_preview(self._selected_line_end)
+            self._end_credits_lines[self._selected_end_line].x = 16 - (size >> 1)
+            self._draw_end_preview(self._selected_end_line)
             self._unsaved_credits = True
 
         elif (widget == "EC_CHR_Bank" or widget == "EC_CHR_Address" or widget == "EC_CHR_Count" or
               widget == "EC_CHR_First" or widget == "EC_Update_CHR"):   # ----------------------------------------------
             self._load_end_patterns()
-            self._draw_end_preview(self._selected_line_end)
+            self._draw_end_preview(self._selected_end_line)
             self._unsaved_credits = True
 
         elif widget == "EC_Reload":     # ------------------------------------------------------------------------------
@@ -739,7 +796,7 @@ class EndGameEditor:
         Reads pattern data used for the opening credits and stores it in image instances that can be used on a canvas.
         """
         # The ending credits use the "map" palette 1
-        colours = self.palette_editor.sub_palette(0, 1)
+        colours = self.palette_editor.sub_palette(8, 1)
 
         self._end_tiles = []
 
@@ -759,8 +816,68 @@ class EndGameEditor:
             # ROM does not support extra patterns for the opening credits
             return
 
-        # TODO Import the extra tiles used for the opening credits and overwrite cache as necessary
+        # Import the extra tiles used for the opening credits and overwrite cache as necessary
+        try:
+            address = int(self.app.getEntry("OC_Tiles_Address"), 16)
+            if address < 0x8000 or address > 0xBFFF:
+                self.app.soundError()
+                self.app.getEntryWidget("OC_Tiles_Address").selection_range(0, "end")
+                return
+            self._opening_credits_charset[0] = address
 
+        except ValueError:
+            self.app.soundError()
+            self.app.getEntryWidget("OC_Tiles_Address").selection_range(0, "end")
+            return
+        except TypeError:
+            return
+
+        try:
+            first = int(self.app.getEntry("OC_Tiles_First"), 16)
+            if first < 0:
+                self.app.soundError()
+                self.app.getEntryWidget("OC_Tiles_First").selection_range(0, "end")
+                return
+            self._opening_credits_charset[1] = first
+
+        except ValueError:
+            self.app.soundError()
+            self.app.getEntryWidget("OC_Tiles_First").selection_range(0, "end")
+            return
+        except TypeError:
+            return
+
+        try:
+            count = int(self.app.getEntry("OC_Tiles_Count"))
+            if count < 0 or count > 255:
+                self.app.soundError()
+                self.app.getEntryWidget("OC_Tiles_Count").selection_range(0, "end")
+                return
+            self._opening_credits_charset[2] = count
+
+        except ValueError:
+            self.app.soundError()
+            self.app.getEntryWidget("OC_Tiles_Count").selection_range(0, "end")
+            return
+        except TypeError:
+            return
+
+        if first + count > 255:
+            self.app.errorBox("Opening Credits",
+                              "Tileset overflow: please check count and first character index.",
+                              "Credits_Editor")
+            return
+
+        for i in range(first, first + count):
+            pixels = bytes(self.rom.read_pattern(0xE, address))
+            address += 16  # Each pattern is 16 bytes long
+
+            image_1x = Image.frombytes('P', (8, 8), pixels)
+
+            image_1x.putpalette(colours)
+
+            # Cache this image
+            self._opening_tiles[i] = ImageTk.PhotoImage(image_1x)
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -797,7 +914,7 @@ class EndGameEditor:
 
         try:
             bank = int(self.app.getEntry("EC_CHR_Bank"), 16)
-        except ValueError:
+        except (ValueError, TypeError):
             bank = 0xD
         if bank > 0xFF:
             self.app.soundError()
@@ -808,7 +925,7 @@ class EndGameEditor:
 
         try:
             address = int(self.app.getEntry("EC_CHR_Address"), 16)
-        except ValueError:
+        except (ValueError, TypeError):
             address = 0xBE00
 
         self._end_credits_charset[1] = address
@@ -820,7 +937,7 @@ class EndGameEditor:
 
         try:
             first_chr = int(self.app.getEntry("EC_CHR_First"), 16)
-        except ValueError:
+        except (ValueError, TypeError):
             first_chr = 0x8A
 
         if first_chr + count > 256:
@@ -853,6 +970,13 @@ class EndGameEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _draw_opening_preview(self, index: int) -> None:
+        """
+
+        Parameters
+        ----------
+        index: int
+            Index of the screen (list of lines) to be previewed
+        """
         # Clear screen first
         for item in self._opening_items:
             if item > 0:
