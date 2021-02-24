@@ -123,14 +123,10 @@ def ascii_to_exodus(ascii_string: str) -> bytearray:
                     c = c + 2
                 else:
                     exodus_string.append(0x00)
-            except IndexError as error:
-                log(3, "TEXT EDITOR",
-                    f"{error} while processing escape sequence in string '{ascii_string}'.")
+            except IndexError:
                 c = c + 1
                 continue
-            except ValueError as error:
-                log(3, "TEXT EDITOR",
-                    f"{error} while processing escape sequence in string '{ascii_string}'.")
+            except ValueError:
                 c = c + 1
                 continue
 
