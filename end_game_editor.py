@@ -14,6 +14,7 @@ import text_editor
 from appJar import gui
 from debug import log
 from editor_settings import EditorSettings
+from map_editor import MapEditor
 from palette_editor import PaletteEditor
 from rom import ROM
 
@@ -38,11 +39,14 @@ class EndGameEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def __init__(self, app: gui, settings: EditorSettings, rom: ROM, palette_editor: PaletteEditor):
+    def __init__(self, app: gui, settings: EditorSettings, rom: ROM, pe: PaletteEditor, me: MapEditor,
+                 te: text_editor.TextEditor):
         self.app = app
         self.settings = settings
         self.rom = rom
-        self.palette_editor = palette_editor
+        self.palette_editor = pe
+        self.map_editor = me
+        self.text_editor = te
 
         # Each "screen" is a subset of lines, delimited by an empty line with Y position = 30
         self._opening_credits_screens: List[List[CreditLine]] = []
@@ -75,6 +79,7 @@ class EndGameEditor:
         self._selected_end_line: int = 0
 
         self._unsaved_credits: bool = False
+        self._unsaved_events: bool = False
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -362,7 +367,98 @@ class EndGameEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def show_end_game_window(self) -> None:
-        self.app.infoBox("Endgame Editor", "Not yet implemented, sorry!")
+        """
+        Creates / shows the interface used to edit events / game ending editor.
+        """
+        # Check if window already exists
+        try:
+            self.app.getFrameWidget("EC_Frame_Buttons")
+            self.app.showSubWindow("Credits_Editor")
+            return
+
+        except appJar.appjar.ItemLookupError:
+            generator = self.app.subWindow("Event_Editor", size=[720, 340], padding=[4, 2],
+                                           title="Ultima: Exodus - Event / Game Ending Editor",
+                                           resizable=False, modal=False, blocking=False,
+                                           bg=colour.DARK_LIME, fg=colour.WHITE,
+                                           stopFunction=self.close_end_game_window)
+
+        self._unsaved_events = False
+        app = self.app
+
+        with generator:
+
+            with app.frame("EV_Frame_Buttons", padding=[4, 4], sticky="NEW", row=0, column=0, colspan=2):
+
+                app.button("EV_Apply", self._events_input, image="res/floppy.gif", bg=colour.LIGHT_GREEN,
+                           row=0, column=1, sticky="W", tooltip="Save all changes")
+                app.button("EV_Reload", self._events_input, image="res/reload.gif", bg=colour.LIGHT_GREEN,
+                           row=0, column=2, sticky="W", tooltip="Reload from ROM buffer")
+                app.button("EV_Close", self._events_input, image="res/close.gif", bg=colour.LIGHT_GREEN,
+                           row=0, column=3, sticky="W", tooltip="Discard changes and close")
+
+            with app.labelFrame("EV_Frame_Death", name="Death Event", padding=[2, 4], row=1, column=0):
+                app.label("EV_Label_0", "Choose what happens when the whole party is killed", colspan=3, sticky="WE",
+                          row=0, column=0, font=11, fg=colour.PALE_ORANGE)
+
+                app.label("EV_Label_Dlg0", "Number of dialogue items to show:", sticky="E", row=1, column=0, font=10)
+                app.spinBox("EV_Death_DlgCount", list(reversed(range(2, 6))), change=self._events_input, width=4,
+                            row=1, column=1, sticky="W")
+
+                with app.frame("EV_Frame_Dlg", padding=[4, 4], row=2, column=0, colspan=3):
+                    for dlg in range(5):
+                        app.entry(f"EV_Death_Dlg{dlg}", "", bg=colour.MEDIUM_LIME, fg=colour.WHITE, width=4, limit=4,
+                                  row=0, column=dlg * 2, font=9, sticky="W", change=self._events_input)
+                        app.button(f"EV_Button_Dlg{dlg}", self._events_input, image="res/edit-dlg-small.gif",
+                                   bg=colour.LIGHT_GREEN,
+                                   row=0, column=(dlg * 2) + 1, sticky="W", tooltip="Edit this text string")
+
+                with app.frame("EV_Frame_Action", padding=[2, 4], row=3, column=0, colspan=3):
+                    app.label("EV_Label_1", "Action after dialogue:", sticky="W", row=0, column=0, font=10)
+                    app.optionBox("EV_Option_Death", ["Reset Game", "Resurrect Party Leader"],
+                                  row=0, column=1, colspan=2, change=self._events_input, sticky="W", font=9)
+
+                    app.label("EV_Label_2", "Destination map flags:", sticky="W", row=1, column=0, font=10)
+                    app.optionBox("EV_Map_Flags", ["Continent", "Town / Castle", "Battle", "Dungeon", "Custom"],
+                                  row=1, column=1, change=self._events_input, sticky="W", font=9)
+                    app.entry("EV_Custom_Flags", "0x00", bg=colour.MEDIUM_LIME, fg=colour.WHITE,
+                              tooltip="Bit 3: Town; Bit 2: Continent; Bit 1: Battle; Bit 0: Dungeon",
+                              row=1, column=2, font=9, width=4, limit=4, sticky="W", change=self._events_input)
+
+                with app.frame("EV_Frame_Teleport", padding=[2, 4], row=5, column=0, colspan=3):
+                    app.label("EV_Label_3", "Destination map:", row=0, column=0, font=10)
+                    app.optionBox("EV_Map_Id", self.map_editor.location_names, sticky="W",
+                                  row=0, column=1, colspan=5, font=9)
+
+                    app.label("EV_Label_4", "Coordinates:", row=1, column=0, font=10)
+                    app.entry("EV_Teleport_X", 0, kind="numeric", change=self._events_input,
+                              width=3, limit=2, tooltip="0 to 63", sticky="W",
+                              row=1, column=1, font=9, bg=colour.MEDIUM_LIME, fg=colour.WHITE)
+                    app.entry("EV_Teleport_Y", 0, kind="numeric", change=self._events_input,
+                              width=3, limit=2, tooltip="0 to 63", sticky="W",
+                              row=1, column=2, font=9, bg=colour.MEDIUM_LIME, fg=colour.WHITE)
+
+                    app.label("EV_Label_5", "Exit to:", row=1, column=3, font=10)
+                    app.entry("EV_Exit_X", 0, kind="numeric", change=self._events_input,
+                              width=3, limit=2, tooltip="0 to 63", sticky="W",
+                              row=1, column=4, font=9, bg=colour.MEDIUM_LIME, fg=colour.WHITE)
+                    app.entry("EV_Exit_Y", 0, kind="numeric", change=self._events_input,
+                              width=3, limit=2, tooltip="0 to 63", sticky="W",
+                              row=1, column=5, font=9, bg=colour.MEDIUM_LIME, fg=colour.WHITE)
+
+            with app.labelFrame("EG_Frame_End", name="Game Ending", padding=[2, 16], row=1, column=1):
+                app.label("EG_Label_0", "Choose how to end the game", row=0, column=0, font=12, fg=colour.PALE_ORANGE)
+                app.label("EG_Label_Temp", "NOT YET IMPLEMENTED, SORRY!", row=1, column=0, font=16)
+
+        app.showSubWindow("Event_Editor")
+
+        self._read_death_event()
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def close_end_game_window(self) -> None:
+        self.app.hideSubWindow("Event_Editor", useStopFunction=False)
+        self.app.emptySubWindow("Event_Editor")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -398,6 +494,87 @@ class EndGameEditor:
                 opening_credits_list.append(f"#{i:03} '{text}'")
 
         return opening_credits_list
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _events_input(self, widget: str) -> None:
+        if widget == "EV_Reload":   # ----------------------------------------------------------------------------------
+            if self._unsaved_events:
+                if not self.app.yesNoBox("Events/Game Ending Editor", "Are you sure you want to reload all data?" +
+                                         "Any unsaved changes will be lost.", "Event_Editor"):
+                    return
+            self._read_death_event()
+            self._unsaved_events = False
+
+        elif widget == "EV_Close":  # ----------------------------------------------------------------------------------
+            if self._unsaved_events:
+                if not self.app.yesNoBox("Events/Game Ending Editor", "Are you sure you want to close this window?" +
+                                         "Any unsaved changes will be lost.", "Event_Editor"):
+                    return
+            self.close_end_game_window()
+
+        elif widget[:13] == "EV_Button_Dlg":    # ----------------------------------------------------------------------
+            d = int(widget[-1])
+            try:
+                dlg = int(self.app.getEntry(f"EV_Death_Dlg{d}"), 16)
+                self.text_editor.show_advanced_window(dlg, "Special")
+
+            except (ValueError, TypeError):
+                self.app.soundError()
+                self.app.getEntryWidget(f"EV_Death_Dlg{d}").selection_range(0, "end")
+                return
+
+        elif widget == "EV_Death_DlgCount":     # ----------------------------------------------------------------------
+            for d in range(5):
+                if d < int(self.app.getSpinBox(widget)):
+                    self.app.enableEntry(f"EV_Death_Dlg{d}")
+                    self.app.enableButton(f"EV_Button_Dlg{d}")
+                else:
+                    self.app.disableEntry(f"EV_Death_Dlg{d}")
+                    self.app.disableButton(f"EV_Button_Dlg{d}")
+            self._unsaved_events = True
+
+        elif widget == "EV_Custom_Flags":   # --------------------------------------------------------------------------
+            self._unsaved_events = True
+
+        elif widget == "EV_Map_Flags":  # ------------------------------------------------------------------------------
+            if self._get_selection_index("EV_Map_Flags") == 4:
+                self.app.enableEntry("EV_Custom_Flags")
+            else:
+                self.app.disableEntry("EV_Custom_Flags")
+
+            self._unsaved_events = True
+
+        elif widget == "EV_Option_Death":   # --------------------------------------------------------------------------
+            if self._get_selection_index(widget) == 0:
+                # Reset game on death
+                self.app.disableOptionBox("EV_Map_Id")
+                self.app.disableEntry("EV_Teleport_X")
+                self.app.disableEntry("EV_Teleport_Y")
+                self.app.disableEntry("EV_Exit_X")
+                self.app.disableEntry("EV_Exit_Y")
+                self.app.disableOptionBox("EV_Map_Flags")
+            else:
+                # Resurrect and teleport on death
+                self.app.enableOptionBox("EV_Map_Id")
+                self.app.enableEntry("EV_Teleport_X")
+                self.app.enableEntry("EV_Teleport_Y")
+                self.app.enableEntry("EV_Exit_X")
+                self.app.enableEntry("EV_Exit_Y")
+                self.app.enableOptionBox("EV_Map_Flags")
+                if self._get_selection_index("EV_Map_Flags") == 4:
+                    self.app.enableEntry("EV_Custom_Flags")
+
+            self._unsaved_events = True
+
+        elif widget[:8] == "EV_Exit_":  # ------------------------------------------------------------------------------
+            self._unsaved_events = True
+
+        elif widget[:12] == "EV_Teleport_":     # ----------------------------------------------------------------------
+            self._unsaved_events = True
+
+        else:   # ------------------------------------------------------------------------------------------------------
+            self.warning(f"Unimplemented input from Event Editor widget '{widget}'.")
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -972,6 +1149,126 @@ class EndGameEditor:
             count += 1
 
         return count
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _read_death_event(self) -> None:
+        """
+        Decodes the routine called when after the whole party dies and populates widgets with editable values.
+        """
+        # Map flags
+        data = self.rom.read_bytes(0xB, 0x9396, 2)
+
+        if data[0] == 0xA9:
+            self.app.clearEntry("EV_Custom_Flags", callFunction=False, setFocus=False)
+            self.app.setEntry("EV_Custom_Flags", f"0x{data[1]:02X}", callFunction=False)
+            if data[1] == 0x08:
+                choice = 0
+            elif data[1] == 0x04:
+                choice = 1
+            elif data[1] == 0x02:
+                choice = 2
+            elif data[1] == 0x01:
+                choice = 3
+            else:
+                choice = 4
+
+            self.app.enableOptionBox("EV_Map_Flags")
+            self.app.setOptionBox("EV_Map_Flags", choice, callFunction=False)
+
+            if choice < 4:
+                self.app.disableEntry("EV_Custom_Flags")
+            else:
+                self.app.enableEntry("EV_Custom_Flags")
+
+        else:
+            # Custom code: disable widgets
+            self.app.disableOptionBox("EV_Map_Flags")
+            self.app.disableEntry("EV_Custom_Flags")
+
+        # Map ID
+        data = self.rom.read_bytes(0xB, 0x939A, 2)
+
+        if data[0] == 0xA9 and data[1] < len(self.map_editor.location_names):
+            self.app.enableOptionBox("EV_Map_Id")
+            self.app.setOptionBox("EV_Map_Id", data[1], callFunction=False)
+        else:
+            # Custom code: disable widgets
+            self.app.disableOptionBox("EV_Map_Id")
+
+        # Dialogue IDs
+        data = self.rom.read_bytes(0xB, 0x939E, 2)
+        count = self.rom.read_bytes(0xB, 0x93C9, 2)
+        values = bytearray([data[1]]) + self.rom.read_bytes(0xB, 0x93E9, 4)
+
+        if data[0] == 0xA9 and count[0] == 0xC9 and count[1] < 5:
+            self.app.enableSpinBox("EV_Death_DlgCount")
+            self.app.setSpinBox("EV_Death_DlgCount", count[1] + 1, callFunction=False)
+            for d in range(5):
+                if d <= count[1]:
+                    self.app.enableEntry(f"EV_Death_Dlg{d}")
+                    self.app.enableButton(f"EV_Button_Dlg{d}")
+                else:
+                    self.app.disableEntry(f"EV_Death_Dlg{d}")
+                    self.app.disableButton(f"EV_Button_Dlg{d}")
+                self.app.clearEntry(f"EV_Death_Dlg{d}", callFunction=False, setFocus=False)
+                self.app.setEntry(f"EV_Death_Dlg{d}", f"0x{values[d]:02X}", callFunction=False)
+        else:
+            # Custom code
+            self.app.disableSpinBox("EV_Death_DlgCount")
+            for d in range(5):
+                self.app.disableEntry(f"EV_Death_Dlg{d}")
+                self.app.disableButton(f"EV_Button_Dlg{d}")
+
+        # Detect if party is teleported or the game is reset
+        data = self.rom.read_bytes(0xB, 0x93CD, 3)
+
+        if data == b'\x20\xEA\xC4':     # JSR $C4EA = Resurrect party leader
+            self.app.enableOptionBox("EV_Option_Death")
+            self.app.setOptionBox("EV_Option_Death", 1, callFunction=False)
+
+            values = [self.rom.read_byte(0xB, 0x93DD),
+                      self.rom.read_byte(0xB, 0x93E1),
+                      self.rom.read_byte(0xB, 0x93D5),
+                      self.rom.read_byte(0xB, 0x93D9)]
+
+            self.app.enableEntry("EV_Teleport_X")
+            self.app.clearEntry("EV_Teleport_X", callFunction=False, setFocus=False)
+            self.app.setEntry("EV_Teleport_X", values[0], callFunction=False)
+
+            self.app.enableEntry("EV_Teleport_Y")
+            self.app.clearEntry("EV_Teleport_Y", callFunction=False, setFocus=False)
+            self.app.setEntry("EV_Teleport_Y", values[1], callFunction=False)
+
+            self.app.enableEntry("EV_Exit_X")
+            self.app.clearEntry("EV_Exit_X", callFunction=False, setFocus=False)
+            self.app.setEntry("EV_Exit_X", values[2], callFunction=False)
+
+            self.app.enableEntry("EV_Exit_Y")
+            self.app.clearEntry("EV_Exit_Y", callFunction=False, setFocus=False)
+            self.app.setEntry("EV_Exit_Y", values[3], callFunction=False)
+
+            self.app.enableOptionBox("EV_Map_Flags")
+
+        elif data == b'\x68\x68\x6C':   # PLA; PLA; JMP = Reset game
+            self.app.enableOptionBox("EV_Option_Death")
+            self.app.setOptionBox("EV_Option_Death", 1, callFunction=False)
+            self.app.disableOptionBox("EV_Map_Id")
+            self.app.disableEntry("EV_Teleport_X")
+            self.app.disableEntry("EV_Teleport_Y")
+            self.app.disableEntry("EV_Exit_X")
+            self.app.disableEntry("EV_Exit_Y")
+            self.app.disableOptionBox("EV_Map_Flags")
+            self.app.disableEntry("EV_Custom_Flags")
+
+        else:
+            # Custom code
+            self.app.disableOptionBox("EV_Option_Death")
+            self.app.disableOptionBox("EV_Map_Id")
+            self.app.disableEntry("EV_Teleport_X")
+            self.app.disableEntry("EV_Teleport_Y")
+            self.app.disableEntry("EV_Exit_X")
+            self.app.disableEntry("EV_Exit_Y")
 
     # ------------------------------------------------------------------------------------------------------------------
 

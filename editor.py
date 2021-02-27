@@ -663,7 +663,7 @@ def open_rom(file_name: str) -> None:
         party_editor = PartyEditor(app, rom, text_editor, palette_editor, map_editor)
 
         # End game editor
-        end_game_editor = EndGameEditor(app, settings, rom, palette_editor)
+        end_game_editor = EndGameEditor(app, settings, rom, palette_editor, map_editor, text_editor)
 
         app.setMeter("PE_Progress_Meter", 90)
         app.topLevel.update()
@@ -2128,14 +2128,14 @@ if __name__ == "__main__":
             app.button("PT_Button_Special", name="Special Abilities", value=misc_editor_input, sticky='NEWS',
                        bg=colour.PALE_VIOLET, row=2, column=1, font=10)
             # Row 3
-            app.button("PT_Button_Weapons", name="Weapons/Armour", value=misc_editor_input, sticky='NEWS',
+            app.button("PT_Button_Weapons", name="Weapons / Armour", value=misc_editor_input, sticky='NEWS',
                        bg=colour.PALE_MAGENTA, row=3, column=0, font=10)
             app.button("PT_Button_Commands", name="Commands", value=misc_editor_input, sticky='NEWS',
                        bg=colour.PALE_LIME, row=3, column=1, font=10)
             # Row 4
             app.button("PT_Button_Credits", name="Game Credits Screen", value=misc_editor_input, sticky='NEWS',
                        bg=colour.PALE_NAVY, row=4, column=0, font=10)
-            app.button("PT_Button_Ending", name="Game Ending", value=misc_editor_input, sticky='NEWS',
+            app.button("PT_Button_Ending", name="Events / Game Ending", value=misc_editor_input, sticky='NEWS',
                        bg=colour.PALE_PINK, row=4, column=1, font=10)
 
         # ENEMIES Tab --------------------------------------------------------------------------------------------------
