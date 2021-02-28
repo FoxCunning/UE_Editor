@@ -914,14 +914,14 @@ class TextEditor:
             skip_rows = False
             frame = True
             last_row = 6
-            last_col = 16
+            last_col = 15
         elif mode == "Intro":
             left = 0
             top = 3
             skip_rows = True
             frame = False
             last_row = 7
-            last_col = 19
+            last_col = 18
         else:
             left = 0
             top = 0
@@ -936,7 +936,7 @@ class TextEditor:
         # Clear items / draw frame first
         if redraw_frame:
             frame_col = left - 2
-            frame_right = last_col + 1
+            frame_right = last_col + 2
 
             for y in range(9):
                 for x in range(20):

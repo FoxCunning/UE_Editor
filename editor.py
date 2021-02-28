@@ -1299,7 +1299,7 @@ def text_editor_input(widget: str) -> None:
         text_editor.draw_text_preview(True)
 
     elif widget == "TE_Conversation_Advance":   # ----------------------------------------------------------------------
-        text_editor.text_line += 5
+        text_editor.text_line += 6
         lines = app.getTextArea("TE_Text").splitlines()
         if len(lines) <= text_editor.text_line:
             text_editor.text_line = 0
