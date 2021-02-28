@@ -498,7 +498,13 @@ class EndGameEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _events_input(self, widget: str) -> None:
-        if widget == "EV_Reload":   # ----------------------------------------------------------------------------------
+        if widget == "EV_Apply":    # ----------------------------------------------------------------------------------
+            if self._save_death_event():
+                self._unsaved_events = False
+                if self.settings.get("close sub-window after saving"):
+                    self.close_end_game_window()
+
+        elif widget == "EV_Reload":     # ------------------------------------------------------------------------------
             if self._unsaved_events:
                 if not self.app.yesNoBox("Events/Game Ending Editor", "Are you sure you want to reload all data?" +
                                          "Any unsaved changes will be lost.", "Event_Editor"):
@@ -526,12 +532,16 @@ class EndGameEditor:
 
         elif widget == "EV_Death_DlgCount":     # ----------------------------------------------------------------------
             for d in range(5):
-                if d < int(self.app.getSpinBox(widget)):
-                    self.app.enableEntry(f"EV_Death_Dlg{d}")
-                    self.app.enableButton(f"EV_Button_Dlg{d}")
-                else:
-                    self.app.disableEntry(f"EV_Death_Dlg{d}")
-                    self.app.disableButton(f"EV_Button_Dlg{d}")
+                try:
+                    if d < int(self.app.getSpinBox(widget)):
+                        self.app.enableEntry(f"EV_Death_Dlg{d}")
+                        self.app.enableButton(f"EV_Button_Dlg{d}")
+                    else:
+                        self.app.disableEntry(f"EV_Death_Dlg{d}")
+                        self.app.disableButton(f"EV_Button_Dlg{d}")
+                except ValueError:
+                    return
+
             self._unsaved_events = True
 
         elif widget == "EV_Custom_Flags":   # --------------------------------------------------------------------------
@@ -1149,6 +1159,145 @@ class EndGameEditor:
             count += 1
 
         return count
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _save_death_event(self) -> bool:
+        # Values to write as tuples (address, value)
+        buffer: List[(int, int)] = []
+
+        # Dialogue IDs
+        try:
+            text = self.app.getEntry("EV_Death_Dlg0")
+            value = int(text, 16)
+            if 0 <= value <= 255:
+                if self.rom.read_byte(0xB, 0x939E) == 0xA9:     # LDA
+                    buffer.append((0x939F, value))
+            else:
+                self.app.errorBox("Event / Game Ending", f"Invalid value for dialogue ID: '{text}'.\n Please enter " +
+                                  "a hexadecimal value between 0x00 and 0xFF.", "Event_Editor")
+                self.app.getEntryWidget("EV_Death_Dlg0").selection_range(0, "end")
+                return False
+        except (ValueError, TypeError):
+            self.app.getEntryWidget("EV_Death_Dlg0").selection_range(0, "end")
+            return False
+
+        try:
+            count = int(self.app.getSpinBox("EV_Death_DlgCount"))
+        except ValueError:
+            self.app.errorBox("Event / Game Ending", f"Invalid value for dialogue count: '{text}'.\n Please enter " +
+                              "a decimal value between 2 and 5.", "Event_Editor")
+            return False
+
+        if count is None or count < 2:
+            self.app.errorBox("Event / Game Ending", f"Invalid value for dialogue count: '{text}'.\n Please enter " +
+                              "a decimal value between 2 and 5.", "Event_Editor")
+            return False
+
+        if self.rom.read_byte(0xB, 0x93C9) == 0xC9:  # CMP
+            buffer.append((0x93CA, count - 1))
+
+        for d in range(1, count):
+            try:
+                text = self.app.getEntry(f"EV_Death_Dlg{d}")
+                value = int(text, 16)
+                if 0 <= value <= 255:
+                    if self.rom.read_word(0xB, 0x93B9) == 0x93E9:
+                        buffer.append((0x93E8 + d, value))
+                else:
+                    self.app.errorBox("Event / Game Ending",
+                                      f"Invalid value for dialogue ID: '{text}'.\n Please enter " +
+                                      "a hexadecimal value between 0x00 and 0xFF.", "Event_Editor")
+                    self.app.getEntryWidget(f"EV_Death_Dlg{d}").selection_range(0, "end")
+                    return False
+            except (ValueError, TypeError):
+                self.app.getEntryWidget(f"EV_Death_Dlg{d}").selection_range(0, "end")
+                return False
+
+        # Action after dialogue
+        if self.app.getOptionBoxWidget("EV_Option_Death").cget("state") == "normal":
+            if self._get_selection_index("EV_Option_Death") == 0:   # Reset on party death
+                buffer.append((0x93CD, 0x68))   # PLA
+                buffer.append((0x93CE, 0x68))   # PLA
+                buffer.append((0x93CF, 0x6C))   # JMP ($FFFC)
+                buffer.append((0x93D0, 0xFC))
+                buffer.append((0x93D1, 0xFF))
+
+            else:                                                   # Resurrect at selected map/coordinates
+                buffer.append((0x93CD, 0x20))   # JSR $C4EA
+                buffer.append((0x93CE, 0xEA))
+                buffer.append((0x93CF, 0xC4))
+                buffer.append((0x93D0, 0xA9))   # LDA #$FF
+                buffer.append((0x93D1, 0xFF))
+
+                # Map flags
+                value = self._get_selection_index("EV_Map_Flags")
+                if value == 4:
+                    try:
+                        text = self.app.getEntry("EV_Custom_Map_Flags")
+                        map_flags = int(text, 16)
+                    except (ValueError, TypeError):
+                        self.app.errorBox("Event / Game Ending", f"Invalid value for custom map flags: '{text}'.\n" +
+                                          "Please enter a hexadecimal value between 0x00 and 0xFF")
+                        self.app.getEntryWidget("EV_Custom_Map_Flags").selection_range(0, "end")
+                        return False
+
+                else:
+                    map_flags = 0x08 >> value
+
+                if self.rom.read_byte(0xB, 0x9396) == 0xA9:     # LDA
+                    buffer.append((0x9397, map_flags))
+
+                # Map ID
+                value = self._get_selection_index("EV_Map_Id")
+                if self.rom.read_byte(0xB, 0x939A) == 0xA9:     # LDA
+                    buffer.append((0x939B, value))
+
+                # Destination X, Y
+                value = int(self.app.getEntry("EV_Teleport_X"))
+                if value is None or value < 0 or value > 63:
+                    self.app.errorBox("Event / Game Ending", f"Invalid value for Teleport X: '{value}'.\n" +
+                                      "Please enter a decimal value between 0 and 63")
+                    self.app.getEntryWidget("EV_Teleport_X").selection_range(0, "end")
+                    return False
+                if self.rom.read_byte(0xB, 0x93DC) == 0xA9:     # LDA
+                    buffer.append((0x93DD, value))
+
+                value = int(self.app.getEntry("EV_Teleport_Y"))
+                if value is None or value < 0 or value > 63:
+                    self.app.errorBox("Event / Game Ending", f"Invalid value for Teleport Y: '{value}'.\n" +
+                                      "Please enter a decimal value between 0 and 63")
+                    self.app.getEntryWidget("EV_Teleport_Y").selection_range(0, "end")
+                    return False
+                if self.rom.read_byte(0xB, 0x93E0) == 0xA9:     # LDA
+                    buffer.append((0x93E1, value))
+
+                # Exit to overworld X, Y
+                value = int(self.app.getEntry("EV_Exit_X"))
+                if value is None or value < 0 or value > 63:
+                    self.app.errorBox("Event / Game Ending", f"Invalid value for Exit X: '{value}'.\n" +
+                                      "Please enter a decimal value between 0 and 63")
+                    self.app.getEntryWidget("EV_Exit_X").selection_range(0, "end")
+                    return False
+                if self.rom.read_byte(0xB, 0x93D4) == 0xA9:     # LDA
+                    buffer.append((0x93D5, value))
+
+                value = int(self.app.getEntry("EV_Exit_Y"))
+                if value is None or value < 0 or value > 63:
+                    self.app.errorBox("Event / Game Ending", f"Invalid value for Exit Y: '{value}'.\n" +
+                                      "Please enter a decimal value between 0 and 63")
+                    self.app.getEntryWidget("EV_Exit_Y").selection_range(0, "end")
+                    return False
+                if self.rom.read_byte(0xB, 0x93D8) == 0xA9:     # LDA
+                    buffer.append((0x93D9, value))
+
+        else:
+            self.info("Death Event uses custom code: some changes will NOT be saved.")
+
+        for v in buffer:
+            self.rom.write_byte(0xB, v[0], v[1])
+
+        return True
 
     # ------------------------------------------------------------------------------------------------------------------
 
