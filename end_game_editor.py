@@ -68,6 +68,9 @@ class EndGameEditor:
 
         self._opening_selected_tile: int = 0            # Index of the currently selected tile
 
+        # ROM support for game ending: 0 = unsupported / custom, 1 = only map, 2 = everything
+        self._ending_rom_support: int = 0
+
         # CHR set used for ending credits: ROM bank, address, first character, count
         self._end_credits_charset = [0xD, 0xBF00, 0x8A, 32]
         self._end_credits_lines: List[CreditLine] = []
@@ -397,6 +400,8 @@ class EndGameEditor:
                 app.button("EV_Close", self._events_input, image="res/close.gif", bg=colour.LIGHT_GREEN,
                            row=0, column=3, sticky="W", tooltip="Discard changes and close")
 
+            # ------------ DEATH EVENT ------------
+
             with app.labelFrame("EV_Frame_Death", name="Death Event", padding=[2, 4], row=1, column=0):
                 app.label("EV_Label_0", "Choose what happens when the whole party is killed", colspan=3, sticky="WE",
                           row=0, column=0, font=11, fg=colour.PALE_ORANGE)
@@ -446,13 +451,42 @@ class EndGameEditor:
                               width=3, limit=2, tooltip="0 to 63", sticky="W",
                               row=1, column=5, font=9, bg=colour.MEDIUM_LIME, fg=colour.WHITE)
 
+            # ------------ GAME ENDING ------------
+
             with app.labelFrame("EG_Frame_End", name="Game Ending", padding=[2, 16], row=1, column=1):
-                app.label("EG_Label_0", "Choose how to end the game", row=0, column=0, font=12, fg=colour.PALE_ORANGE)
-                app.label("EG_Label_Temp", "NOT YET IMPLEMENTED, SORRY!", row=1, column=0, font=16)
+                app.label("EG_Label_0", "Choose how to end the game", colspan=2, sticky="WE",
+                          row=0, column=0, font=12, fg=colour.PALE_ORANGE)
+                app.radioButton("EG_Radio_Ending", "When leaving a map", change=self._ending_input,
+                                bg=colour.DARK_LIME, selectcolor=colour.MEDIUM_LIME,
+                                row=1, column=0, font=10, indicatoron=1)
+                app.radioButton("EG_Radio_Ending", "After defeating an enemy", change=self._ending_input,
+                                bg=colour.DARK_LIME, selectcolor=colour.MEDIUM_LIME,
+                                row=1, column=1, font=10, indicatoron=1)
+
+                with app.frameStack("EG_Stack_Ending", row=2, column=0, colspan=2):
+
+                    with app.frame("EG_Frame_Unsupported", padding=[4, 4], bg=colour.MEDIUM_RED, fg=colour.WHITE):
+                        app.label("EG_Label_Unsupported", "NOT SUPPORTED BY THIS ROM", sticky="NEWS", font=12)
+
+                    with app.frame("EG_Frame_Enemy", padding=[2, 2], bg=colour.DARK_LIME, fg=colour.WHITE):
+                        app.label("Final enemy:", row=0, column=0, font=10)
+                        app.optionBox("EG_Enemy_Id", self.text_editor.enemy_names, change=self._ending_input,
+                                      row=0, column=1, font=9, height=1)
+
+                        app.label("EG_Label_Enemy_Id", "Value: 0x00", sticky="W", row=1, column=1, font=10)
+
+                    with app.frame("EG_Frame_Map", padding=[2, 2], bg=colour.DARK_LIME, fg=colour.WHITE):
+                        app.checkBox("EG_Check_Earthquake", text="End game if the 'earthquake' effect is active",
+                                     change=self._ending_input, colspan=2,
+                                     row=0, column=0, font=10, selectcolor=colour.MEDIUM_LIME)
+
+                        app.label("EG_Label_1", "Final map:", row=1, column=0, font=10)
+                        app.optionBox("EG_Ending_Map", self.map_editor.location_names, row=1, column=1, font=9)
 
         app.showSubWindow("Event_Editor")
 
         self._read_death_event()
+        self._read_game_ending()
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -497,9 +531,40 @@ class EndGameEditor:
 
     # ------------------------------------------------------------------------------------------------------------------
 
+    def _ending_input(self, widget: str) -> None:
+        if widget == "EG_Radio_Ending":     # --------------------------------------------------------------------------
+            if self._ending_rom_support == 0:
+                # Unsupported / custom code
+                self.app.selectFrame("EG_Stack_Ending", 0, callFunction=False)
+                return
+
+            if self.app.getRadioButton(widget)[:5] == "When ":
+                self.app.selectFrame("EG_Stack_Ending", 2, callFunction=False)
+            else:
+                if self._ending_rom_support == 1:
+                    # Unsupported in original ROM
+                    self.app.selectFrame("EG_Stack_Ending", 0, callFunction=False)
+                else:
+                    self.app.selectFrame("EG_Stack_Ending", 1, callFunction=False)
+
+        elif widget == "EG_Enemy_Id":   # ------------------------------------------------------------------------------
+            value = self._get_selection_index(widget)
+            self.app.setLabel("EG_Label_Enemy_Id", f"Value: 0x{value:02X}")
+
+        elif widget == "EG_Check_Earthquake":   # ----------------------------------------------------------------------
+            if self.app.getCheckBox(widget):
+                self.app.disableOptionBox("EG_Map_Id")
+            else:
+                self.app.enableOptionBox("EG_Map_Id")
+
+        else:   # ------------------------------------------------------------------------------------------------------
+            self.warning(f"Unimplemented input from Ending Editor widget '{widget}'.")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
     def _events_input(self, widget: str) -> None:
         if widget == "EV_Apply":    # ----------------------------------------------------------------------------------
-            if self._save_death_event():
+            if self._save_death_event() and self._save_game_ending():
                 self._unsaved_events = False
                 if self.settings.get("close sub-window after saving"):
                     self.close_end_game_window()
@@ -953,6 +1018,183 @@ class EndGameEditor:
         x = x << 3
         y = y << 3
         self._canvas_tileset.coords(self._opening_tileset_rect, x, y, x + 7, y + 7)
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _save_game_ending(self) -> bool:
+        if self._ending_rom_support == 0:
+            # Custom code / unsupported ROM
+            return True
+
+        if self.app.getRadioButton("EG_Radio_Ending")[:5] == "When ":
+            # Game does NOT end after defeating an enemy
+            self.rom.write_bytes(0xF, 0xCD69, bytes([0x20, 0x27, 0xD2]))    # JSR $D227
+
+            # *=$C00D
+            #   lda #$09
+            #   sta _MapFlags           ; Needed for correct scrolling
+            #   jsr $EFD6				; Remove party sprites
+            #   jsr $F5C6				; Remove NPCs
+            #   jmp $E3E7				; StartEndCredits
+            data = [0xA9, 0x09, 0x85, 0xA8, 0x20, 0xD6, 0xEF, 0x20, 0xC6, 0xF5, 0x4C, 0xE7, 0xE3, 0x00]
+            self.rom.write_bytes(0xF, 0xC00D, bytes(data))
+
+            # Game ends when leaving a map
+            if self.app.getCheckBox("EG_Check_Earthquake"):
+                # Leaving any map when the 'earthquake' effect is active
+                if self._ending_rom_support == 2:
+                    # Remastered version
+                    data = [0xA5, 0x70, 0xC9, 0x15, 0x90, 0x15, 0xA0, 0x08, 0xAD, 0x1F, 0xFF, 0x20, 0x90, 0xFB, 0x84,
+                            0xA8, 0x68, 0x68, 0xA9, 0x0F, 0x85, 0x70, 0x85, 0x30, 0x4C, 0x53, 0xC1, 0x68, 0x68, 0xA9,
+                            0x00, 0x85, 0x70, 0xA5, 0xE0, 0xF0, 0x03, 0x4C, 0xE7, 0xE3, 0xA9, 0x00, 0x85, 0xE2, 0x4C,
+                            0x42, 0xC1, 0x00, 0x00, 0x00, 0x00, 0x00]
+                else:
+                    # Original version
+                    data = [0xA5, 0x70, 0xC9, 0x15, 0x90, 0x1A, 0x38, 0xE9, 0x15, 0x0A, 0xA8, 0xB9, 0x89, 0xC4, 0x85,
+                            0x4C, 0xB9, 0x8A, 0xC4, 0x85, 0x4B, 0x68, 0x68, 0xA9, 0x0F, 0x85, 0x70, 0x85, 0x30, 0x4C,
+                            0x53, 0xC1, 0x68, 0x68, 0xA9, 0x00, 0x85, 0x70, 0xA5, 0xE0, 0xF0, 0x03, 0x4C, 0xE7, 0xE3,
+                            0xA9, 0x00, 0x85, 0xE2, 0x4C, 0x42, 0xC1]
+
+            else:
+                # Leaving a specific map
+                map_id = self._get_selection_index("EG_Map_Id")
+
+                if self._ending_rom_support == 2:
+                    # Remastered version
+                    data = [0xA5, 0x70, 0xC9, map_id, 0xD0, 0x05, 0x68, 0x68, 0x4C, 0x0D, 0xC0, 0xC9, 0x15, 0x90, 0x15,
+                            0xA0, 0x08, 0xAD, 0x1F, 0xFF, 0x20, 0x90, 0xFB, 0x84, 0xA8, 0x68, 0x68, 0xA9, 0x0F, 0x85,
+                            0x70, 0x85, 0x30, 0x4C, 0x53, 0xC1, 0x68, 0x68, 0xA9, 0x00, 0x85, 0x70, 0x85, 0xE2, 0x4C,
+                            0x42, 0xC1, 0x00, 0x00, 0x00, 0x00, 0x00]
+                else:
+                    # Original version
+                    data = [0xA5, 0x70, 0xC9, map_id, 0xD0, 0x05, 0x68, 0x68, 0x4C, 0xE7, 0xE3, 0xC9, 0x15, 0x90, 0x1A,
+                            0x38, 0xE9, 0x15, 0x0A, 0xA8, 0xB9, 0x89, 0xC4, 0x85, 0x4C, 0xB9, 0x8A, 0xC4, 0x85, 0x4B,
+                            0x68, 0x68, 0xA9, 0x0F, 0x85, 0x70, 0x85, 0x30, 0x4C, 0x53, 0xC1, 0x68, 0x68, 0xA9, 0x00,
+                            0x85, 0x70, 0x85, 0xE2, 0x4C, 0x42, 0xC1]
+
+            self.rom.write_bytes(0xF, 0xE94F, bytes(data))
+
+        elif self._ending_rom_support < 2:
+            self.app.warningBox("Game Ending", "Invalid selection: this ROM does not support ending the game " +
+                                "after defeating an enemy.", "Event_Editor")
+            return False
+
+        else:   # Remastered version only
+
+            # Game does NOT end when leaving a map, regardless of 'earthquake' effect status
+            data = [0xA5, 0x70, 0xC9, 0x15, 0x90, 0x15, 0xA0, 0x08, 0xAD, 0x1F, 0xFF, 0x20, 0x90, 0xFB, 0x84, 0xA8,
+                    0x68, 0x68, 0xA9, 0x0F, 0x85, 0x70, 0x85, 0x30, 0x4C, 0x53, 0xC1, 0x68, 0x68, 0xA9, 0x00, 0x85,
+                    0x70, 0x85, 0xE2, 0x4C, 0x42, 0xC1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                    0x00, 0x00, 0x00, 0x00]
+            self.rom.write_bytes(0xF, 0xE94F, bytes(data))
+
+            # Game ends after defeating a specific enemy
+            self.rom.write_bytes(0xF, 0xCD69, bytes([0x4C, 0x00, 0xC0]))    # JMP $C000
+
+            # *=$C000
+            # VictoryCheck:
+            #   jsr $D227
+            #   lda $03F0
+            #   cmp #enemy_id
+            #   beq _EndGame
+            # _NotEnd:
+            #   jmp $CD6C
+            # *= $C00D
+            # _EndGame:
+            #   lda #$08
+            #   sta _MapFlags           ; Needed for correct scrolling
+            #   jsr $EFD6				; Remove party sprites
+            #   jsr $F5C6				; Remove NPCs
+            #   jmp $E3E7				; StartEndCredits
+            enemy_id = self._get_selection_index("EG_Enemy_Id")
+            data = [0x20, 0x27, 0xD2, 0xAD, 0xF0, 0x03, 0xC9, enemy_id, 0xF0, 0x03, 0x4C, 0x6C, 0xCD, 0xA9, 0x09, 0x85,
+                    0xA8, 0x20, 0xD6, 0xEF, 0x20, 0xC6, 0xF5, 0x4C, 0xE7, 0xE3, 0x00]
+
+            self.rom.write_bytes(0xF, 0xC000, bytes(data))
+
+        return True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def _read_game_ending(self) -> None:
+        # Detect Original / Remastered code first
+        data = self.rom.read_bytes(0xF, 0xE953, 2)
+        map_id = -1
+
+        if data[0] == 0x90:
+
+            if data[1] == 0x1A:     # Unmodified ORIGINAL
+                self._ending_rom_support = 1
+
+            elif data[1] == 0x15:   # Unmodified REMASTERED
+                self._ending_rom_support = 2
+
+            self.app.setRadioButton("EG_Radio_Ending", "When leaving a map", callFunction=False)
+            self.app.selectFrame("EG_Stack_Ending", 2, callFunction=False)
+
+        elif data == b'\xD0\x05':   # Modified...
+
+            data = self.rom.read_bytes(0xF, 0xE95C, 2)
+            if data == b'\x90\x15':        # Modified REMASTERED
+                self._ending_rom_support = 2
+                map_id = self.rom.read_byte(0xF, 0xE952)
+
+            elif data == b'\x90\x1A':      # Modified ORIGINAL
+                self._ending_rom_support = 1
+                map_id = self.rom.read_byte(0xF, 0xE952)
+
+            else:                           # Modified custom / unsupported ROM
+                self._ending_rom_support = 0
+
+        else:                       # Custom code / unsupported ROM
+            self._ending_rom_support = 0
+
+        # Enable / disable / select widgets as needed
+        if self._ending_rom_support == 0:
+            self.app.setRadioButton("EG_Radio_Ending", "When leaving a map", callFunction=False)
+            self.app.selectFrame("EG_Stack_Ending", 0, callFunction=False)
+            self.app.disableRadioButton("EG_Radio_Ending")
+            self.app.disableOptionBox("EG_Enemy_Id")
+            self.app.disableCheckBox("EG_Check_Earthquake")
+            self.app.disableOptionBox("EG_Ending_Map")
+
+        elif self._ending_rom_support == 1:
+            self.app.setRadioButton("EG_Radio_Ending", "When leaving a map", callFunction=False)
+            self.app.selectFrame("EG_Stack_Ending", 2, callFunction=False)
+            self.app.disableRadioButton("EG_Radio_Ending")  # Unsupported for original ROM
+            self.app.disableOptionBox("EG_Enemy_Id")        # Unsupported for original ROM
+            self.app.enableCheckBox("EG_Check_Earthquake")
+
+            if map_id < 0:
+                self.app.setCheckBox("EG_Check_Earthquake", ticked=True, callFunction=False)
+                self.app.disableOptionBox("EG_Ending_Map")
+            else:
+                self.app.setCheckBox("EG_Check_Earthquake", ticked=False, callFunction=False)
+                self.app.enableOptionBox("EG_Ending_Map")
+                self.app.setOptionBox("EG_Ending_Map", map_id)
+
+        elif self._ending_rom_support == 2:
+            self.app.setRadioButton("EG_Radio_Ending", "When leaving a map", callFunction=False)
+            self.app.selectFrame("EG_Stack_Ending", 2, callFunction=False)
+            self.app.enableRadioButton("EG_Radio_Ending")
+            self.app.enableOptionBox("EG_Enemy_Id")
+            self.app.enableCheckBox("EG_Check_Earthquake")
+
+            if map_id < 0:
+                self.app.setCheckBox("EG_Check_Earthquake", ticked=True, callFunction=False)
+                self.app.disableOptionBox("EG_Ending_Map")
+            else:
+                self.app.setCheckBox("EG_Check_Earthquake", ticked=False, callFunction=False)
+                self.app.enableOptionBox("EG_Ending_Map")
+                self.app.setOptionBox("EG_Ending_Map", map_id)
+
+            # Check if game ends after defeating an enemy
+            if self.rom.read_bytes(0xF, 0xCD69, 3) == b'\x20\x00\xC0':
+                enemy_id = self.rom.read_byte(0xF, 0xC007)
+                self.app.setRadioButton("EG_Radio_Ending", "When defeating an enemy", callFunction=False)
+                self.app.selectFrame("EG_Stack_Ending", 1, callFunction=False)
+                self.app.setOptionBox("EG_Enemy_Id", enemy_id, callFunction=False)
+                self.app.setLabel("EG_Label_Enemy_Id", f"Value: 0x{enemy_id:02X}")
 
     # ------------------------------------------------------------------------------------------------------------------
 
