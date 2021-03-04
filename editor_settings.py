@@ -143,6 +143,8 @@ class EditorSettings:
     # ------------------------------------------------------------------------------------------------------------------
 
     def set(self, key: str, value: Union[int, bool, str]) -> None:
+        if not self.config.has_section("SETTINGS"):
+            self.config.add_section("SETTINGS")
         try:
             self.config.set("SETTINGS", key, f"{value}")
         except ValueError as error:
