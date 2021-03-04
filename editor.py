@@ -1942,7 +1942,7 @@ if __name__ == "__main__":
         app.setStopFunction(editor_stop)
         f = settings.get("editor fonts")
         if f == "":
-            f = "Consolas"
+            f = "Consolas" if sys.platform == "win32" else "Monospace Regular"
         app.setFont(family=f, underline=False, size=12)
 
         #       ##### Toolbar #####
