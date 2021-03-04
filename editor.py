@@ -1935,8 +1935,9 @@ if __name__ == "__main__":
 
     with gui("UE Editor", "492x344", bg=colour.WHITE, resizable=False) as app:
         print(app.SHOW_VERSION())
-        # noinspection PyArgumentList
-        app.setIcon(image="res/app-icon.ico")
+        if sys.platform == "win32":
+            # noinspection PyArgumentList
+            app.setIcon(image="res/app-icon.ico")
         # noinspection PyArgumentList
         app.setStopFunction(editor_stop)
         f = settings.get("editor fonts")

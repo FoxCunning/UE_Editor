@@ -38,16 +38,12 @@
     - Pre-made party editor (Remastered ROM only)
     - Special ability editor (Remastered ROM only)
     - Special dialogue editor (e.g. vendors, Lord British, etc.)
-    - Game credits editor (only end credits for now)
+    - Game credits editor (opening and end credits)
+    - Game ending editor
   
-###To do:
-- Instrument editor:
-  - Add a preview for the triangle and noise channels
+###To do / stretch goals:
 - Music tracker:
-  - Implement noise channel
   - Import/export music from/to FamiTracker
-- Ability to assign music to specific maps
-- End game editor
 - Add an options for an alternative weapon / armour system
 - Major refactoring in most modules
 - Some extra features that would be nice to have:
@@ -61,6 +57,7 @@
 - AppJar (0.94, a slightly altered version is included with this project)
 - TCL 8.6
 - TK 8.6
+- Dataclasses
 
 #
 ###Disclaimer:
