@@ -1,7 +1,7 @@
 """
 An extensive editor for the NES version of Ultima III: Exodus and its Remastered Hack by Fox Cunning
 """
-__version__ = "Pre-Alpha 0.3"
+__version__ = "Beta 0.4"
 
 __author__ = "Fox Cunning"
 __copyright__ = "Copyright ©2020-2021 Fox Cunning"
@@ -1672,15 +1672,13 @@ def track_editor_stop() -> bool:
 # ----------------------------------------------------------------------------------------------------------------------
 
 def sound_tab_input(widget: str) -> None:
-    if widget == "ST_Music_Bank":
+    if widget == "ST_Music_Bank":   # ----------------------------------------------------------------------------------
         value = get_option_index(widget)
         if value == 0:  # Bank 8
             bank = 8
 
         else:  # Bank 9
             bank = 9
-
-        app.setButton("ST_Import_Instruments", text=f"Import from bank {9 - value}")
 
         # Show how many tracks and instruments are in this bank
         if bank == 8:
@@ -1698,20 +1696,20 @@ def sound_tab_input(widget: str) -> None:
         app.setLabel("ST_Label_Instruments", f"Instruments in this bank: {instruments}")
         app.changeOptionBox("ST_Option_Music", tracks_list, 0, callFunction=False)
 
-    elif widget == "ST_Edit_Instruments":
+    elif widget == "ST_Edit_Instruments":   # --------------------------------------------------------------------------
         bank = 8 + get_option_index("ST_Music_Bank")
         music_editor.show_instrument_editor(bank)
 
-    elif widget == "ST_Edit_Music":
+    elif widget == "ST_Edit_Music":     # ------------------------------------------------------------------------------
         bank = 8 + get_option_index("ST_Music_Bank")
         track = get_option_index("ST_Option_Music")
         music_editor.show_track_editor(bank, track)
 
-    elif widget == "ST_Edit_SFX":
+    elif widget == "ST_Edit_SFX":   # ----------------------------------------------------------------------------------
         sfx_id = get_option_index("ST_Option_SFX", app.getOptionBox("ST_Option_SFX"))
         sfx_editor.show_window(sfx_id)
 
-    elif widget == "ST_Option_SFX":
+    elif widget == "ST_Option_SFX":     # ------------------------------------------------------------------------------
         sfx_id = get_option_index("ST_Option_SFX", app.getOptionBox("ST_Option_SFX"))
         channel, address, flag, size = sfx_editor.get_sfx_info(sfx_id)
         channel_names = ["Pulse 0", "Pulse 1", "Triangle", "Noise"]
@@ -1719,7 +1717,7 @@ def sound_tab_input(widget: str) -> None:
         app.setLabel("ST_Label_Info", f"Channel: {channel_names[channel]}, Volume Only: {'Yes' if flag else 'No'}, " +
                      f"Size: {size} [Address: $09:{address:04X}]")
 
-    else:
+    else:   # ----------------------------------------------------------------------------------------------------------
         log(3, "MUSIC EDITOR", f"Unimplemented callback for widget '{widget}'.")
 
 
@@ -2522,8 +2520,6 @@ if __name__ == "__main__":
                 with app.frame("ST_Frame_Instruments", padding=[2, 1], sticky="NEWS", row=1, column=0):
                     app.label("ST_Label_Instruments", "Instruments in this bank: 0", sticky="WE",
                               row=0, column=0, font=11)
-                    app.button("ST_Import_Instruments", sound_tab_input, text="Import from bank 9", sticky="E",
-                               bg=colour.WHITE, row=0, column=1, font=10)
 
                     app.button("ST_Edit_Instruments", sound_tab_input, text="Edit Instruments", sticky="E",
                                bg=colour.WHITE, tooltip="Open the Instrument Editor",

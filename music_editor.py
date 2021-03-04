@@ -304,6 +304,7 @@ class MusicEditor:
         # --- Instrument Editor ---
         self._instruments: List[Instrument] = []
         self._selected_instrument: int = 0
+        self._test_channel: int = 1
         self._instrument_undo: UndoRedo = UndoRedo()
         self._instrument_undo_count: List[int] = []
         self._instrument_redo_count: List[int] = []
@@ -1125,6 +1126,8 @@ class MusicEditor:
 
         self.read_instrument_data()
 
+        self._test_channel = 1  # Square channel
+
         instruments_list: List[str] = []
         for i in range(len(self._instruments)):
             instruments_list.append(f"{i:02X} {self._instruments[i].name}")
@@ -1136,9 +1139,15 @@ class MusicEditor:
                 self.app.button("IE_Button_Apply", self._instruments_input, image="res/floppy.gif", width=32, height=32,
                                 tooltip="Apply changes to all instruments", bg=colour.MEDIUM_GREY,
                                 row=0, column=0)
+                self.app.button("IE_Button_Import", self._instruments_input, image="res/import.gif",
+                                tooltip="Import instruments from file", bg=colour.MEDIUM_GREY, width=32, height=32,
+                                row=0, column=1)
+                self.app.button("IE_Button_Export", self._instruments_input, image="res/export.gif",
+                                tooltip="Export instruments to file", bg=colour.MEDIUM_GREY, width=32, height=32,
+                                row=0, column=2)
                 self.app.button("IE_Button_Cancel", self._instruments_input, image="res/close.gif", width=32, height=32,
                                 tooltip="Cancel / Close window", bg=colour.MEDIUM_GREY,
-                                row=0, column=1)
+                                row=0, column=3)
 
             # Selection / Name
             with self.app.frame("IE_Frame_Selection", padding=[2, 1], sticky="NEW", row=1, column=0):
@@ -1153,6 +1162,10 @@ class MusicEditor:
 
             # Play buttons
             with self.app.frame("IE_Frame_Play_Buttons", padding=[2, 2], sticky="NEW", row=1, column=1):
+                self.app.button("IE_Button_Channel", self._instruments_input, image="res/square_wave.gif",
+                                bg=colour.MEDIUM_ORANGE, tooltip="Square Wave Channel",
+                                sticky="W", row=0, column=0)
+
                 self.app.button("IE_Button_Semiquaver", self._instruments_input, image="res/semiquaver.gif",
                                 bg=colour.WHITE if self._test_speed == 0 else colour.DARK_GREY,
                                 tooltip="Short notes", sticky="W", row=0, column=1)
@@ -1184,10 +1197,10 @@ class MusicEditor:
                                 tooltip="Use lower octaves", sticky="W", row=3, column=3)
 
                 self.app.button("IE_Show_Info", self._instruments_input, image="res/info.gif",
-                                tooltip="Show instrument usage and other info", bg=colour.MEDIUM_ORANGE,
+                                tooltip="Show instrument usage and other info", bg=colour.LIGHT_ORANGE,
                                 sticky="E", row=2, column=0)
                 self.app.button("IE_Play_Stop", self._instruments_input, image="res/play.gif",
-                                width=32, height=32, bg=colour.MEDIUM_ORANGE, sticky="E", row=3, column=0)
+                                width=32, height=32, bg=colour.LIGHT_ORANGE, sticky="E", row=3, column=0)
 
             # Full Volume / Duty cycle graph
             with self.app.frame("IE_Frame_Graph", padding=[2, 1], sticky="NEW", row=1, column=2):
@@ -1212,10 +1225,10 @@ class MusicEditor:
                     # Buttons
                     self.app.button(f"IE_Move_Left_{e}", self._instruments_input, image="res/arrow_left-long.gif",
                                     tooltip="Move value to the previous envelope",
-                                    height=16, sticky="SEW", row=2, column=c, bg=colour.MEDIUM_ORANGE)
+                                    height=16, sticky="SEW", row=2, column=c, bg=colour.LIGHT_ORANGE)
                     self.app.button(f"IE_Move_Right_{e}", self._instruments_input, image="res/arrow_right-long.gif",
                                     tooltip="Move value to the next envelope",
-                                    height=16, sticky="NEW", row=3, column=c, bg=colour.MEDIUM_ORANGE)
+                                    height=16, sticky="NEW", row=3, column=c, bg=colour.LIGHT_ORANGE)
 
                     # Canvas and controls
                     self.app.canvas(f"IE_Canvas_Envelope_{e}", width=canvas_width, height=140, bg=colour.BLACK,
@@ -1243,6 +1256,87 @@ class MusicEditor:
         self._selected_instrument = 0
         self.instrument_info()
         self.app.showSubWindow("Instrument_Editor")
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def export_instrument_data(self, file_name: str) -> bool:
+        try:
+            fd = open(file_name, "wb")
+        except IOError as error:
+            self.app.errorBox("Export Instruments", f"Error opening file '{file_name}': {error}.",
+                              "Instrument_Editor")
+            return False
+
+        count = 0
+        for i in self._instruments:
+            buffer = bytearray()
+
+            buffer.append(len(i.name))
+            buffer += bytes(i.name, "utf-8")
+
+            for e in i.envelope:
+                buffer.append(len(e))
+                buffer += e
+
+            fd.write(buffer)
+            count += 1
+
+        fd.close()
+
+        self.app.infoBox("Export Instruments", f"{count} instruments have been successfully saved to file.",
+                         "Instrument_Editor")
+
+        return True
+
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def import_instrument_data(self, file_name: str) -> bool:
+        try:
+            fd = open(file_name, "rb")
+        except IOError as error:
+            self.app.errorBox("Import Instruments", f"Error opening file '{file_name}': {error}.",
+                              "Instrument_Editor")
+            return False
+
+        count = 0
+
+        for i in self._instruments:
+            # Read name length
+            size = fd.read(1)
+            if len(size) < 1:
+                break
+            # Name string
+            data = fd.read(size[0])
+            if len(data) < 1:
+                break
+
+            try:
+                i.name = str(data, "utf-8")
+            except UnicodeDecodeError:
+                i.name = "(No Name)"
+
+            # Envelopes
+            for e in range(3):
+                size = fd.read(1)
+                if len(size) < 1:
+                    break
+                data = fd.read(size[0])
+                # Don't change the size of the envelopes
+                old_size = len(i.envelope[e])
+                for v in range(1, old_size):
+                    if v < size[0]:
+                        i.envelope[e][v] = data[v]
+                    else:
+                        i.envelope[e][v] = 0
+
+            count += 1
+
+        fd.close()
+
+        self.app.infoBox("Import Instruments", f"{count} instruments have been successfully imported.",
+                         "Instrument_Editor")
+
+        return True
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -3147,10 +3241,43 @@ class MusicEditor:
     # ------------------------------------------------------------------------------------------------------------------
 
     def _instruments_input(self, widget: str) -> None:
-        if widget == "IE_Button_Apply":
+        if widget == "IE_Button_Apply":     # --------------------------------------------------------------------------
             self.save_instrument_data()
             self._unsaved_changes_instrument = False
             self.close_instrument_editor()
+
+        elif widget == "IE_Button_Import":  # --------------------------------------------------------------------------
+            self.stop_playback()
+            path = self._settings.get("last music import path")
+            file_name = self.app.openBox("Import instrument data", path,
+                                         [("Ultima Exodus binary files", "*.bin"),
+                                          ("All Files", "*.*")],
+                                         asFile=False, parent="Track_Editor")
+            if file_name != "":
+                self._settings.set("last music import path", os.path.dirname(file_name))
+                if self.import_instrument_data(file_name):
+                    self.app.setStatusbar("Instrument data loaded from file")
+
+            # Refresh UI
+            instruments_list: List[str] = []
+            for i in range(len(self._instruments)):
+                instruments_list.append(f"{i:02X} {self._instruments[i].name}")
+            self.app.clearListBox("IE_List_Instrument", callFunction=False)
+            self.app.addListItems("IE_List_Instrument", instruments_list, select=False)
+            self.app.getListBoxWidget("IE_List_Instrument").selection_set(self._selected_instrument)
+            self.instrument_info()
+
+        elif widget == "IE_Button_Export":  # --------------------------------------------------------------------------
+            self.stop_playback()
+            path = self._settings.get("last music import path")
+            file_name = self.app.saveBox("Export instrument data", "", path, "*.bin",
+                                         [("Ultima Exodus binary files", "*.bin"),
+                                          ("All Files", "*.*")],
+                                         asFile=False, parent="Track_Editor")
+            if file_name != "":
+                self._settings.set("last music import path", os.path.dirname(file_name))
+                if self.export_instrument_data(file_name):
+                    self.app.setStatusbar("Instrument data saved to file")
 
         elif widget == "IE_Button_Cancel":  # --------------------------------------------------------------------------
             self.close_instrument_editor()
@@ -3196,6 +3323,7 @@ class MusicEditor:
                 self.app.addListItems("II_List_Tracks", tracks_list, select=False)
                 # Show info window
                 self.app.showSubWindow("Instrument_Info", follow=True)
+                self.app.getEntryWidget("IE_Instrument_Name").focus_set()
 
         elif widget == "IE_Update_Name":    # --------------------------------------------------------------------------
             self._update_instrument_name("IE_Instrument_Name")
@@ -3321,6 +3449,19 @@ class MusicEditor:
 
             self._unsaved_changes_instrument = True
 
+        elif widget == "IE_Button_Channel":     # ----------------------------------------------------------------------
+            self._test_channel += 1
+            if self._test_channel > 3:
+                self._test_channel = 1
+
+            image = ["", "res/square_wave.gif", "res/triangle_wave.gif", "res/noise_wave.gif"]
+            tooltip = ["", "Square Wave Channel", "Triangle Wave Channel", "Noise Wave Channel"]
+
+            self.app.setButtonImage(widget, image[self._test_channel])
+            self.app.setButtonTooltip(widget, tooltip[self._test_channel])
+
+            self._restart_instrument_test()
+
         elif widget == "IE_Button_Semiquaver":  # ----------------------------------------------------------------------
             self._test_speed = 0
             self.app.button("IE_Button_Semiquaver", bg=colour.WHITE)
@@ -3392,54 +3533,44 @@ class MusicEditor:
                 note_length = 7 + (self._test_speed << 4)
                 # Build some test data
                 tracks: List[List] = [[], [], [], []]
-                tracks[0] = []
-                tracks[0].append(TrackDataEntry.new_volume(15))
-                tracks[0].append(TrackDataEntry.new_instrument(self._selected_instrument))
-                if self._test_octave == 2:
-                    base_note = 0x0C
-                elif self._test_octave == 1:
-                    base_note = 0x18
-                else:
-                    base_note = 0x24
 
-                if self._test_notes == 0:  # Single note loop
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
-                elif self._test_notes == 1:  # Scale
-                    tracks[0].append(TrackDataEntry.new_note(base_note, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 2, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 4, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 5, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 9, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 11, note_length))
-                else:  # Arpeggio
-                    tracks[0].append(TrackDataEntry.new_note(base_note, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 4, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 7, note_length))
-                    tracks[0].append(TrackDataEntry.new_note(base_note + 4, note_length))
-                tracks[0].append(TrackDataEntry.new_rewind(2))
-                # "Mute" other channels
-                tracks[1] = []
-                tracks[1].append(TrackDataEntry.new_volume(0))
-                tracks[1].append(TrackDataEntry.new_vibrato(False, 0, 0))
-                tracks[1].append(TrackDataEntry.new_instrument(0))
-                tracks[1].append(TrackDataEntry.new_rest(note_length))
-                tracks[1].append(TrackDataEntry.new_rewind(0))
-                tracks[2] = []
-                tracks[2].append(TrackDataEntry.new_volume(0))
-                tracks[2].append(TrackDataEntry.new_vibrato(False, 0, 0))
-                tracks[2].append(TrackDataEntry.new_instrument(0))
-                tracks[2].append(TrackDataEntry.new_rest(note_length))
-                tracks[2].append(TrackDataEntry.new_rewind(0))
-                tracks[3] = []
-                tracks[3].append(TrackDataEntry.new_volume(0))
-                tracks[3].append(TrackDataEntry.new_vibrato(False, 0, 0))
-                tracks[3].append(TrackDataEntry.new_instrument(0))
-                tracks[3].append(TrackDataEntry.new_rest(note_length))
-                tracks[3].append(TrackDataEntry.new_rewind(0))
+                for c in range(4):
+                    if c == self._test_channel:
+                        tracks[c] = [TrackDataEntry.new_volume(15)]
+                        tracks[c].append(TrackDataEntry.new_instrument(self._selected_instrument))
+                        if self._test_octave == 2:
+                            base_note = 0x0C
+                        elif self._test_octave == 1:
+                            base_note = 0x18
+                        else:
+                            base_note = 0x24
+
+                        if self._test_notes == 0:  # Single note loop
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 7, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 7, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 7, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 7, note_length))
+                        elif self._test_notes == 1:  # Scale
+                            tracks[c].append(TrackDataEntry.new_note(base_note, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 2, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 4, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 5, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 7, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 9, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 11, note_length))
+                        else:  # Arpeggio
+                            tracks[c].append(TrackDataEntry.new_note(base_note, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 4, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 7, note_length))
+                            tracks[c].append(TrackDataEntry.new_note(base_note + 4, note_length))
+                        tracks[c].append(TrackDataEntry.new_rewind(2))
+                    else:
+                        # "Mute" other channels
+                        tracks[c] = [TrackDataEntry.new_volume(0)]
+                        tracks[c].append(TrackDataEntry.new_vibrato(False, 0, 0))
+                        tracks[c].append(TrackDataEntry.new_instrument(0))
+                        tracks[c].append(TrackDataEntry.new_rest(note_length))
+                        tracks[c].append(TrackDataEntry.new_rewind(0))
 
                 self.start_playback(False, False, tracks)
                 self.app.setButtonImage(widget, "res/stop.gif")
