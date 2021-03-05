@@ -1928,6 +1928,10 @@ def editor_stop() -> bool:
 
 if __name__ == "__main__":
 
+    path = os.path.dirname(sys.argv[0])
+    if path != "":
+        os.chdir(path)
+
     # Try to load editor settings
     settings.load()
 

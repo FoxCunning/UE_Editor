@@ -24,8 +24,6 @@
 - Palette Editor
 - Enemy Encounter Editor
 - Screen / Cutscene Editor
-- Sound / Music Editor
-    - Instrument editor
     
 - Other / Misc Editor Modules
     - Command editor
